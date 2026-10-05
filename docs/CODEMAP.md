@@ -9,7 +9,7 @@ Paths are relative to repository root. A crate's `src/lib.rs` lists its public A
 | Link folder, pair device, import/export invitation | `crates/core/src/lib.rs` | Snapshot, crypto, and storage APIs |
 | Manual/settled snapshot creation, unchanged-content reuse and commit | `crates/core/src/snapshots.rs` | Project lock, snapshot scanner and transactional storage |
 | Local status, compare with online peer, receive from peer, recover | `crates/core/src/workflows.rs` | `peer.rs`, transfer API |
-| Bounded project/peer metadata cards | `crates/core/src/status.rs` | Narrow storage queries; existing CLI status unchanged |
+| Bounded project/peer metadata cards, remote history and known lineage | `crates/core/src/status.rs` | Narrow bounded storage queries; existing CLI status unchanged |
 | Manual snapshot commit followed by publication | `crates/core/src/sending.rs` | Snapshot workflow and durable mailbox ACK |
 | Windows plugin pipe, binding, status and send queue | `crates/core/src/ipc/mod.rs`, `ipc/security.rs`, `ipc/status.rs` | Existing plugin protocol; shared Engine/network |
 | Project save debounce, coalescing and accepted-work drain | `crates/core/src/ipc/jobs.rs` | Engine settled send; bounded per-project revisions |
@@ -37,7 +37,7 @@ Paths are relative to repository root. A crate's `src/lib.rs` lists its public A
 | Six transfer labels and SQLite/JSON conversion | `crates/storage/src/transfer_state.rs` | Transfers and receiver/recovery |
 | Project links and errors | `crates/storage/src/projects.rs` | Core |
 | Device identity bindings and per-project authorization | `crates/storage/src/trust.rs` | Network/transfer requests |
-| Immutable snapshot commit, indexed chunk authorization, lineage | `crates/storage/src/snapshots.rs` | Snapshot/apply |
+| Immutable snapshot commit, indexed chunk authorization, lineage and bounded adapter history | `crates/storage/src/snapshots.rs` | Snapshot/apply |
 | Session creation, progress, transactional apply markers | `crates/storage/src/transfers.rs` | Receiver/apply |
 | Publication/retry and verified page ingestion | `crates/core/src/mailbox.rs` | `mailbox` transport and transactional storage |
 | Announcements, immutable envelopes, ACK state, transactional page/cursor | `crates/storage/src/mailbox.rs` | Core publication/refresh workflows |

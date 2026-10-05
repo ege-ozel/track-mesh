@@ -1,6 +1,7 @@
 use crate::ProjectSummary;
 use network::Network;
 use protocol::PluginStatus;
+use storage::Lineage;
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -61,6 +62,7 @@ pub fn summarize(
     let route = selected
         .and_then(|p| connection.peers.get(&p.device.peer_id))
         .filter(|p| p.online && connection.error.is_none());
+    let known_lineage = selected.and_then(|peer| peer.known_lineage.as_ref());
     let state = if summary.project.recovery_required {
         storage::TransferState::RecoveryRequired.as_str().into()
     } else if let Some(transfer) = summary
@@ -69,17 +71,48 @@ pub fn summarize(
         .filter(|t| t.state != storage::TransferState::Complete)
     {
         transfer.state.as_str().into()
+    } else if known_lineage == Some(&Lineage::Diverged) {
+        "DIVERGED".into()
     } else if summary.pending_publications > 0 {
         "PENDING".into()
+    } else if known_lineage == Some(&Lineage::RemoteAhead) {
+        "REMOTE_AHEAD".into()
+    } else if known_lineage == Some(&Lineage::LocalAhead) {
+        "LOCAL_AHEAD".into()
     } else {
         "LAST_KNOWN".into()
     };
+    let history_message = match (remote, known_lineage, route) {
+        (None, _, _) => "No remote history. Refresh metadata in TRACKMESH desktop.".into(),
+        (Some(_), Some(Lineage::RemoteAhead), Some(_)) => {
+            "Newer remote snapshot available. Close this DAW project, then use desktop Receive."
+                .into()
+        }
+        (Some(_), Some(Lineage::RemoteAhead), None) => {
+            "Newer snapshot announced; project files become available when its source is online."
+                .into()
+        }
+        (Some(_), Some(Lineage::Diverged), _) => {
+            "Histories diverged. Receive is blocked; inspect both histories in desktop.".into()
+        }
+        (Some(_), Some(Lineage::LocalAhead), _) => {
+            "Local history is ahead of the last-known remote snapshot.".into()
+        }
+        (Some(_), Some(Lineage::Equal), _) => {
+            "Last-known heads match. Use desktop Check for fresh verified equality.".into()
+        }
+        (Some(_), _, Some(_)) => {
+            "Remote history is available; use desktop Check before deciding whether to Receive."
+                .into()
+        }
+        (Some(_), _, None) => {
+            "Last-known remote history; project files are unavailable while its source is offline."
+                .into()
+        }
+    };
     let (ok, message) = notice
         .map(|notice| notice.message(summary.pending_publications))
-        .unwrap_or((
-            true,
-            "Last-known history. Use desktop Check to verify equality.".into(),
-        ));
+        .unwrap_or((true, history_message));
     PluginStatus {
         ok,
         project_id: summary.project.project_id,

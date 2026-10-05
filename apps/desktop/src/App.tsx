@@ -25,7 +25,11 @@ function Card({ card, status, act }: { card: ProjectCard; status: DesktopStatus;
   const busy = !status.ready || status.closing || status.jobs.some(j => j.running && (!j.project_id || j.project_id === project.project_id));
   const check = status.checks.find(c => c.result.project_id === project.project_id && c.device_id === peerId);
   const fresh = !busy && (check?.fresh ?? false);
-  const divergence = check?.current_known && check.result.lineage === 'DIVERGED';
+  const checkedLineage = check?.current_known ? check.result.lineage : null;
+  const lineage = checkedLineage ?? peer?.known_lineage ?? null;
+  const divergence = lineage === 'DIVERGED';
+  const verifiedForPeer = project.verified_peer_id === peer?.device.peer_id
+    && project.verified_snapshot_id === project.latest_local_snapshot;
   const transfer = card.transfer;
   const resumable = transfer?.state === 'PAUSED' && peerId === transfer.source_device_id;
   const receiving = transfer?.state === 'RECEIVING' || transfer?.state === 'APPLYING';
@@ -37,7 +41,10 @@ function Card({ card, status, act }: { card: ProjectCard; status: DesktopStatus;
     <div className="card-meta"><span>PROJECT {short(project.project_id)}</span><span>{card.pending_publications ? `${card.pending_publications} publication pending` : 'No publication pending'}</span></div>
     <div className="snapshots"><section><h3>LOCAL SNAPSHOT</h3><Snapshot value={card.local_snapshot} empty="Create your first snapshot with Send Snapshot." /></section>
       <section><h3>KNOWN REMOTE METADATA</h3><Snapshot value={peer?.announcement ?? null} empty="Pair a collaborator, then refresh or check." />
-        {!online && peer?.announcement && <p className="offline-note">Source offline. Project files stay on collaborator PCs.</p>}</section></div>
+        {!online && peer?.announcement && <p className="offline-note">Source offline. Project files stay on collaborator PCs.</p>}
+        {peer && peer.history.length > 1 && <details className="remote-history"><summary>{peer.history.length} recent snapshots</summary>
+          <ol>{peer.history.map(snapshot => <li key={snapshot.snapshot_id}><code>{short(snapshot.snapshot_id)}</code><span>{time(snapshot.created_at)} · {bytes(snapshot.changed_bytes)} changed</span></li>)}</ol>
+        </details>}</section></div>
     <div className="peer-line"><label>Collaborator <select value={peerId ?? ''} disabled={busy || !card.peers.length} onChange={e => { setSelected(e.target.value); setDawClosed(false); }}>
       {!card.peers.length && <option value="">No paired devices</option>}{card.peers.map(p => <option key={p.device.device_id} value={p.device.device_id}>{p.device.name}</option>)}</select></label>
       <span className="muted">{online ? connection?.transport.toUpperCase() : 'Last-known status'}</span>
@@ -45,7 +52,8 @@ function Card({ card, status, act }: { card: ProjectCard; status: DesktopStatus;
     <div className={`verification ${divergence ? 'danger' : ''}`}>
       {fresh && check?.result.verified_equal ? `UP TO DATE · verified ${check.age_seconds}s ago`
         : check?.current_known && check.result.lineage && check.result.lineage !== 'EQUAL' ? `${check.result.lineage.replaceAll('_', ' ')} · ${fresh ? 'checked' : 'last checked'} ${check.age_seconds}s ago`
-        : `Last verified: ${time(project.last_verified_at)} · Check peer for a fresh comparison`}
+        : lineage && lineage !== 'EQUAL' ? `${lineage.replaceAll('_', ' ')} · last-known metadata, Check peer before receiving`
+        : `${verifiedForPeer ? `Last verified: ${time(project.last_verified_at)}` : 'No current verification for this collaborator'} · Check peer for a fresh comparison`}
     </div>
     {project.recovery_required && <div className="notice danger">Interrupted installation requires local recovery. Backups are retained.</div>}
     {transfer && <div className="transfer"><div><span>Last transfer · {short(transfer.snapshot_id)} · {transfer.state.replaceAll('_', ' ')}</span><span>{bytes(transfer.completed_bytes)} / {bytes(transfer.total_bytes)}</span></div>

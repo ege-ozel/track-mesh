@@ -10,4 +10,4 @@ Read root AGENTS.md and crates/core/AGENTS.md. This adapter owns presentation, b
 - Keep the existing data-directory contract, signed bytes, schema/state values, journal and installation order, and CLI fields.
 - Custom commands require explicit main-window permissions, a bundled-only CSP, and no remote navigation or generic JS filesystem/shell/HTTP access.
 - Use static frontend builds and native executable checks. Do not run watchers, automated tests, or benchmarks.
-- Phases 5–7 provide VST/Named Pipe, settled save/publication and session/work retention with 60-second grace. Plugin-launched owners use `--plugin-owner`; repeat plugin launches must not retain an explicit window session. Real DAW hooks remain unverified; complete history/VST receive UX remains Phase 8.
+- Phases 5–8 provide VST/Named Pipe, settled save/publication, session/work retention with 60-second grace, and bounded remote/offline/divergence UX. Plugin-launched owners use `--plugin-owner`; repeat plugin launches must not retain an explicit window session. Real DAW hooks remain unverified.

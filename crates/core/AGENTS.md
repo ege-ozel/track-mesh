@@ -21,4 +21,4 @@ Online equality needs the contacted peer's acknowledgement. Local status reports
 
 Core snapshot/recovery methods perform disk work. Desktop/IPC callers must schedule them away from UI and DAW audio threads. Work-based owner retention is implemented; do not install a permanent Windows daemon.
 
-Preserve CLI flags and JSON fields during structural refactors. Current product includes Windows CLI/desktop and a local VST3/IPC surface; the complete save/session/remote workflow remains unfinished. No automated tests/benchmarks.
+Preserve CLI flags and JSON fields during structural refactors. The local Windows CLI/desktop/VST workflow includes save settlement, session lifetime, bounded remote history, offline availability and receive handoff. Real DAW and Internet deployment integrations remain unverified. No automated tests/benchmarks.

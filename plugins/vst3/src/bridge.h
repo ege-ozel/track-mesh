@@ -12,6 +12,7 @@ struct ViewStatus {
     std::wstring project, name, local, remote, author, createdAt, connection, state, message;
     bool connected {false};
     bool linked {false};
+    bool peerOnline {false};
 };
 struct BridgeState {
     std::mutex mutex;

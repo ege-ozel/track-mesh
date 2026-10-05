@@ -1,6 +1,6 @@
 # TrackMesh MVP implementation
 
-**Phases 1–7 are implemented locally through the Windows Rust CLI, Tauri 2/React desktop, official-SDK C++ VST3/Named Pipe surface, event-triggered settled save/publication, and separate infrastructure services.** Development takes place in `D:\CodeSpace\track-mesh`. Actual DAW save/reopen/audio/hooks validation, real HTTPS deployment, two-PC NAT/relay/DCUtR validation and Phase 8 remain unfinished.
+**Phases 1–8 are implemented locally through the Windows Rust CLI, Tauri 2/React desktop, official-SDK C++ VST3/Named Pipe surface, event-triggered settled save/publication, bounded remote/offline/divergence UX, and separate infrastructure services.** Development takes place in `D:\CodeSpace\track-mesh`. Actual DAW save/reopen/audio/hooks validation, real HTTPS deployment and two-PC NAT/relay/DCUtR validation remain unfinished.
 
 The repository follows the eight requested phases. Compilation, static checks, and manual operation are the validation tools. No automated tests, benchmarks, project watchers, cloud file storage, or continuous synchronization have been added.
 
@@ -15,7 +15,7 @@ The repository follows the eight requested phases. Compilation, static checks, a
 | 5 | Implemented locally; SDK editor host operated; DAW/audio/state restore unverified | Official Steinberg SDK C++ VST3 UUID/control/status surface, private Windows Named Pipe bridge and shared desktop/agent owner. |
 | 6 | Implemented locally; simulated saves and loopback ACK validated; real DAW hooks unverified | Per-project save debounce/coalescing, bounded writer/inventory settlement, guarded snapshot commit, durable publication retry and accepted-work drain. |
 | 7 | Implemented locally; simulated IPC/window lifetime validated; real DAW termination unverified | Session/work/pending-publication retention, queued plugin-ending delivery and 60-second idle grace. |
-| 8 | Pending | Desktop/VST remote-history, offline-availability, and send/receive workflow. CLI lineage and connection reporting are already available for Phase 2. |
+| 8 | Implemented locally; disposable desktop/IPC validation | Desktop/VST bounded remote-history, offline-availability, divergence, and send/receive handoff. Real DAW and two-PC Internet operation remain unverified. |
 
 ## Phase 2 implementation
 
@@ -292,8 +292,33 @@ Checks performed on 2026-10-05 with Rust 1.98.1, supported Node 24.19, MSVC 14.4
 
 Real DAW/audio/UUID restore/save/termination and native queued-event delivery remain unverified. The final narrow adjustments preserve idle handling for an already-finished failed plugin task and recheck queued signals after observing termination; both were compiled/inspected. Manual flows did not exercise task panics or the native termination race. Active receive/installation and long blocked responder lifetime were inspected, not rerun as a Phase 7 transfer/recovery matrix. Ending reconnect-budget boundaries, forced DAW process exit, real HTTPS and two-PC NAT/relay/DCUtR were not exercised.
 
+## Phase 8 implementation and validation
+
+Implemented on local `codex/phase-8-remote-workflow` from the Phase 7 integration commit `1824ac4`.
+
+- Core adapter summaries now expose at most eight newest authored snapshots per paired device and a conservative last-known lineage. Storage resolves at most 64 ancestry steps with one bounded recursive query; incomplete, missing or deeper ancestry reports `UNKNOWN` rather than manufacturing equality or divergence. Complete CLI history and online signed-chain validation are unchanged.
+- Desktop cards show each selected collaborator's bounded recent history, source availability and last-known lineage. Persisted verification time is attributed only when its stored PeerId and snapshot still match the selected peer and current local head. Only a fresh connected-session equality ACK renders `UP TO DATE`. Known divergence disables Receive; the existing core receiver independently preserves ancestry, clean-folder, lock, journal and recovery enforcement.
+- The VST bridge consumes the existing `peer_online`, remote snapshot and state fields without changing `PluginStatus` serialization. Its Receive control requires an online known source and is disabled for known divergence. Named Pipe Receive requests explicitly refuse missing remote history, offline sources and divergence; accepted requests remain a DAW-closed desktop handoff and never install inside the loaded plugin.
+- Existing signed bytes/AAD, protocol names and fields, schema v2, persisted labels, project locks, snapshot/apply transactions, recovery ordering, one-swarm ownership, save settlement and session lifetime are unchanged. No dependency, automated test/benchmark, watcher, cloud file storage or automatic merge was added.
+
+Checks performed on 2026-10-05 with Rust 1.98.1, supported Node 24.19.0, MSVC 14.44.35207, Windows SDK 10.0.26100.0 and the existing pinned SDK/Ninja build:
+
+| Check | Result |
+| --- | --- |
+| `cargo fmt --all -- --check` | Passed |
+| `cargo check --workspace --locked --offline` | Passed |
+| `cargo clippy --workspace --lib --bins --locked --offline -- -D warnings` | Passed |
+| Frontend TypeScript check and Vite build | Passed by invoking both entry points directly with supported Node 24.19.0; an earlier npm-script build completed under unsupported Node 22.11 with Vite's version warning and was not used as final evidence |
+| `cargo build -p trackmesh-core -p trackmesh-desktop -p trackmesh-mailbox-service -p trackmesh-relay-service --locked --offline` | Passed; all four Windows executables linked |
+| CMake/Ninja `TrackMesh` target | Passed with strict C++ compilation and current Rust owner repackaging after initializing the documented process-local MSVC/SDK environment; an initial shell without that environment could not find standard C++ headers |
+| Packaged owner SHA-256 comparison | Bundled agent and desktop executables both match the final Rust build |
+| Real Named Pipe status/Receive handoff | Passed against a copied disposable two-device profile: known sibling children rendered `DIVERGED` and refused Receive; equal last-known heads remained `LAST_KNOWN`, never `UP TO DATE`, and an offline source refused Receive |
+| Actual Tauri/WebView2 desktop | Passed against the same disposable copy: two recent remote snapshots appeared per card, the divergent card showed its last-known warning, and Receive remained disabled; visual inspection found no clipping at the captured window size |
+
+The disposable profile was copied under ignored `.build/phase8-manual-remote-workflow`; original historical fixture data and project folders were not changed. The source peer and mailbox were intentionally offline, so Phase 8 did not rerun a live receive, mailbox refresh, direct/relayed connection, recovery or fresh equality ACK. The current VST3 target was compiled, but its native editor view was not reopened for this phase. Real Ableton/FL Studio UUID restore, audio, save/session events, forced host termination, HTTPS deployment and two-PC NAT/relay/DCUtR remain unverified.
+
 ## Remaining integration work
 
 Deploy the Phase 3 services with real DNS, valid HTTPS certificates, private ACLs, pinned infrastructure PeerId, and reachable advertised addresses; then validate on two real Windows PCs. Real firewall behavior, Internet NAT traversal, forced circuit relay, and DCUtR remain unverified. Direct transfers still do not imply a mailbox acknowledgement.
 
-Snapshot chunks are retained locally without automatic pruning. This keeps earlier snapshots retrievable when the working folder changes. The mailbox receives small encrypted announcements only; file manifests and chunks travel through authenticated peer connections. Validate the native VST3 in actual Windows DAWs before claiming host/audio/state/save compatibility. Next implementation phase: a new local `codex/phase-8-remote-workflow` branch for complete desktop/VST remote-history, offline-availability and send/receive/divergence UX.
+Snapshot chunks are retained locally without automatic pruning. This keeps earlier snapshots retrievable when the working folder changes. The mailbox receives small encrypted announcements only; file manifests and chunks travel through authenticated peer connections. Validate the native VST3 in actual Windows DAWs before claiming host/audio/state/save compatibility. Phase 8 completes the local MVP implementation; remaining work is real integration/deployment validation rather than another numbered implementation phase.

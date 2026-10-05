@@ -9,6 +9,9 @@ use protocol::SignedSnapshot;
 use rusqlite::{params, OptionalExtension, Transaction};
 use uuid::Uuid;
 
+const STATUS_HISTORY_LIMIT: u32 = 8;
+const STATUS_LINEAGE_DEPTH: u32 = 64;
+
 impl Store {
     pub fn snapshot_info(&self, id: Uuid) -> Result<Option<SnapshotInfo>> {
         Ok(self
@@ -22,6 +25,89 @@ impl Store {
     }
     pub fn latest_author_info(&self, project: Uuid, author: Uuid) -> Result<Option<SnapshotInfo>> {
         Ok(self.lock()?.query_row(&format!("SELECT {INFO_COLUMNS} FROM snapshots WHERE project_id=?1 AND author_device_id=?2 ORDER BY created_at DESC,snapshot_id DESC LIMIT 1"), params![project.to_string(), author.to_string()], info_row).optional()?)
+    }
+    /// A compact, newest-first history for adapter cards. Complete CLI history stays separate.
+    pub fn author_history(&self, project: Uuid, author: Uuid) -> Result<Vec<SnapshotInfo>> {
+        let db = self.lock()?;
+        let mut stmt = db.prepare(&format!("SELECT {INFO_COLUMNS} FROM snapshots WHERE project_id=?1 AND author_device_id=?2 ORDER BY created_at DESC,snapshot_id DESC LIMIT ?3"))?;
+        let history = stmt
+            .query_map(
+                params![
+                    project.to_string(),
+                    author.to_string(),
+                    STATUS_HISTORY_LIMIT
+                ],
+                info_row,
+            )?
+            .collect::<rusqlite::Result<_>>()?;
+        Ok(history)
+    }
+    /// Resolve a last-known relationship with bounded recursive ancestry reads.
+    /// Missing or deeper history is UNKNOWN rather than an unsafe divergence claim.
+    pub fn known_lineage(
+        &self,
+        project: Uuid,
+        local: Option<Uuid>,
+        remote: Uuid,
+    ) -> Result<Lineage> {
+        let Some(local) = local else {
+            return Ok(Lineage::RemoteAhead);
+        };
+        if local == remote {
+            return Ok(Lineage::Equal);
+        }
+        let db = self.lock()?;
+        let mut stmt = db.prepare(
+            "WITH RECURSIVE ancestry(origin,snapshot_id,parent_snapshot_id,depth) AS (
+                SELECT snapshot_id,snapshot_id,parent_snapshot_id,0 FROM snapshots
+                    WHERE project_id=?1 AND snapshot_id IN (?2,?3)
+                UNION ALL
+                SELECT ancestry.origin,s.snapshot_id,s.parent_snapshot_id,ancestry.depth+1
+                    FROM ancestry JOIN snapshots s ON s.project_id=?1 AND s.snapshot_id=ancestry.parent_snapshot_id
+                    WHERE ancestry.parent_snapshot_id IS NOT NULL AND ancestry.depth<?4
+            ) SELECT origin,snapshot_id,parent_snapshot_id,depth FROM ancestry ORDER BY origin,depth",
+        )?;
+        let rows = stmt
+            .query_map(
+                params![
+                    project.to_string(),
+                    local.to_string(),
+                    remote.to_string(),
+                    STATUS_LINEAGE_DEPTH
+                ],
+                |row| {
+                    Ok((
+                        crate::models::uuid_value(row.get(0)?)?,
+                        crate::models::uuid_value(row.get(1)?)?,
+                        crate::models::optional_uuid(row.get(2)?)?,
+                        row.get::<_, u32>(3)?,
+                    ))
+                },
+            )?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let chain = |origin| {
+            rows.iter()
+                .filter(|(row_origin, _, _, _)| *row_origin == origin)
+                .collect::<Vec<_>>()
+        };
+        let local_chain = chain(local);
+        let remote_chain = chain(remote);
+        if remote_chain.iter().any(|(_, id, _, _)| *id == local) {
+            return Ok(Lineage::RemoteAhead);
+        }
+        if local_chain.iter().any(|(_, id, _, _)| *id == remote) {
+            return Ok(Lineage::LocalAhead);
+        }
+        let complete = |values: &[&(Uuid, Uuid, Option<Uuid>, u32)]| {
+            values.last().is_some_and(|(_, _, parent, depth)| {
+                parent.is_none() && *depth < STATUS_LINEAGE_DEPTH
+            })
+        };
+        Ok(if complete(&local_chain) && complete(&remote_chain) {
+            Lineage::Diverged
+        } else {
+            Lineage::Unknown
+        })
     }
     pub fn snapshot(&self, id: Uuid) -> Result<Option<SignedSnapshot>> {
         let value: Option<Option<String>> = self

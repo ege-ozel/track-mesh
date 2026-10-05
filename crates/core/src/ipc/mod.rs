@@ -247,11 +247,34 @@ async fn connection(
                 }
             }
             PluginEvent::ReceiveSnapshot { .. } => {
-                reply.message =
-                    "Close this DAW project, then use Receive in TRACKMESH desktop.".into();
-                let mut state = shared.lock()?;
-                if state.messages.contains_key(&project) || state.messages.len() < 64 {
-                    state.messages.insert(project, status::Notice::Receive);
+                if reply.remote_snapshot.is_none() {
+                    reply.ok = false;
+                    reply.message =
+                        "No remote history is known. Refresh metadata in TRACKMESH desktop.".into();
+                } else if reply.state == "DIVERGED" {
+                    reply.ok = false;
+                    reply.message =
+                        "Histories diverged. Receive is blocked; inspect both histories in desktop."
+                            .into();
+                } else if reply.state == storage::TransferState::RecoveryRequired.as_str() {
+                    reply.ok = false;
+                    reply.message =
+                        "Interrupted installation requires recovery in TRACKMESH desktop.".into();
+                } else if matches!(reply.state.as_str(), "RECEIVING" | "APPLYING") {
+                    reply.ok = false;
+                    reply.message =
+                        "A receive operation is already active. Track it in TRACKMESH desktop."
+                            .into();
+                } else if !reply.peer_online {
+                    reply.ok = false;
+                    reply.message = "Source is offline. Project files become available when that collaborator returns online.".into();
+                } else {
+                    reply.message =
+                        "Close this DAW project, then use Receive in TRACKMESH desktop.".into();
+                    let mut state = shared.lock()?;
+                    if state.messages.contains_key(&project) || state.messages.len() < 64 {
+                        state.messages.insert(project, status::Notice::Receive);
+                    }
                 }
             }
             PluginEvent::SaveObserved { .. } if !reply.project_name.is_empty() => {
