@@ -68,7 +68,8 @@ bool launchAgent(HMODULE module) {
     auto command = L"\"" + path + L"\"";
     const auto filename = std::filesystem::path(path).filename().wstring();
     if (_wcsicmp(filename.c_str(), L"trackmesh-agent.exe") == 0) command += L" plugin-serve";
-    else if (_wcsicmp(filename.c_str(), L"trackmesh-desktop.exe") != 0) return false;
+    else if (_wcsicmp(filename.c_str(), L"trackmesh-desktop.exe") == 0) command += L" --plugin-owner";
+    else return false;
     STARTUPINFOW startup {};
     startup.cb = sizeof(startup);
     PROCESS_INFORMATION process {};
@@ -175,7 +176,14 @@ void run(Work& work) {
     const auto session = projectText(newProjectId());
     ULONGLONG lastLaunch = 0;
     bool everConnected = false;
-    while (!state->ending.load()) {
+    ULONGLONG endingDeadline = 0;
+    // Termination returns promptly; this pinned worker gets bounded time to hand
+    // off queued save/send observations before ending the Rust-owned session.
+    auto expired = [&]() {
+        if (state->ending.load() && !endingDeadline) endingDeadline = GetTickCount64() + 30000;
+        return endingDeadline && GetTickCount64() >= endingDeadline;
+    };
+    while (!expired()) {
         auto binding = bindingOf(state);
         auto project = binding.first;
         if (!validProjectId(project)) { WaitForSingleObject(state->wake, 250); continue; }
@@ -195,6 +203,7 @@ void run(Work& work) {
         everConnected = true;
         bool healthy = true;
         while (healthy) {
+            if (expired()) return;
             const auto current = bindingOf(state);
             if (current != binding) {
                 binding = current;
@@ -202,15 +211,30 @@ void run(Work& work) {
                 healthy = request(pipe.value, "PROJECT_ID", session, project, state);
                 if (!healthy) break;
             }
-            if (state->ending.load()) { request(pipe.value, "SESSION_ENDING", session, project, state); break; }
             const char* event = "GET_STATUS";
+            std::atomic<uint64_t>* signal = nullptr;
             // Each coalesced signal belongs to the UUID generation at enqueue.
             // A host state restore must never send an old button action to a new project.
-            if (state->save.exchange(0) == binding.second) event = "SAVE_OBSERVED";
-            else if (state->send.exchange(0) == binding.second) event = "SEND_SNAPSHOT";
-            else if (state->receive.exchange(0) == binding.second) event = "RECEIVE_SNAPSHOT";
+            if (state->save.exchange(0) == binding.second) { event = "SAVE_OBSERVED"; signal = &state->save; }
+            else if (state->send.exchange(0) == binding.second) { event = "SEND_SNAPSHOT"; signal = &state->send; }
+            else if (state->ending.load()) {
+                // Acquire the ending signal before the final drain: a save may
+                // have arrived between the first exchange and terminate().
+                if (state->save.exchange(0) == binding.second) { event = "SAVE_OBSERVED"; signal = &state->save; }
+                else if (state->send.exchange(0) == binding.second) { event = "SEND_SNAPSHOT"; signal = &state->send; }
+                else {
+                    if (request(pipe.value, "SESSION_ENDING", session, project, state)) return;
+                    healthy = false;
+                    break;
+                }
+            }
+            else if (state->receive.exchange(0) == binding.second) { event = "RECEIVE_SNAPSHOT"; signal = &state->receive; }
             healthy = request(pipe.value, event, session, project, state);
-            if (healthy) WaitForSingleObject(state->wake, 1000);
+            if (!healthy && signal) {
+                uint64_t empty = 0;
+                signal->compare_exchange_strong(empty, binding.second);
+            }
+            if (healthy && !state->ending.load()) WaitForSingleObject(state->wake, 1000);
         }
         if (!healthy) {
             offline(state, L"Agent connection interrupted. Check desktop before retrying an action.");

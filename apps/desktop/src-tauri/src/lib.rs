@@ -24,10 +24,9 @@ pub fn run() {
     let desktop = Arc::new(Desktop::new(options));
     let setup_desktop = desktop.clone();
     let application = tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.unminimize();
-                let _ = window.set_focus();
+        .plugin(tauri_plugin_single_instance::init(|app, args, _| {
+            if !args.iter().any(|arg| arg == "--plugin-owner") {
+                app.state::<Arc<Desktop>>().reopen(app);
             }
         }))
         .plugin(tauri_plugin_dialog::init())
@@ -50,7 +49,7 @@ pub fn run() {
                             && url.host_str() == Some("tauri.localhost"))
                 })
                 .build()?;
-            setup_desktop.start();
+            setup_desktop.start(app.handle().clone());
             Ok(())
         })
         .on_window_event(|window, event| {

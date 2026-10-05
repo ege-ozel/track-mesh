@@ -5,9 +5,9 @@ Read root AGENTS.md and crates/core/AGENTS.md. This adapter owns presentation, b
 - src-tauri/src/lib.rs is the adapter API/ownership map; private modules implement commands, documents, and runtime.
 - Call Engine workflows. One PeerRuntime owns the network; reload its handle after setup/trust changes. Never run a swarm per button.
 - Blocking startup, DPAPI, SQLite, documents, snapshot, and recovery belong in blocking workers. Await installation during shutdown; never abort apply.
-- Desktop also owns Phase 5 PluginRuntime on the same Engine/network handle. Reject IPC work at close, including initialization races, and await started plugin snapshot/publication workers. Do not create a second plugin swarm.
+- Desktop owns PluginRuntime on the same Engine/network handle. Window close hides the window while sessions/work/pending publication retain the process; explicit reopen restores it. Claim final idle shutdown under the desktop/IPC acceptance gates, including initialization races, and await accepted work before stopping metadata/peer. Do not create a second plugin swarm.
 - Native dialog-selected invitation/card documents stay in Rust. Do not expose invitation payloads or secrets to React, events, logs, or clipboard.
 - Keep the existing data-directory contract, signed bytes, schema/state values, journal and installation order, and CLI fields.
 - Custom commands require explicit main-window permissions, a bundled-only CSP, and no remote navigation or generic JS filesystem/shell/HTTP access.
 - Use static frontend builds and native executable checks. Do not run watchers, automated tests, or benchmarks.
-- Phase 5 VST/Named Pipe controls and Phase 6 settled save/publication are integrated locally. Accepted save debounce/scan/commit/publication drains on safe window close. Real DAW save hooks remain unverified; full DAW session lifetime and complete history/VST receive UX remain Phases 7–8.
+- Phases 5–7 provide VST/Named Pipe, settled save/publication and session/work retention with 60-second grace. Plugin-launched owners use `--plugin-owner`; repeat plugin launches must not retain an explicit window session. Real DAW hooks remain unverified; complete history/VST receive UX remains Phase 8.

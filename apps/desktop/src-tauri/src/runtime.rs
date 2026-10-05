@@ -11,10 +11,10 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use trackmesh_core::{
     default_data_directory, peer::PeerRuntime, Engine, MailboxRuntime, PeerCheck, PluginRuntime,
-    SummaryPage,
+    SessionGrace, SummaryPage,
 };
 use uuid::Uuid;
 
@@ -24,6 +24,9 @@ use uuid::Uuid;
     about = "Private Windows project snapshots and transfers"
 )]
 pub struct Options {
+    /// Plugin-launched owner: exit after sessions and durable work finish plus grace.
+    #[arg(long)]
+    plugin_owner: bool,
     #[arg(long, env = "TRACKMESH_DATA_DIR")]
     data_dir: Option<PathBuf>,
     #[arg(long, default_value = "My studio PC")]
@@ -177,6 +180,8 @@ struct Checked {
 
 #[derive(Default)]
 struct Session {
+    work_epoch: u64,
+    window_session: bool,
     engine: Option<Arc<Engine>>,
     device: Option<Device>,
     peer: Option<PeerRuntime>,
@@ -201,9 +206,13 @@ pub struct Desktop {
 
 impl Desktop {
     pub fn new(options: Options) -> Self {
+        let window_session = !options.plugin_owner;
         Self {
             options,
-            session: Mutex::new(Session::default()),
+            session: Mutex::new(Session {
+                window_session,
+                ..Session::default()
+            }),
             status_gate: tokio::sync::Mutex::new(()),
         }
     }
@@ -215,7 +224,7 @@ impl Desktop {
     pub fn is_closed(&self) -> bool {
         self.session.lock().is_ok_and(|s| s.closed)
     }
-    pub fn start(self: &Arc<Self>) {
+    pub fn start(self: &Arc<Self>, app: AppHandle) {
         let desktop = self.clone();
         // Insert the handle while holding the same gate used by close requests.
         if let Ok(mut state) = self.lock() {
@@ -227,6 +236,67 @@ impl Desktop {
                 }
             }));
         }
+        let desktop = self.clone();
+        tauri::async_runtime::spawn(async move {
+            let mut grace = SessionGrace::default();
+            let mut work_epoch = 0;
+            let mut heartbeat = tokio::time::interval(Duration::from_secs(1));
+            loop {
+                heartbeat.tick().await;
+                let engine = match desktop.lock() {
+                    Ok(state) if state.closing || state.closed => break,
+                    Ok(state) => state.engine.clone(),
+                    Err(_) => break,
+                };
+                let pending = match engine {
+                    Some(engine) => tauri::async_runtime::spawn_blocking(move || {
+                        engine.has_pending_publication()
+                    })
+                    .await
+                    .ok()
+                    .and_then(Result::ok)
+                    .unwrap_or(true),
+                    None => true,
+                };
+                let should_stop = desktop.lock().is_ok_and(|mut state| {
+                    if work_epoch != state.work_epoch {
+                        grace = SessionGrace::default();
+                        work_epoch = state.work_epoch;
+                    }
+                    if state.window_session || state.closing {
+                        grace = SessionGrace::default();
+                        return false;
+                    }
+                    if state.error.is_some() {
+                        state.closing = true;
+                        return true;
+                    }
+                    let (Some(plugin), Some(peer)) = (&state.plugin, &state.peer) else {
+                        return false;
+                    };
+                    let failed = plugin.is_finished()
+                        || peer.is_finished()
+                        || state
+                            .metadata
+                            .as_ref()
+                            .is_some_and(MailboxRuntime::is_finished);
+                    let busy =
+                        pending || state.tasks.iter().any(|task| !task.inner().is_finished());
+                    if failed || (grace.ready(plugin, peer, busy) && plugin.close_if_idle()) {
+                        // Same gate as desktop submit/reopen: no new operation can enter.
+                        plugin.begin_close();
+                        state.closing = true;
+                        true
+                    } else {
+                        false
+                    }
+                });
+                if should_stop {
+                    desktop.finish_close(app.clone()).await;
+                    break;
+                }
+            }
+        });
     }
     async fn initialize(&self) -> Result<()> {
         let options = self.options.clone();
@@ -394,6 +464,7 @@ impl Desktop {
             state.jobs.iter().filter(|job| job.running).count() < 8,
             "Too many active operations"
         );
+        state.work_epoch = state.work_epoch.wrapping_add(1);
         state.jobs.retain(|job| job.running);
         state.tasks.retain(|task| !task.inner().is_finished());
         let job_id = Uuid::new_v4();
@@ -570,53 +641,44 @@ impl Desktop {
     }
 
     pub fn begin_close(self: &Arc<Self>, app: AppHandle) {
-        let should_close = self
-            .lock()
-            .map(|mut state| {
-                if state.closing || state.closed {
-                    false
-                } else {
-                    state.closing = true;
-                    if let Some(plugin) = &state.plugin {
-                        plugin.begin_close();
-                    }
-                    true
-                }
-            })
-            .unwrap_or(false);
-        if !should_close {
-            return;
+        if let Ok(mut state) = self.lock() {
+            state.window_session = false;
+            state.work_epoch = state.work_epoch.wrapping_add(1);
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.hide();
+            }
         }
-        let desktop = self.clone();
-        tauri::async_runtime::spawn(async move {
-            let result = desktop.shutdown().await;
-            if let Err(error) = &result {
-                tracing::error!(%error, "Desktop shutdown finished with an error");
+    }
+    pub fn reopen(&self, app: &AppHandle) {
+        if let Ok(mut state) = self.lock() {
+            if state.closing || state.closed {
+                return;
             }
-            if let Ok(mut state) = desktop.lock() {
-                state.closed = true;
+            state.window_session = true;
+            state.work_epoch = state.work_epoch.wrapping_add(1);
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
             }
-            app.exit(if result.is_ok() { 0 } else { 1 });
-        });
+        }
+    }
+    async fn finish_close(&self, app: AppHandle) {
+        let result = self.shutdown().await;
+        if let Err(error) = &result {
+            tracing::error!(%error, "Desktop shutdown finished with an error");
+        }
+        if let Ok(mut state) = self.lock() {
+            state.closed = true;
+        }
+        app.exit(if result.is_ok() { 0 } else { 1 });
     }
     async fn shutdown(&self) -> Result<()> {
-        let (metadata, network, tasks) = {
+        let tasks = {
             let mut state = self.lock()?;
-            (
-                state.metadata.take(),
-                state.network.clone(),
-                std::mem::take(&mut state.tasks),
-            )
+            std::mem::take(&mut state.tasks)
         };
-        if let Some(network) = network {
-            network.shutdown().await;
-        }
         let mut errors = Vec::new();
-        if let Some(metadata) = metadata {
-            if let Err(error) = metadata.stop().await {
-                errors.push(error.to_string());
-            }
-        }
         for task in tasks {
             if let Err(error) = task.await {
                 errors.push(error.to_string());

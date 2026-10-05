@@ -1,6 +1,6 @@
 # TrackMesh MVP implementation
 
-**Phases 1–6 are implemented locally through the Windows Rust CLI, Tauri 2/React desktop, official-SDK C++ VST3/Named Pipe surface, event-triggered settled save/publication, and separate infrastructure services.** Development takes place in `D:\CodeSpace\track-mesh`. Actual DAW save/reopen/audio/hooks validation, real HTTPS deployment, two-PC NAT/relay/DCUtR validation and Phases 7–8 remain unfinished.
+**Phases 1–7 are implemented locally through the Windows Rust CLI, Tauri 2/React desktop, official-SDK C++ VST3/Named Pipe surface, event-triggered settled save/publication, and separate infrastructure services.** Development takes place in `D:\CodeSpace\track-mesh`. Actual DAW save/reopen/audio/hooks validation, real HTTPS deployment, two-PC NAT/relay/DCUtR validation and Phase 8 remain unfinished.
 
 The repository follows the eight requested phases. Compilation, static checks, and manual operation are the validation tools. No automated tests, benchmarks, project watchers, cloud file storage, or continuous synchronization have been added.
 
@@ -14,7 +14,7 @@ The repository follows the eight requested phases. Compilation, static checks, a
 | 4 | Implemented locally; Windows native validation on one PC | Tauri 2 / React controls, pairing, bounded status, manual snapshot/publication, receive/resume/recovery, and safe window-session shutdown. |
 | 5 | Implemented locally; SDK editor host operated; DAW/audio/state restore unverified | Official Steinberg SDK C++ VST3 UUID/control/status surface, private Windows Named Pipe bridge and shared desktop/agent owner. |
 | 6 | Implemented locally; simulated saves and loopback ACK validated; real DAW hooks unverified | Per-project save debounce/coalescing, bounded writer/inventory settlement, guarded snapshot commit, durable publication retry and accepted-work drain. |
-| 7 | Pending | Session-aware agent lifetime after DAW shutdown. |
+| 7 | Implemented locally; simulated IPC/window lifetime validated; real DAW termination unverified | Session/work/pending-publication retention, queued plugin-ending delivery and 60-second idle grace. |
 | 8 | Pending | Desktop/VST remote-history, offline-availability, and send/receive workflow. CLI lineage and connection reporting are already available for Phase 2. |
 
 ## Phase 2 implementation
@@ -253,8 +253,47 @@ Individual manual operations used real Named Pipe framing, the actual Tauri/WebV
 
 Real DAW serialization timing, delayed host writes beyond the quiet period, UUID save/reopen, audio, and delivery of plugin signals still queued during termination remain unverified. Quiet metadata/writer checks cannot prove the host has finished all future writes. Debounce/settlement timeout boundaries and active-hash follow-up races were compiled/inspected, not manually exercised. Full owner retention for DAW sessions/pending publication remains Phase 7; complete remote/offline/VST Receive UX remains Phase 8. No full transfer/recovery regression matrix, real HTTPS or two-PC NAT validation was performed for this phase.
 
+## Phase 7 implementation and validation
+
+Implemented on local `codex/phase-7-session-lifetime` from Phase 6 integration commit `0c28d07`.
+
+- Core `lifetime.rs` owns a shared 60-second idle grace. Bound plugin sessions, accepted plugin work, adapter jobs and authored-local pending metadata retain the owner. Plugin and peer responder activity epochs reset grace for short requests between polls; desktop job/window epochs do the same. A narrow authored-local SQLite EXISTS query runs in blocking workers. Idle IPC shutdown claims the same gate as session/job acceptance, so a newly accepted save cannot enter after the final idle decision.
+- Desktop window close now hides the window and releases its explicit window session while its same Engine, metadata worker and peer runtime continue. Downloads continue while their source remains available; local installation/recovery keep their existing locks and order. Explicit desktop launch restores the same window/session. Plugin launch uses `--plugin-owner`; repeat plugin launches do not manufacture a persistent window session. After all sessions/work/publication finish, grace precedes local-worker, metadata and peer drain. Explicit headless Ctrl+C still drains accepted local work and preserves committed pending metadata.
+- The pinned C++ worker gives queued current-generation save/send signals priority over session ending. Failed transport restores the coalesced signal without replacing a newer generation; reconnect/ending retry has a 30-second budget checked between bounded requests. Host termination remains a prompt signal with no I/O join. The budget does not bound OS scheduling/cancellation drain, and forced host-process exit can kill the worker before handoff; agent-received events are the durable-work boundary.
+
+Pending publication can retain an owner indefinitely when the mailbox is unavailable or unconfigured. This follows the accepted pending-work lifetime; no permanent service/autostart is installed. Reopen desktop to inspect/configure pending work; explicit interruption leaves it durable for restart. Paused/failed transfers and pending journal recovery are retained on disk rather than treated as actively running work. Incoming peer RPCs count as active responses and reset grace; a stalled remote receiver with no requests for the full grace interval does not reserve a permanent source session.
+
+Protocol/version/signing/AAD, schema v2 and persisted labels, project locks, snapshot/apply transactions, transfer/recovery ordering, hashes/chunk algorithms and the one-swarm lease remain unchanged. No dependency, automated test/benchmark suite, watcher or conflict merge was added. A new storage read does not mutate publication state; only the existing matching ACK clears PENDING.
+
+Individual Windows manual operations used current-user DPAPI, real Named Pipe framing, actual native Tauri/WebView2 and an allow-listed loopback mailbox, with dummy `.flp` data under ignored `.build/phase7-manual-29e46684`. The separate headless identity lives in that fixture's `headless-data`. These were manually initiated operations, not an automated suite.
+
+| Manual operation | Observed result |
+| --- | --- |
+| Save observation followed by session ending, then desktop Close safely with mailbox stopped | Hidden owner completed a 39-byte snapshot `2848d127-adae-4b03-b062-91ee2f051204`, retained PENDING, and stayed available until a later service start. Its existing retry obtained ACK without another Send/Publish. |
+| Explicit desktop relaunch while its owner was hidden | Same owned PID/window/profile returned ready, with the same head and zero pending metadata; closing released the window session again. |
+| Hidden owner with zero pending publication and a 70-second polling IPC session | Every poll succeeded; session ending then allowed clean automatic process exit after grace. |
+| Rebuilt desktop, changed dummy file, accepted save then immediate window close | A 53-byte child `7b854966-c5d4-47cc-a0ad-b48d3d82b7c7` committed after close. At 67 seconds after close the same PID/pipe still reported PENDING, exceeding idle grace. |
+| Mailbox restarted after that pending-retention check | Existing retry ACK published the child; history retained two snapshots with the expected parent and sizes. Desktop exited automatically after work/grace; no Close/Publish command was needed. |
+| Separate headless owner with an unlinked UUID and a 70-second bound polling session | Session remained connected despite unavailable project mapping; ending released it for idle exit. Owner command completed with exit code zero. |
+| Fixture shutdown | Both owners exited automatically; mailbox stopped with Ctrl+C. All project/database/chunk/identity data retained. |
+
+Checks performed on 2026-10-05 with Rust 1.98.1, supported Node 24.19, MSVC 14.44.35207 and Windows SDK 10.0.26100.0:
+
+| Check | Result |
+| --- | --- |
+| `cargo fmt --all -- --check` | Passed |
+| `cargo check --workspace --locked --offline` | Passed after final Rust adjustment |
+| `cargo clippy --workspace --lib --bins --locked --offline -- -D warnings` | Passed after final Rust adjustment |
+| Frontend `npm run typecheck`, `npm run build` | Passed; current locked installed dependencies and bundled static assets used |
+| `cargo build -p trackmesh-core -p trackmesh-desktop -p trackmesh-mailbox-service -p trackmesh-relay-service --locked --offline` | Passed; all four Windows executables linked |
+| CMake/Ninja `TrackMesh` target | Passed with strict C++ compilation; final Rust owners repackaged |
+| CLI `plugin-serve --help` and desktop `--help` | Passed; plugin-owner and existing IPC/network options present |
+| Bundle owner hashes, local documentation links and staged whitespace | Passed; both owners match final build, 50 relative links resolved, Windows CR-at-EOL whitespace check passed; protocol/crypto/network/transfer algorithms and schema files unchanged |
+
+Real DAW/audio/UUID restore/save/termination and native queued-event delivery remain unverified. The final narrow adjustments preserve idle handling for an already-finished failed plugin task and recheck queued signals after observing termination; both were compiled/inspected. Manual flows did not exercise task panics or the native termination race. Active receive/installation and long blocked responder lifetime were inspected, not rerun as a Phase 7 transfer/recovery matrix. Ending reconnect-budget boundaries, forced DAW process exit, real HTTPS and two-PC NAT/relay/DCUtR were not exercised.
+
 ## Remaining integration work
 
 Deploy the Phase 3 services with real DNS, valid HTTPS certificates, private ACLs, pinned infrastructure PeerId, and reachable advertised addresses; then validate on two real Windows PCs. Real firewall behavior, Internet NAT traversal, forced circuit relay, and DCUtR remain unverified. Direct transfers still do not imply a mailbox acknowledgement.
 
-Snapshot chunks are retained locally without automatic pruning. This keeps earlier snapshots retrievable when the working folder changes. The mailbox receives small encrypted announcements only; file manifests and chunks travel through authenticated peer connections. Validate the native VST3 in actual Windows DAWs before claiming host/audio/state/save compatibility. Next implementation phase: a new local `codex/phase-7-session-lifetime` branch for plugin-ending signal delivery and session/work/pending-publication lifetime; Phase 8 remains after that.
+Snapshot chunks are retained locally without automatic pruning. This keeps earlier snapshots retrievable when the working folder changes. The mailbox receives small encrypted announcements only; file manifests and chunks travel through authenticated peer connections. Validate the native VST3 in actual Windows DAWs before claiming host/audio/state/save compatibility. Next implementation phase: a new local `codex/phase-8-remote-workflow` branch for complete desktop/VST remote-history, offline-availability and send/receive/divergence UX.

@@ -13,6 +13,7 @@ Paths are relative to repository root. A crate's `src/lib.rs` lists its public A
 | Manual snapshot commit followed by publication | `crates/core/src/sending.rs` | Snapshot workflow and durable mailbox ACK |
 | Windows plugin pipe, binding, status and send queue | `crates/core/src/ipc/mod.rs`, `ipc/security.rs`, `ipc/status.rs` | Existing plugin protocol; shared Engine/network |
 | Project save debounce, coalescing and accepted-work drain | `crates/core/src/ipc/jobs.rs` | Engine settled send; bounded per-project revisions |
+| Work-based owner retention and 60-second idle grace | `crates/core/src/lifetime.rs` | Plugin/peer activity epochs; narrow authored-pending query |
 | VST3 factory, audio pass-through, UUID state/signals | `plugins/vst3/src/plugin.cpp`, `plugin.h` | Official Steinberg SDK; Rust owns decisions |
 | Native VST3 view, IPC worker and bundled-owner launch | `plugins/vst3/src/view.cpp`, `bridge.cpp` | No audio-thread IPC or file/network work |
 | Windows desktop entry point, capability inventory, navigation | `apps/desktop/src-tauri/src/lib.rs`, `build.rs`, `capabilities/main.json` | Tauri adapter; local bundled React |
@@ -74,7 +75,7 @@ save:     SAVE_OBSERVED → project debounce → snapshot_after_save → scan_af
 
 `PeerRuntime` owns the network actor/responder lifetime. `MailboxRuntime` owns session-scoped metadata retry. `Network` is a handle, not another swarm. SQLite ownership remains in `Store`; each domain module adds methods to that same type. Infrastructure services own independent stores/swarms in their separate processes.
 
-`PeerRuntime` holds an exclusive Windows data-directory lease shared with its actor/responder tasks. Desktop owns its window/job lifetime and calls `stop` after awaiting local work. Status summaries use bounded storage queries in `projects.rs`, `snapshots.rs`, and `transfers.rs`; `local_status` retains its complete CLI output.
+`PeerRuntime` holds an exclusive Windows data-directory lease shared with its actor/responder tasks. Desktop and headless plugin owners use `SessionGrace`: live plugin sessions, accepted local work, active peer responses and authored pending publication retain the owner. Brief requests between polls reset grace through activity epochs. Desktop window close hides the window while work finishes; explicit desktop reopen restores it in the same process. Owner shutdown rejects new IPC under the acceptance gate and drains workers before stopping the one peer runtime. Status summaries use bounded storage queries in `projects.rs`, `snapshots.rs`, and `transfers.rs`; `local_status` retains its complete CLI output.
 
 ## Targeted search examples
 

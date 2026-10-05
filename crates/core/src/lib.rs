@@ -21,6 +21,10 @@ mod ipc;
 mod snapshots;
 #[cfg(windows)]
 pub use ipc::{plugin_pipe_name, PluginRuntime};
+#[cfg(windows)]
+mod lifetime;
+#[cfg(windows)]
+pub use lifetime::SessionGrace;
 
 pub struct Engine {
     pub directory: PathBuf,

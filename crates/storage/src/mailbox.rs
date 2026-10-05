@@ -9,6 +9,13 @@ use rusqlite::{params, Connection, OptionalExtension};
 use uuid::Uuid;
 
 impl Store {
+    pub fn has_pending_publication(&self, author: Uuid) -> Result<bool> {
+        Ok(self.lock()?.query_row(
+            "SELECT EXISTS(SELECT 1 FROM snapshots WHERE author_device_id=?1 AND metadata_status='PENDING' AND location='LOCAL')",
+            [author.to_string()],
+            |row| row.get(0),
+        )?)
+    }
     pub fn ingest_remote(&self, envelope: &Envelope, announcement: &Announcement) -> Result<()> {
         let db = self.lock()?;
         ingest(&db, envelope, announcement)
