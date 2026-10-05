@@ -3,7 +3,7 @@
 ## Read this first
 
 - Canonical repository: `D:\CodeSpace\track-mesh`. Work in this repository; do not edit another checkout by assumption.
-- Current product: Windows Rust CLI, Tauri 2/React desktop, C++ VST3/Named Pipe surface, and separate infrastructure services, Phases 1–5 implemented locally. Phase 5 has SDK editor-host validation; actual DAW UUID persistence/audio remain unverified. Phases 6–8 and real NAT/HTTPS deployment validation remain pending. The complete DAW workflow is unfinished.
+- Current product: Windows Rust CLI, Tauri 2/React desktop, C++ VST3/Named Pipe surface, and separate infrastructure services, Phases 1–6 implemented locally. Phase 5 has SDK editor-host validation; Phase 6 has simulated save/loopback ACK validation. Actual DAW UUID persistence/audio/save hooks remain unverified. Phases 7–8 and real NAT/HTTPS deployment validation remain pending. The complete DAW workflow is unfinished.
 - Priorities: integrity/security → practical direct-transfer speed → reliability → simple workflow → development speed.
 - Preserve architecture, protocol names, signed serialization, database values, and recovery ordering unless the task explicitly changes them.
 - No automated tests, benchmarks, filesystem watchers, continuous sync, cloud project files, public sharing/discovery, automatic project conflict merging, or non-Windows desktop work in this MVP.

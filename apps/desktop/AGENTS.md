@@ -10,4 +10,4 @@ Read root AGENTS.md and crates/core/AGENTS.md. This adapter owns presentation, b
 - Keep the existing data-directory contract, signed bytes, schema/state values, journal and installation order, and CLI fields.
 - Custom commands require explicit main-window permissions, a bundled-only CSP, and no remote navigation or generic JS filesystem/shell/HTTP access.
 - Use static frontend builds and native executable checks. Do not run watchers, automated tests, or benchmarks.
-- Phase 5 VST/Named Pipe controls are integrated locally. Settled save processing, full DAW session lifetime and complete history/VST receive UX remain Phases 6–8.
+- Phase 5 VST/Named Pipe controls and Phase 6 settled save/publication are integrated locally. Accepted save debounce/scan/commit/publication drains on safe window close. Real DAW save hooks remain unverified; full DAW session lifetime and complete history/VST receive UX remain Phases 7–8.

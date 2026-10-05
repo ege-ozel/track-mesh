@@ -7,4 +7,4 @@ Read root AGENTS.md and crates/core/AGENTS.md. This is a tiny native control/sta
 - `src/view.cpp`: native Windows view and Send/Receive commands. Receive directs to the DAW-closed desktop workflow; never install into an open DAW project.
 - Existing PluginEvent/PluginStatus, protocol names, signing bytes and database values remain unchanged. State UUID changes must rebind before commands. Editor close is not session end.
 - CMake disables SDK validator execution and installed-folder links. Do not add/run automated tests or benchmarks. Build/static checks and explicit manual native operation only.
-- Full save settlement and session-aware lifetime belong to Phases 6 and 7. Record limits and actual validation in docs/IMPLEMENTATION.md.
+- Phase 6 save settlement is owned by Rust core/snapshot; keep this shim's save observation independent of filesystem completion. Full session-aware lifetime remains Phase 7. Record limits and actual validation in docs/IMPLEMENTATION.md.

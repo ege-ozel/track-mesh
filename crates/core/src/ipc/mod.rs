@@ -1,4 +1,5 @@
 //! Bounded Windows IPC adapter. Shares the owner's Engine and network handle.
+mod jobs;
 mod security;
 mod status;
 use crate::Engine;
@@ -27,7 +28,7 @@ use uuid::Uuid;
 struct State {
     sessions: HashMap<Uuid, Uuid>,
     messages: HashMap<Uuid, status::Notice>,
-    jobs: HashMap<Uuid, JoinHandle<()>>,
+    jobs: HashMap<Uuid, jobs::Job>,
 }
 struct Shared {
     engine: Arc<Engine>,
@@ -56,39 +57,6 @@ impl Shared {
                 "Link this project UUID to a local folder in TRACKMESH desktop.",
             )),
         }
-    }
-    fn send(self: &Arc<Self>, project: Uuid) -> Result<()> {
-        let mut state = self.lock()?;
-        ensure!(
-            !self.closing.load(Ordering::Acquire),
-            "Plugin bridge is closing"
-        );
-        state.jobs.retain(|_, task| !task.is_finished());
-        ensure!(
-            state.jobs.len() < 8 && !state.jobs.contains_key(&project),
-            "Snapshot work is already active; retry later"
-        );
-        ensure!(
-            state.messages.contains_key(&project) || state.messages.len() < 64,
-            "Plugin project limit reached; restart the session"
-        );
-        state.messages.insert(project, status::Notice::Queued);
-        let shared = self.clone();
-        let task = tokio::spawn(async move {
-            let result = shared
-                .engine
-                .send_snapshot(project, shared.allow_http)
-                .await;
-            let message = match result {
-                Ok(sent) => status::Notice::Committed(sent.snapshot_id),
-                Err(_) => status::Notice::Failed,
-            };
-            if let Ok(mut state) = shared.lock() {
-                state.messages.insert(project, message);
-            }
-        });
-        state.jobs.insert(project, task);
-        Ok(())
     }
 }
 
@@ -123,7 +91,7 @@ impl PluginRuntime {
     }
     pub fn is_idle(&self) -> bool {
         self.shared.lock().is_ok_and(|state| {
-            state.sessions.is_empty() && state.jobs.values().all(JoinHandle::is_finished)
+            state.sessions.is_empty() && state.jobs.values().all(|job| job.task.is_finished())
         })
     }
     /// Stop accepting commands immediately; `stop` still awaits started local work.
@@ -136,8 +104,8 @@ impl PluginRuntime {
         let server = self.task.await;
         let tasks = std::mem::take(&mut self.shared.lock()?.jobs);
         let mut errors = Vec::new();
-        for task in tasks.into_values() {
-            if let Err(e) = task.await {
+        for job in tasks.into_values() {
+            if let Err(e) = job.task.await {
                 errors.push(e.to_string());
             }
         }
@@ -250,7 +218,7 @@ async fn connection(
         let mut reply = shared.status(project).await?;
         match event {
             PluginEvent::SendSnapshot { .. } if !reply.project_name.is_empty() => {
-                match shared.send(project) {
+                match shared.schedule(project, false) {
                     Ok(()) => reply.message = "Snapshot queued in the agent.".into(),
                     Err(_) => {
                         reply.ok = false;
@@ -266,8 +234,17 @@ async fn connection(
                     state.messages.insert(project, status::Notice::Receive);
                 }
             }
-            PluginEvent::SaveObserved { .. } => {
-                reply.message = "Save observed. Use Send Snapshot to commit and publish.".into();
+            PluginEvent::SaveObserved { .. } if !reply.project_name.is_empty() => {
+                match shared.schedule(project, true) {
+                    Ok(()) => {
+                        reply.message = "Save observed; waiting for project files to settle.".into()
+                    }
+                    Err(_) => {
+                        reply.ok = false;
+                        reply.message =
+                            "Save not queued; agent busy or closing. Retry Send Snapshot.".into();
+                    }
+                }
             }
             PluginEvent::SessionEnding { .. } => {
                 write_reply(&mut pipe, &reply).await?;

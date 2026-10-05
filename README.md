@@ -2,7 +2,7 @@
 
 Private Windows transfer of Ableton Live and FL Studio project folders between two or three explicitly paired devices. Project files and samples stay on collaborator PCs. Immutable snapshots use BLAKE3, fixed 4 MiB chunks, signed manifests, and transactional SQLite history.
 
-**Current implementation: Phases 1–5, runnable through the Rust CLI, Windows Tauri 2/React desktop, native C++ VST3/Named Pipe surface, and separate infrastructure services.** Manual snapshot/publication, receive/resume, pairing and status are implemented locally. The plugin was operated in the official SDK editor host; actual DAW save/reopen/audio, real NAT/HTTPS deployment and the complete save/session workflow remain unverified or unfinished.
+**Current implementation: Phases 1–6, runnable through the Rust CLI, Windows Tauri 2/React desktop, native C++ VST3/Named Pipe surface, and separate infrastructure services.** Manual snapshot/publication, receive/resume, pairing, status and event-triggered settled save/publication are implemented locally. The plugin was operated in the official SDK editor host; simulated save events and loopback publication were validated. Actual DAW save/reopen/audio/hooks, real NAT/HTTPS deployment and the complete session workflow remain unverified or unfinished.
 
 Build on Windows with Rust and the Visual Studio C++ build tools:
 

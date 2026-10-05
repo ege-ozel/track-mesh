@@ -1,6 +1,6 @@
 # TrackMesh MVP implementation
 
-**Phases 1–5 are implemented locally through the Windows Rust CLI, Tauri 2/React desktop, official-SDK C++ VST3/Named Pipe surface, and separate infrastructure services.** Development takes place in `D:\CodeSpace\track-mesh`. Actual DAW save/reopen/audio validation, real HTTPS deployment, two-PC NAT/relay/DCUtR validation and Phases 6–8 remain unfinished.
+**Phases 1–6 are implemented locally through the Windows Rust CLI, Tauri 2/React desktop, official-SDK C++ VST3/Named Pipe surface, event-triggered settled save/publication, and separate infrastructure services.** Development takes place in `D:\CodeSpace\track-mesh`. Actual DAW save/reopen/audio/hooks validation, real HTTPS deployment, two-PC NAT/relay/DCUtR validation and Phases 7–8 remain unfinished.
 
 The repository follows the eight requested phases. Compilation, static checks, and manual operation are the validation tools. No automated tests, benchmarks, project watchers, cloud file storage, or continuous synchronization have been added.
 
@@ -13,7 +13,7 @@ The repository follows the eight requested phases. Compilation, static checks, a
 | 3 | Implemented locally; deployment/NAT unverified | Encrypted signed metadata publication/refresh, durable ACK/retry/cursor flow, Axum/SQLite opaque mailbox behind HTTPS, separate allow-listed relay/rendezvous service. |
 | 4 | Implemented locally; Windows native validation on one PC | Tauri 2 / React controls, pairing, bounded status, manual snapshot/publication, receive/resume/recovery, and safe window-session shutdown. |
 | 5 | Implemented locally; SDK editor host operated; DAW/audio/state restore unverified | Official Steinberg SDK C++ VST3 UUID/control/status surface, private Windows Named Pipe bridge and shared desktop/agent owner. |
-| 6 | Pending | Settled save processing and publication retry. |
+| 6 | Implemented locally; simulated saves and loopback ACK validated; real DAW hooks unverified | Per-project save debounce/coalescing, bounded writer/inventory settlement, guarded snapshot commit, durable publication retry and accepted-work drain. |
 | 7 | Pending | Session-aware agent lifetime after DAW shutdown. |
 | 8 | Pending | Desktop/VST remote-history, offline-availability, and send/receive workflow. CLI lineage and connection reporting are already available for Phase 2. |
 
@@ -218,8 +218,43 @@ Individual manual operations used the official SDK editor host, actual native pl
 
 Real Ableton/FL Studio compatibility, UUID persistence through actual DAW save/reopen, 32/64-bit audio operation, host-driven save/session signals, multi-instance host behavior and shutdown under active plugin snapshot work remain unverified. The last C++ adjustment tightened I/O deadlines/audio-buffer validation and was compiled; earlier native operations do not establish audio behavior. Full settled save-to-publication, DAW-ending lifetime and VST receive/history UX remain Phases 6–8. No full Phase 2–4 runtime regression matrix, HTTPS deployment or two-PC NAT/relay/DCUtR validation was performed for this phase.
 
+## Phase 6 implementation and validation
+
+Implemented on local `codex/phase-6-save-publication` from Phase 5 integration commit `c2be909`. Core owns save decisions; the VST3 event/protocol and audio callback are unchanged.
+
+- `crates/core/src/ipc/jobs.rs` owns at most eight project jobs, one per project. Save observations coalesce by revision after two seconds without another observation, with a 60-second debounce limit. Observations during scan/publication request a settled follow-up pass; job completion and scheduling share a lock to avoid losing an observation during job removal. Accepted work survives IPC disconnect, `SESSION_ENDING` and project rebind. Safe owner close rejects new work and awaits accepted debounce/scan/commit/publication.
+- `crates/snapshot/src/settlement.rs` samples the existing bounded path/size/mtime inventory every 500 ms. Two seconds of quiet plus Windows handles that refuse concurrent writers precede hashing. A 60-second settlement deadline bounds waiting; the existing guarded scanner may attempt up to three scans when files change. Stable large-project hashing may take longer than the wait limit. Inventory/scan failures cannot commit a partial manifest. There is no watcher or continuous scan.
+- Existing snapshot ownership moved from core `lib.rs` to `snapshots.rs`. Manual and settled snapshots share the same project lock, recovery guard, unchanged-content reuse, signing and expected-head SQLite transaction. `sending.rs` exposes settled send through the same commit-before-publication flow. The existing 30-second owner-scoped `MailboxRuntime` retries persisted authored envelopes; only a matching ACK changes `PENDING` to `PUBLISHED`. IPC notices use current storage pending counts.
+
+Protocol/signing/AAD, SQLite schema and values, transfer/recovery ordering, scanner/chunk/hash algorithms, manual CLI behavior and single-swarm ownership remain unchanged. No dependency, automated test/benchmark suite, filesystem watcher, permanent service or automatic conflict merge was added. Frontend and C++ sources are unchanged; their owner binaries were repackaged.
+
+Checks performed on 2026-10-05 using the same Windows toolchain as Phase 5:
+
+| Check | Result |
+| --- | --- |
+| `cargo fmt --all -- --check` | Passed |
+| `cargo check --workspace --locked --offline` | Passed |
+| `cargo clippy --workspace --lib --bins --locked --offline -- -D warnings` | Passed after final Rust changes |
+| `cargo build -p trackmesh-core -p trackmesh-desktop -p trackmesh-mailbox-service -p trackmesh-relay-service --locked --offline` | Passed; all four Windows executables linked against the current code |
+| CMake/Ninja `TrackMesh` target | Passed; strict C++ compilation and Rust-owner repackaging succeeded |
+| Packaged owner SHA-256 comparison | Bundled CLI and desktop match the final Rust build |
+| Documentation links, preserved boundaries and staged whitespace | 50 relative links resolved; protocol/crypto/storage/network/transfer and UI/C++ source boundaries unchanged; Git whitespace check passed with Windows CRLF handling |
+
+Individual manual operations used real Named Pipe framing, the actual Tauri/WebView2 owner, normal-user DPAPI and an allow-listed loopback mailbox. Data is confined to ignored `.build/phase6-manual-2f1ed37b`; `.flp` content is a dummy file, not a DAW project. These were separate manual operations, not an automated suite.
+
+| Manual operation | Observed result |
+| --- | --- |
+| Two save observations followed by IPC session ending while one dummy writer held an exclusive file handle | Both replies showed settlement waiting. Desktop/IPC had no head and no pending announcement while the writer was active. After its final write/release, one 31-byte snapshot `1565e3ee-565d-4f67-a113-e468d74c63ec` committed; repeated observations did not create duplicate history. |
+| Mailbox unavailable during that automatic save | Local snapshot remained current with durable `PENDING`, visible in IPC and history. |
+| Allow-listed loopback service started without a new Send/Publish command | Existing owner retry changed history to `PUBLISHED`, pending count to zero, and the IPC notice to no pending authored metadata. |
+| Another save observation with unchanged file contents | History count remained one; current snapshot was reused. |
+| Changed dummy file, accepted save observation, then immediate desktop Close safely | Desktop exited only after a 59-byte child snapshot `d4b58d28-8277-4cfa-b0a6-9ae65612af45` committed and received ACK. History retained exactly two snapshots with the expected parent relationship. |
+| Fixture shutdown | Owned desktop exited safely; mailbox stopped with Ctrl+C. Project/database/chunks retained. |
+
+Real DAW serialization timing, delayed host writes beyond the quiet period, UUID save/reopen, audio, and delivery of plugin signals still queued during termination remain unverified. Quiet metadata/writer checks cannot prove the host has finished all future writes. Debounce/settlement timeout boundaries and active-hash follow-up races were compiled/inspected, not manually exercised. Full owner retention for DAW sessions/pending publication remains Phase 7; complete remote/offline/VST Receive UX remains Phase 8. No full transfer/recovery regression matrix, real HTTPS or two-PC NAT validation was performed for this phase.
+
 ## Remaining integration work
 
 Deploy the Phase 3 services with real DNS, valid HTTPS certificates, private ACLs, pinned infrastructure PeerId, and reachable advertised addresses; then validate on two real Windows PCs. Real firewall behavior, Internet NAT traversal, forced circuit relay, and DCUtR remain unverified. Direct transfers still do not imply a mailbox acknowledgement.
 
-Snapshot chunks are retained locally without automatic pruning. This keeps earlier snapshots retrievable when the working folder changes. The mailbox receives small encrypted announcements only; file manifests and chunks travel through authenticated peer connections. Validate the native VST3 in actual Windows DAWs before claiming host/audio/state compatibility. Next implementation phase: a new local `codex/phase-6-save-publication` branch for settled save processing and durable publication retry; Phases 7–8 remain after that.
+Snapshot chunks are retained locally without automatic pruning. This keeps earlier snapshots retrievable when the working folder changes. The mailbox receives small encrypted announcements only; file manifests and chunks travel through authenticated peer connections. Validate the native VST3 in actual Windows DAWs before claiming host/audio/state/save compatibility. Next implementation phase: a new local `codex/phase-7-session-lifetime` branch for plugin-ending signal delivery and session/work/pending-publication lifetime; Phase 8 remains after that.

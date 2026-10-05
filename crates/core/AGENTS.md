@@ -2,7 +2,8 @@
 
 Read root `AGENTS.md`. Core owns reusable application decisions; adapters own presentation and their session lifetime.
 
-- `src/lib.rs`: engine/data ownership, project linking, snapshot creation, pairing/invitations, private namespaces.
+- `src/lib.rs`: engine/data ownership, project linking, pairing/invitations, private namespaces.
+- `src/snapshots.rs`: manual/settled snapshot creation shares the project lock, recovery guard, unchanged-content reuse and transactional commit. `src/sending.rs` publishes only after this commit; settlement runs in blocking workers.
 - `src/workflows.rs`: typed local status, online peer check, receive setup, explicit recovery. Future UI/IPC should call these methods.
 - `src/status.rs`: compact bounded project/peer/transfer summaries for adapters; full CLI status remains unchanged.
 - `src/sending.rs`: explicit manual snapshot plus publication result; a mailbox failure must preserve and report the successful local commit.
@@ -11,7 +12,7 @@ Read root `AGENTS.md`. Core owns reusable application decisions; adapters own pr
 - `src/mailbox.rs`: durable own-author publication, ACK validation, verified page/cursor commit, session-scoped retry. No head advance or online-equality claim from metadata.
 - Metadata methods share a per-project coordinator within an Engine so foreground commands and the session worker cannot race page cursors; SQLite expected-cursor guards remain authoritative across processes.
 - `src/main.rs`: CLI parsing, bounded input files, output, network startup/wait/stop, Ctrl+C. Keep lineage and snapshot-install decisions in core/transfer.
-- `src/ipc`: current-user-only Windows pipe, bound plugin sessions, compact status and bounded manual send workers. Reuse the owner's Engine/network; receive is a DAW-closed desktop handoff. `PluginRuntime::begin_close` rejects commands immediately; `stop` awaits started work. Save settlement/session-aware lifetime remain Phases 6–7.
+- `src/ipc`: current-user-only Windows pipe, bound plugin sessions, compact status and bounded project jobs in `jobs.rs`. Coalesce save observations by project; observations during active work cause a settled follow-up pass. Accepted jobs outlive disconnect/rebind. Reuse the owner's Engine/network; receive is a DAW-closed desktop handoff. `PluginRuntime::begin_close` rejects commands immediately; `stop` awaits accepted work including debounce. Full session-aware lifetime remains Phase 7.
 
 Maintain separate project/data directories, persistent DPAPI identity, immutable manifests, and project locks. Snapshot creation rejects pending recovery. Every ancestor is checked for project/requested ID, trusted author, signature/hash, cycle, and bounded history depth.
 

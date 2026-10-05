@@ -12,6 +12,8 @@ use std::{
     time::SystemTime,
 };
 use uuid::Uuid;
+mod settlement;
+pub use settlement::scan_after_save;
 
 #[derive(Clone)]
 pub struct ChunkStore {

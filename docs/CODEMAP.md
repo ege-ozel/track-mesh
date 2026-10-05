@@ -6,11 +6,13 @@ Paths are relative to repository root. A crate's `src/lib.rs` lists its public A
 
 | Task | Primary owner | Related boundary |
 | --- | --- | --- |
-| Link folder, make snapshot, pair device, import/export invitation | `crates/core/src/lib.rs` | Snapshot, crypto, and storage APIs |
+| Link folder, pair device, import/export invitation | `crates/core/src/lib.rs` | Snapshot, crypto, and storage APIs |
+| Manual/settled snapshot creation, unchanged-content reuse and commit | `crates/core/src/snapshots.rs` | Project lock, snapshot scanner and transactional storage |
 | Local status, compare with online peer, receive from peer, recover | `crates/core/src/workflows.rs` | `peer.rs`, transfer API |
 | Bounded project/peer metadata cards | `crates/core/src/status.rs` | Narrow storage queries; existing CLI status unchanged |
 | Manual snapshot commit followed by publication | `crates/core/src/sending.rs` | Snapshot workflow and durable mailbox ACK |
 | Windows plugin pipe, binding, status and send queue | `crates/core/src/ipc/mod.rs`, `ipc/security.rs`, `ipc/status.rs` | Existing plugin protocol; shared Engine/network |
+| Project save debounce, coalescing and accepted-work drain | `crates/core/src/ipc/jobs.rs` | Engine settled send; bounded per-project revisions |
 | VST3 factory, audio pass-through, UUID state/signals | `plugins/vst3/src/plugin.cpp`, `plugin.h` | Official Steinberg SDK; Rust owns decisions |
 | Native VST3 view, IPC worker and bundled-owner launch | `plugins/vst3/src/view.cpp`, `bridge.cpp` | No audio-thread IPC or file/network work |
 | Windows desktop entry point, capability inventory, navigation | `apps/desktop/src-tauri/src/lib.rs`, `build.rs`, `capabilities/main.json` | Tauri adapter; local bundled React |
@@ -50,6 +52,7 @@ Paths are relative to repository root. A crate's `src/lib.rs` lists its public A
 | Binary chunk and bounded JSON frames | `crates/network/src/codec.rs` | Peer message types |
 | Device/project keys, signatures, mailbox encryption, DPAPI | `crates/crypto/src/lib.rs` | Protocol signing bytes/AAD |
 | Scanner, chunk store, safe paths, Windows file/project locks | `crates/snapshot/src/lib.rs` | Manifest model and transfer disk operations |
+| Event-triggered inventory quiet period and writer-lock settlement | `crates/snapshot/src/settlement.rs` | Existing guarded scanner; no watcher |
 | Manifest/path validation, signing serialization, peer/IPC/mailbox types | `shared/protocol/src/lib.rs` | All crates |
 | Signed HTTP request scope, timestamp, nonce and body binding | `shared/protocol/src/mailbox.rs`, `crates/crypto/src/mailbox.rs` | Existing envelope signing/AAD unchanged |
 
@@ -66,6 +69,7 @@ refresh:  Engine::refresh_metadata → bounded page → trust/signature/AEAD →
 desktop:  typed Tauri command → bounded tracked job → Engine workflow → compact status page
 send:     Engine::send_snapshot → blocking snapshot commit → publish_metadata → ACK or durable PENDING
 plugin:   VST3 worker → bounded per-user Named Pipe → PluginRuntime → Engine summary/send_snapshot
+save:     SAVE_OBSERVED → project debounce → snapshot_after_save → scan_after_save → commit → publish/ACK
 ```
 
 `PeerRuntime` owns the network actor/responder lifetime. `MailboxRuntime` owns session-scoped metadata retry. `Network` is a handle, not another swarm. SQLite ownership remains in `Store`; each domain module adds methods to that same type. Infrastructure services own independent stores/swarms in their separate processes.
