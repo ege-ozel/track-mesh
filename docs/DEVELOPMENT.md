@@ -14,8 +14,10 @@ Run from repository root:
 cargo fmt --all -- --check
 cargo check --workspace --locked --offline
 cargo clippy --workspace --lib --bins --locked --offline -- -D warnings
-cargo build -p trackmesh-core --locked --offline
+cargo build -p trackmesh-core -p trackmesh-mailbox-service -p trackmesh-relay-service --locked --offline
 target\debug\trackmesh-agent.exe --help
+target\debug\trackmesh-mailbox-server.exe --help
+target\debug\trackmesh-relay-server.exe --help
 ```
 
 `--offline` works when the locked dependencies are already cached. On a new machine, omit it for the initial dependency download while retaining `--locked`. For an optimized binary use `cargo build -p trackmesh-core --release --locked`; the release profile enables thin LTO and one codegen unit. No benchmark claim follows from those settings.
@@ -31,6 +33,11 @@ Do not add/run automated tests or benchmarks for this MVP. Formatting, compilati
 - Receive and recover require closing the DAW project. Preserve `.trackmesh-<project>-<transfer>` staging/backup data if recovery is pending.
 - Logs go to stderr; CLI JSON goes to stdout. For transfer details use `$env:RUST_LOG='trackmesh_transfer=info,trackmesh_network=info'`.
 - Follow [PHASE2.md](PHASE2.md) for pairing and commands. Do not install a permanent daemon or introduce file watchers while debugging.
+- Follow [PHASE3.md](PHASE3.md) for mailbox ACLs, HTTPS, publication/refresh, and the separate private relay. Keep service and simulated-device data in separate directories.
+
+## Local phase branches
+
+Commit the current completed work before beginning a phase. For each new phase, create a local `codex/phase-N-description` branch from the integration branch, implement and validate it, then commit and merge it locally into `master` with `--no-ff`. Push the resulting `master` normally; no force push or remote branch/PR is required. This is the user's requested Git workflow, not automatic merging of divergent project snapshots.
 
 ## Before editing
 

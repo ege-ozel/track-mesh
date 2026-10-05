@@ -1,7 +1,7 @@
 use anyhow::{ensure, Result};
 use clap::{Args, Parser, Subcommand};
 use std::{path::PathBuf, sync::Arc, time::Duration};
-use trackmesh_core::{default_data_directory, peer::PeerRuntime, Engine};
+use trackmesh_core::{default_data_directory, peer::PeerRuntime, Engine, MailboxRuntime};
 use uuid::Uuid;
 
 #[derive(Parser)]
@@ -24,6 +24,12 @@ struct NetworkArgs {
     /// An explicitly reachable libp2p address to advertise to the private rendezvous.
     #[arg(long)]
     external_address: Vec<libp2p::Multiaddr>,
+}
+#[derive(Args)]
+struct MailboxArgs {
+    /// Development only: allow plain HTTP to a literal loopback IP.
+    #[arg(long)]
+    allow_loopback_http: bool,
 }
 impl NetworkArgs {
     fn config(self) -> network::NetworkConfig {
@@ -55,6 +61,18 @@ enum Command {
     },
     /// Local history and last verification; online status is obtained using `check`.
     Status,
+    /// Publish up to 64 pending authored announcements; marks PUBLISHED only after ACK.
+    Publish {
+        project_id: Uuid,
+        #[command(flatten)]
+        mailbox: MailboxArgs,
+    },
+    /// Fetch verified encrypted announcements. Does not download files or advance local head.
+    Refresh {
+        project_id: Uuid,
+        #[command(flatten)]
+        mailbox: MailboxArgs,
+    },
     Card {
         #[arg(long)]
         address: Vec<String>,
@@ -87,6 +105,8 @@ enum Command {
     Serve {
         #[command(flatten)]
         network: NetworkArgs,
+        #[command(flatten)]
+        mailbox: MailboxArgs,
     },
     Check {
         project_id: Uuid,
@@ -169,6 +189,24 @@ async fn main() -> Result<()> {
             output_json(&engine.snapshot(project_id)?, output)?
         }
         Command::Status => output_json(&engine.local_status()?, None)?,
+        Command::Publish {
+            project_id,
+            mailbox,
+        } => output_json(
+            &engine
+                .publish_metadata(project_id, mailbox.allow_loopback_http)
+                .await?,
+            None,
+        )?,
+        Command::Refresh {
+            project_id,
+            mailbox,
+        } => output_json(
+            &engine
+                .refresh_metadata(project_id, mailbox.allow_loopback_http)
+                .await?,
+            None,
+        )?,
         Command::Card { address, output } => output_json(&engine.device_card(address)?, output)?,
         Command::Pair {
             project_id,
@@ -200,17 +238,21 @@ async fn main() -> Result<()> {
             engine.recover(project_id)?;
             println!("Recovery complete for {project_id}");
         }
-        Command::Serve { network } => {
+        Command::Serve { network, mailbox } => {
             let runtime = PeerRuntime::start(engine.clone(), network.config())?;
+            let metadata = MailboxRuntime::start(engine.clone(), mailbox.allow_loopback_http);
             println!("PeerId: {}", runtime.network.status().peer_id);
             let mut heartbeat = tokio::time::interval(Duration::from_secs(1));
             loop {
                 tokio::select! {
-                    _=heartbeat.tick()=>{if runtime.is_finished() {break;}},
+                    _=heartbeat.tick()=>{if runtime.is_finished() || metadata.is_finished() {break;}},
                     _=tokio::signal::ctrl_c()=>break,
                 }
             }
-            runtime.stop().await?;
+            let metadata_shutdown = metadata.stop().await;
+            let peer_shutdown = runtime.stop().await;
+            metadata_shutdown?;
+            peer_shutdown?;
         }
         Command::Check {
             project_id,

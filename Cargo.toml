@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["shared/protocol", "crates/crypto", "crates/storage", "crates/snapshot", "crates/core", "crates/network", "crates/transfer"]
+members = ["shared/protocol", "crates/crypto", "crates/storage", "crates/snapshot", "crates/core", "crates/network", "crates/transfer", "crates/mailbox", "services/mailbox", "services/relay"]
 
 [workspace.package]
 version = "0.1.0"
@@ -10,6 +10,7 @@ rust-version = "1.85"
 
 [workspace.dependencies]
 anyhow = "1"
+axum = "0.8"
 async-trait = "0.1"
 base64 = "0.22"
 blake3 = "1.8"
@@ -20,6 +21,8 @@ ed25519-dalek = { version = "2.2", features = ["rand_core"] }
 futures = "0.3"
 hex = "0.4"
 rand = "0.8"
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json", "stream"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 rusqlite = { version = "0.37", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -35,6 +38,7 @@ protocol = { package = "trackmesh-protocol", path = "shared/protocol" }
 crypto = { package = "trackmesh-crypto", path = "crates/crypto" }
 storage = { package = "trackmesh-storage", path = "crates/storage" }
 snapshot = { package = "trackmesh-snapshot", path = "crates/snapshot" }
+mailbox = { package = "trackmesh-mailbox", path = "crates/mailbox" }
 
 [profile.release]
 lto = "thin"

@@ -3,10 +3,10 @@
 ## Read this first
 
 - Canonical repository: `D:\CodeSpace\track-mesh`. Work in this repository; do not edit another checkout by assumption.
-- Current product: Windows Rust CLI, Phases 1–2 implemented. Phases 3–8 remain pending. The complete DAW workflow is unfinished.
+- Current product: Windows Rust CLI and separate infrastructure services, Phases 1–3 implemented locally. Phases 4–8 and real NAT/HTTPS deployment validation remain pending. The complete DAW workflow is unfinished.
 - Priorities: integrity/security → practical direct-transfer speed → reliability → simple workflow → development speed.
 - Preserve architecture, protocol names, signed serialization, database values, and recovery ordering unless the task explicitly changes them.
-- No automated tests, benchmarks, filesystem watchers, continuous sync, cloud project files, public sharing/discovery, automatic merging, or non-Windows desktop work in this MVP.
+- No automated tests, benchmarks, filesystem watchers, continuous sync, cloud project files, public sharing/discovery, automatic project conflict merging, or non-Windows desktop work in this MVP.
 
 ## Find the task owner
 
@@ -18,6 +18,8 @@ Use [docs/CODEMAP.md](docs/CODEMAP.md) to select files. Read the local `AGENTS.m
 | SQLite/history/trust/publication state | `crates/storage/AGENTS.md` |
 | Connectivity/discovery/transport | `crates/network/AGENTS.md` |
 | Shared application workflow or CLI | `crates/core/AGENTS.md` |
+| Mailbox HTTP transport or infrastructure | `crates/mailbox/AGENTS.md`, `services/mailbox/AGENTS.md` |
+| Separate private relay/rendezvous service | `services/relay/AGENTS.md` |
 | Identity/signatures/encryption | `crates/crypto/src/lib.rs` and `shared/protocol/src/lib.rs` |
 | Scan/hash/path safety/local chunks | `crates/snapshot/src/lib.rs` |
 | Next MVP phase or scope question | [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md), then the relevant section of [docs/MVP.md](docs/MVP.md) |
@@ -33,6 +35,7 @@ Use [docs/CODEMAP.md](docs/CODEMAP.md) to select files. Read the local `AGENTS.m
 - Never print device secrets, decrypted project keys, or invitation payloads. The invitation is a private capability-bearing document.
 - Do not change or delete user project folders, local databases, chunk stores, or recovery backups as cleanup.
 - Update the code map when moving modules. Update phase status only when the deliverable works; mark unverified integrations explicitly.
+- Use a separate local `codex/phase-N-description` branch for each phase. After validation, commit and merge locally into `master` with `--no-ff`, then push `master` normally. Keep phase branches local; do not force push.
 
 ## Checks and handoff
 

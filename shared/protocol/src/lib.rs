@@ -3,6 +3,11 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
+mod mailbox;
+pub use mailbox::{
+    mailbox_scope, MailboxAuth, MAX_MAILBOX_AUTH_BYTES, MAX_MAILBOX_ENVELOPE_BYTES,
+    MAX_MAILBOX_PAGE_BYTES, MAX_MAILBOX_PAGE_RECORDS,
+};
 
 pub const PROTOCOL_VERSION: u32 = 1;
 pub const DEFAULT_CHUNK_SIZE: u32 = 4 * 1024 * 1024;

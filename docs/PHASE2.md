@@ -1,6 +1,6 @@
 # Phase 2: trusted connectivity and resumable transfer
 
-The CLI implements mutual device pairing, authenticated direct QUIC, TCP with Noise/Yamux fallback, signed snapshot ancestry, missing-chunk transfer, durable resume state, verified file installation, and explicit recovery. Circuit relay, private rendezvous, and DCUtR client behaviors are connected to the network actor; the separately deployed service is Phase 3 work.
+The CLI implements mutual device pairing, authenticated direct QUIC, TCP with Noise/Yamux fallback, signed snapshot ancestry, missing-chunk transfer, durable resume state, verified file installation, and explicit recovery. Circuit relay, private rendezvous, and DCUtR client behaviors are connected to the network actor; [PHASE3.md](PHASE3.md) covers the separate infrastructure service.
 
 ## Pair two devices
 
@@ -75,7 +75,7 @@ Recovery data remains beside the project folder at `.trackmesh-<project-UUID>-<t
 
 ## Publication state
 
-Phase 2 does not publish mailbox announcements. Authored snapshots remain `PENDING`. Received copies carry `REMOTE`, indicating that their author owns publication; it is not a mailbox acknowledgement. A direct file transfer never manufactures `PUBLISHED` status.
+Snapshot creation leaves authored announcements `PENDING`; [Phase 3 publication](PHASE3.md) marks them `PUBLISHED` after a mailbox ACK. Received copies carry `REMOTE`, indicating that their author owns publication; it is not a mailbox acknowledgement. A direct file transfer never manufactures `PUBLISHED` status.
 
 ## Validation
 

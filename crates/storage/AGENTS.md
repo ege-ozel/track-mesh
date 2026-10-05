@@ -18,6 +18,7 @@ Read root `AGENTS.md`. One `Store` owns the SQLite mutex/connection; domain file
 - Chunk authorization joins project + snapshot + LOCAL location + hash; possession of a cached hash is insufficient authorization.
 - Keep identity bindings immutable and the project collaborator limit enforced. Revocation removes that project's association; discovery/requests must respect it.
 - `PUBLISHED` requires a mailbox ACK. Received snapshots carry `REMOTE` rather than manufacturing publication.
+- `publication_ack` compares the durable envelope; `ingest_mailbox_page` checks the expected cursor and author authorization, then commits records/cursor in one transaction. A rejected page cannot partially advance its cursor.
 - Do not split transaction steps into callers or introduce a second connection owner during code movement.
 
 Database reads validate typed transfer labels and return errors for unknown values. No automated tests/benchmarks or destructive production-data cleanup.

@@ -5,6 +5,7 @@ Read root `AGENTS.md`. Core owns reusable application decisions; adapters own pr
 - `src/lib.rs`: engine/data ownership, project linking, snapshot creation, pairing/invitations, private namespaces.
 - `src/workflows.rs`: typed local status, online peer check, receive setup, explicit recovery. Future UI/IPC should call these methods.
 - `src/peer.rs`: network/responder lifetime, blocking request workers, signed ancestry retrieval.
+- `src/mailbox.rs`: durable own-author publication, ACK validation, verified page/cursor commit, session-scoped retry. No head advance or online-equality claim from metadata.
 - `src/main.rs`: CLI parsing, bounded input files, output, network startup/wait/stop, Ctrl+C. Keep lineage and snapshot-install decisions in core/transfer.
 
 Maintain separate project/data directories, persistent DPAPI identity, immutable manifests, and project locks. Snapshot creation rejects pending recovery. Every ancestor is checked for project/requested ID, trusted author, signature/hash, cycle, and bounded history depth.
