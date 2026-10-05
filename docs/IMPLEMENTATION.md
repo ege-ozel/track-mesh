@@ -1,6 +1,6 @@
 # TrackMesh MVP implementation
 
-**Phases 1–4 are implemented locally through the Windows Rust CLI, Tauri 2/React desktop, and separate infrastructure services.** Development takes place in `D:\CodeSpace\track-mesh`. Real HTTPS deployment, two-PC NAT/relay/DCUtR validation, and Phases 5–8 remain unfinished.
+**Phases 1–5 are implemented locally through the Windows Rust CLI, Tauri 2/React desktop, official-SDK C++ VST3/Named Pipe surface, and separate infrastructure services.** Development takes place in `D:\CodeSpace\track-mesh`. Actual DAW save/reopen/audio validation, real HTTPS deployment, two-PC NAT/relay/DCUtR validation and Phases 6–8 remain unfinished.
 
 The repository follows the eight requested phases. Compilation, static checks, and manual operation are the validation tools. No automated tests, benchmarks, project watchers, cloud file storage, or continuous synchronization have been added.
 
@@ -12,7 +12,7 @@ The repository follows the eight requested phases. Compilation, static checks, a
 | 2 | Implemented | Explicit mutual pairing, direct QUIC, TCP with Noise/Yamux fallback, signed ancestry comparison, missing-chunk transfer, durable resume, verified installation, and journal recovery. Private rendezvous, relay, and DCUtR client behaviors are integrated. |
 | 3 | Implemented locally; deployment/NAT unverified | Encrypted signed metadata publication/refresh, durable ACK/retry/cursor flow, Axum/SQLite opaque mailbox behind HTTPS, separate allow-listed relay/rendezvous service. |
 | 4 | Implemented locally; Windows native validation on one PC | Tauri 2 / React controls, pairing, bounded status, manual snapshot/publication, receive/resume/recovery, and safe window-session shutdown. |
-| 5 | Pending | Official Steinberg SDK C++ VST3 surface and Rust Windows Named Pipe bridge. |
+| 5 | Implemented locally; SDK editor host operated; DAW/audio/state restore unverified | Official Steinberg SDK C++ VST3 UUID/control/status surface, private Windows Named Pipe bridge and shared desktop/agent owner. |
 | 6 | Pending | Settled save processing and publication retry. |
 | 7 | Pending | Session-aware agent lifetime after DAW shutdown. |
 | 8 | Pending | Desktop/VST remote-history, offline-availability, and send/receive workflow. CLI lineage and connection reporting are already available for Phase 2. |
@@ -168,8 +168,58 @@ Manual operation used the actual native desktop/WebView2, native file dialogs an
 
 Native appearance was inspected after the final equality/divergence checks. Installer/signing, real DAW compatibility, real HTTPS deployment, two-PC NAT/firewall, forced circuit transfer and DCUtR remain unverified. The Phase 2 TCP/corruption/unpaired-device checks and Phase 3 service adversarial checks were not rerun as a full regression matrix for this phase. Native invitation export, revocation and pagination were implemented and statically inspected; they were not separately exercised as manual acceptance operations.
 
+## Phase 5 implementation and validation
+
+Implemented on the separate local `codex/phase-5-vst3-ipc` branch from Phase 4 integration commit `de930a6`. The C++ adapter uses official Steinberg SDK tag `v3.8.0_build_66`, root commit `9fad9770f2ae8542ab1a548a68c1ad1ac690abe0`, and its pinned submodules in ignored `vendor/vst3sdk`. Operation/build instructions are in [PHASE5.md](PHASE5.md).
+
+- `plugins/vst3` provides a non-distributable SDK `SingleComponentEffect`, permanent class ID, versioned 24-byte project-UUID component state and native HWND control/status view. The processor passes mono/stereo 32/64-bit audio without audio-thread locks, allocations, pipe calls, disk or network work. Invalid/truncated/nil UUID state is rejected before replacing the current project. These audio/state paths were compiled and inspected; they were not exercised by a real DAW.
+- A dedicated worker sends the existing plugin events through small length-prefixed JSON. Signals carry their UUID generation, so a queued action cannot target a newly restored project. State serialization only emits a save observation; no claim is made that DAW writes have settled. Termination signals the worker and returns without joining pipe I/O. A retained DLL reference protects worker code/state through bounded I/O and cleanup.
+- Without an existing pipe, the plugin starts the bundled desktop, giving users access to UUID mapping and Receive controls while sharing its Rust Engine and single peer runtime. After a successful connection, manual desktop close does not cause repeated auto-reopening. Explicit CLI `plugin-serve` supports headless operation with a 60-second idle exit. Full session-aware/pending-save/publication lifetime remains Phase 7.
+- Core owns the current-user-only pipe DACL, remote-client rejection, first-instance ownership, 64 KiB frames, non-nil session/project bindings and explicit rebind. Clients, snapshot jobs, remembered project messages, polling and read/write waits are bounded. Status reads and snapshot disk work run outside the pipe listener/network actor. A manual send calls the existing Engine workflow, preserving commit-before-publication and durable `PENDING` behavior.
+- Desktop hosts PluginRuntime using its existing Engine/network and stops accepting plugin work immediately on close, including initialization races. Started snapshot/publication workers are awaited. Receive from a loaded plugin only directs to the DAW-closed desktop flow; it does not install into an open DAW project. Compact status reports last-known history and the displayed remote author's route, without claiming verified equality.
+- Snapshot notices render the current pending-publication count from storage on each status read, so a later mailbox ACK clears the earlier `PENDING` message without another Send operation.
+
+Existing PluginEvent/PluginStatus serialization, protocol names/version, signed bytes/AAD, crypto/scanner/transfer algorithms, SQLite schema v2 and persisted labels, project locks, snapshot/apply transactions and recovery ordering remain unchanged. Cargo adds only a core dependency edge/features to already-locked `windows-sys 0.61.2`; existing package versions are unchanged. SDK sources are not committed. No SDK validator, automated tests/benchmarks, watcher, installer/updater, permanent service or automatic conflict merge was added/run.
+
+Checks performed on 2026-10-05 with the existing Rust 1.98.1, MSVC 14.44.35207, Windows SDK 10.0.26100.0, supported Node 24.19.0 and installed CMake/Ninja environment:
+
+| Check | Result |
+| --- | --- |
+| `cargo fmt --all -- --check` | Passed |
+| `cargo check --workspace --locked --offline` | Passed |
+| `cargo clippy --workspace --lib --bins --locked --offline -- -D warnings` | Passed after final Rust changes |
+| `cargo build -p trackmesh-core -p trackmesh-mailbox-service -p trackmesh-relay-service -p trackmesh-desktop --locked --offline` | Passed after rebuilding static frontend |
+| Frontend `npm ci --offline`, typecheck and build | Passed using supported Node and repository `.build/npm-cache`; the first default-cache offline attempt failed before this successful run |
+| CMake/Ninja `TrackMesh` and optional SDK `editorhost` targets | Passed; plugin sources built with `/W4 /WX`; SDK-generated moduleinfo and bundled Rust executables produced |
+| CLI `plugin-serve --help` and desktop `--help` | Passed; IPC suffix and explicit bridge command present |
+| Packaged Rust owner hashes | Both bundled executables match the final Rust build |
+| Documentation links and staged whitespace | 49 relative links resolved; Git whitespace check passed with Windows CRLF handling |
+
+Visual Studio generator attempts encountered inherited duplicate `Path`/`PATH` entries in MSBuild. Single-config Ninja succeeded after preserving the SDK bundle layout in the plugin CMake file. No global toolchain/environment setting or compiler installation was changed. SDK dependency builds emitted their own `/EHs`/`/EHa` override warnings; the plugin's strict compilation succeeded. Declared minimum Rust versions were not validated.
+
+Individual manual operations used the official SDK editor host, actual native plugin controls, actual Tauri/WebView2 desktop and only disposable data under ignored `.build/phase5-manual-a31714d5`. Normal-user execution was needed for current-user DPAPI/native UI. Dummy `.als`/`.flp` content was used; no real DAW or production project/database was operated. An initial headless-owner run preceded the final default-desktop-owner run.
+
+| Manual operation | Observed result |
+| --- | --- |
+| Initial SDK host load and headless owner startup | Native UUID visible; unlinked controls disabled; the bundled agent started and answered compact IPC status. |
+| Native Send after fixture UUID mapping | Local snapshot committed; no mailbox configuration produced durable `PENDING`, visible through plugin status. |
+| Different Windows user opened the owner's pipe | Access denied. |
+| Initial SDK host normal close | Headless bridge exited after the idle period; fixture data retained. |
+| Final bundle loaded in SDK host | Plugin automatically started its bundled desktop; desktop reported ready against the same isolated profile. |
+| Desktop mapped final plugin UUID | Mapping to a separate fixture folder succeeded and native controls enabled. Mapping an already-bound fixture folder to another UUID was refused by the unchanged storage uniqueness guard. |
+| Final native Send Snapshot | Plugin reported committed snapshot `e3c54867-009e-47ae-89e3-f6f247cda187` with `PENDING`; desktop reported the same head and pending count one in its shared Engine/history. |
+| Final native Receive | Persistent instruction to close the DAW project and use desktop Receive; no installation or head change. |
+| IPC `PROJECT_ID` rebind | Existing session returned the newly selected fixture project's history. This does not validate real host state restoration. |
+| Send with a different project UUID without rebind | Connection closed; fixture heads unchanged. |
+| Oversized 65,537-byte frame header | Server closed that pipe connection before reading a payload; the existing snapshot remained current. |
+| Simulated IPC save observation | Returned explicit manual-send guidance. This is not evidence of a real DAW save hook or automatic publication. |
+| Native view capture and owned desktop/SDK-host close | Appearance inspected; desktop used Close safely and SDK host used normal window close; project/database/chunk data retained. |
+| Final Rust owner and loopback mailbox ACK | Before the service started, IPC showed one pending announcement. After the desktop's existing retry published to the allow-listed fixture service, CLI publish reported zero pending; the same IPC owner and desktop both reported zero pending, and the earlier snapshot notice changed to no pending authored metadata. Desktop was safely closed and the mailbox stopped with Ctrl+C; fixture data retained. |
+
+Real Ableton/FL Studio compatibility, UUID persistence through actual DAW save/reopen, 32/64-bit audio operation, host-driven save/session signals, multi-instance host behavior and shutdown under active plugin snapshot work remain unverified. The last C++ adjustment tightened I/O deadlines/audio-buffer validation and was compiled; earlier native operations do not establish audio behavior. Full settled save-to-publication, DAW-ending lifetime and VST receive/history UX remain Phases 6–8. No full Phase 2–4 runtime regression matrix, HTTPS deployment or two-PC NAT/relay/DCUtR validation was performed for this phase.
+
 ## Remaining integration work
 
 Deploy the Phase 3 services with real DNS, valid HTTPS certificates, private ACLs, pinned infrastructure PeerId, and reachable advertised addresses; then validate on two real Windows PCs. Real firewall behavior, Internet NAT traversal, forced circuit relay, and DCUtR remain unverified. Direct transfers still do not imply a mailbox acknowledgement.
 
-Snapshot chunks are retained locally without automatic pruning. This keeps earlier snapshots retrievable when the working folder changes. The mailbox receives small encrypted announcements only; file manifests and chunks travel through authenticated peer connections. Next implementation phase: create a new local `codex/phase-5-vst3-ipc` branch for the official Steinberg SDK C++ VST3 surface and Rust Windows Named Pipe bridge; Phases 6–8 remain after that.
+Snapshot chunks are retained locally without automatic pruning. This keeps earlier snapshots retrievable when the working folder changes. The mailbox receives small encrypted announcements only; file manifests and chunks travel through authenticated peer connections. Validate the native VST3 in actual Windows DAWs before claiming host/audio/state compatibility. Next implementation phase: a new local `codex/phase-6-save-publication` branch for settled save processing and durable publication retry; Phases 7–8 remain after that.

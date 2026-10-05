@@ -14,5 +14,6 @@ Choose the page for the current task; these pages are not a required reading seq
 | [Phase 2 operation guide](PHASE2.md) | Pair, serve, receive, compare, resume, and recover using the CLI |
 | [Phase 3 infrastructure guide](PHASE3.md) | Encrypted publication/refresh, service ACLs, HTTPS, and private relay/rendezvous |
 | [Phase 4 desktop guide](PHASE4.md) | Native Windows build, pairing/documents, controls, status, and safe close |
+| [Phase 5 VST3/IPC guide](PHASE5.md) | Official SDK build, UUID state, native controls, private pipe and owner lifetime |
 
 Crate-local `AGENTS.md` files add focused guidance for core, network, storage, and transfer changes. Source and schema define exact current behavior; progress claims belong in `IMPLEMENTATION.md`.

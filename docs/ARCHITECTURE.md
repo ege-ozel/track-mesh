@@ -4,7 +4,7 @@
 
 ```mermaid
 flowchart TD
-    CLI[CLI / future desktop / IPC] --> Core[Rust core workflows]
+    CLI[CLI / Windows desktop / plugin IPC] --> Core[Rust core workflows]
     Core --> Snapshot[Snapshot engine]
     Core --> Transfer[Transfer engine]
     Core --> Storage[SQLite storage]
@@ -20,7 +20,7 @@ flowchart TD
     Protocol[Shared protocol models and validation]
 ```
 
-All crates use shared protocol types as needed. Storage persists domain records; it does not open peer connections. Snapshot code handles local files; it does not publish metadata. Core coordinates workflows. UI and the VST3 bridge are future adapters. Networking, disk work, and UI remain separately owned.
+All crates use shared protocol types as needed. Storage persists domain records; it does not open peer connections. Snapshot code handles local files; it does not publish metadata. Core coordinates workflows. Desktop commands and the VST3 Named Pipe bridge are adapters sharing their owner's Engine and network handle. Networking, blocking disk work, plugin IPC and UI remain separately owned; the audio callback only passes audio buffers.
 
 Private peers authenticate through QUIC or Noise. TCP uses Yamux. A pinned relay/rendezvous service helps trusted peers connect; the client has no public DHT or multicast discovery. Project data may cross a relay fallback, with authenticated peer transport. The mailbox stores encrypted announcements only.
 

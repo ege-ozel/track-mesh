@@ -17,6 +17,10 @@ mod status;
 pub use status::{PeerSummary, ProjectSummary, SummaryPage};
 mod sending;
 pub use sending::SendStatus;
+#[cfg(windows)]
+mod ipc;
+#[cfg(windows)]
+pub use ipc::{plugin_pipe_name, PluginRuntime};
 
 pub struct Engine {
     pub directory: PathBuf,

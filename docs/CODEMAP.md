@@ -10,6 +10,9 @@ Paths are relative to repository root. A crate's `src/lib.rs` lists its public A
 | Local status, compare with online peer, receive from peer, recover | `crates/core/src/workflows.rs` | `peer.rs`, transfer API |
 | Bounded project/peer metadata cards | `crates/core/src/status.rs` | Narrow storage queries; existing CLI status unchanged |
 | Manual snapshot commit followed by publication | `crates/core/src/sending.rs` | Snapshot workflow and durable mailbox ACK |
+| Windows plugin pipe, binding, status and send queue | `crates/core/src/ipc/mod.rs`, `ipc/security.rs`, `ipc/status.rs` | Existing plugin protocol; shared Engine/network |
+| VST3 factory, audio pass-through, UUID state/signals | `plugins/vst3/src/plugin.cpp`, `plugin.h` | Official Steinberg SDK; Rust owns decisions |
+| Native VST3 view, IPC worker and bundled-owner launch | `plugins/vst3/src/view.cpp`, `bridge.cpp` | No audio-thread IPC or file/network work |
 | Windows desktop entry point, capability inventory, navigation | `apps/desktop/src-tauri/src/lib.rs`, `build.rs`, `capabilities/main.json` | Tauri adapter; local bundled React |
 | Desktop jobs, status freshness, explicit session shutdown | `apps/desktop/src-tauri/src/runtime.rs` | Core workflows and one leased `PeerRuntime` |
 | Native invitation/card files and folder dialogs | `apps/desktop/src-tauri/src/documents.rs` | Bounded private documents; payloads stay in Rust |
@@ -62,6 +65,7 @@ publish:  Engine::publish_metadata → persist envelope → MailboxClient POST �
 refresh:  Engine::refresh_metadata → bounded page → trust/signature/AEAD → page + cursor transaction
 desktop:  typed Tauri command → bounded tracked job → Engine workflow → compact status page
 send:     Engine::send_snapshot → blocking snapshot commit → publish_metadata → ACK or durable PENDING
+plugin:   VST3 worker → bounded per-user Named Pipe → PluginRuntime → Engine summary/send_snapshot
 ```
 
 `PeerRuntime` owns the network actor/responder lifetime. `MailboxRuntime` owns session-scoped metadata retry. `Network` is a handle, not another swarm. SQLite ownership remains in `Store`; each domain module adds methods to that same type. Infrastructure services own independent stores/swarms in their separate processes.

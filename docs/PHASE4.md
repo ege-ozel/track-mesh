@@ -20,7 +20,7 @@ target\debug\trackmesh-desktop.exe
 
 On this machine, the available bundled Node executable is `C:\Users\4D\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe`. The existing npm CLI is `D:\nodejs\node_modules\npm\bin\npm-cli.js`; invoking that CLI with the bundled Node and prepending its directory to the process `PATH` avoids changing the global Node installation. Use a supported ordinary Node/npm installation on another machine. Initial dependency download may require network access; keep lockfiles and use the development guide's prescribed static checks.
 
-The output is `target\debug\trackmesh-desktop.exe` with bundled frontend assets. No installer, code-signing certificate, autostart, updater, sidecar, or permanent Windows service is installed.
+The output is `target\debug\trackmesh-desktop.exe` with bundled frontend assets. No installer, code-signing certificate, autostart, updater or permanent Windows service is installed. [Phase 5](PHASE5.md) additionally packages desktop/agent executables beside the VST3 binary and exposes its local plugin pipe.
 
 Default data stays `%LOCALAPPDATA%\TrackMesh`; `--data-dir` or `TRACKMESH_DATA_DIR` selects another profile. The desktop default listener is port **43101**. It accepts `--device-name`, `--port`, repeated `--external-address` flags, and the same explicit literal-loopback `--allow-loopback-http` development option. An existing DPAPI identity retains its name/key. For example:
 
@@ -55,4 +55,4 @@ Status pages contain at most 32 projects, one local snapshot, two trusted-peer m
 
 The window close control and **Close safely** stop accepting new work. Network shutdown makes an unfinished download use the normal durable `PAUSED` path. Started blocking scans, file installation and recovery are awaited; responders drain before the runtime lease is released. Pending publication remains durable for another explicit session and does not prevent exit forever. Keep staging/recovery backups intact.
 
-There is no per-transfer Cancel API in this phase. VST/Named Pipe signals, settled-save processing, DAW-session/grace-period lifetime and complete remote-history UX remain Phases 5–8. Native desktop validation on one PC does not establish real HTTPS, firewall/NAT, forced relay or DCUtR behavior.
+There is no per-transfer Cancel API in this phase. [Phase 5](PHASE5.md) adds VST/Named Pipe signals and shares the desktop Engine/network. Settled-save processing, full DAW-session/grace-period lifetime and complete remote-history/VST receive UX remain Phases 6–8. Native desktop validation on one PC does not establish real HTTPS, firewall/NAT, forced relay or DCUtR behavior.
