@@ -26,7 +26,11 @@ Paths are relative to repository root. A crate's `src/lib.rs` lists its public A
 | Device identity bindings and per-project authorization | `crates/storage/src/trust.rs` | Network/transfer requests |
 | Immutable snapshot commit, indexed chunk authorization, lineage | `crates/storage/src/snapshots.rs` | Snapshot/apply |
 | Session creation, progress, transactional apply markers | `crates/storage/src/transfers.rs` | Receiver/apply |
-| Announcements, envelopes, ACK state, cursor | `crates/storage/src/mailbox.rs` | Future mailbox client; no HTTP client exists yet |
+| Publication/retry and verified page ingestion | `crates/core/src/mailbox.rs` | `mailbox` transport and transactional storage |
+| Announcements, immutable envelopes, ACK state, transactional page/cursor | `crates/storage/src/mailbox.rs` | Core publication/refresh workflows |
+| Bounded HTTPS requests and response validation | `crates/mailbox/src/http.rs` | Request auth; no project decisions |
+| Mailbox listener, authenticated project ACL, opaque SQLite records | `services/mailbox/src/main.rs`, `src/api.rs`, `src/store.rs` | Separate service database; HTTPS proxy |
+| Private relay/rendezvous actor, allow-list, resource bounds | `services/relay/src/main.rs`, `src/actor.rs`, `src/behaviour.rs` | Existing pinned client protocols |
 | QUIC/TCP/Noise/Yamux and behavior configuration | `crates/network/src/behaviour.rs` | Config, codec, discovery |
 | Swarm ownership, request authorization, preferred connections | `crates/network/src/actor.rs` | Discovery and status |
 | Private rendezvous, relay reservation, QUIC/TCP/circuit retry | `crates/network/src/discovery.rs` | Pinned infrastructure and trusted cards |
@@ -37,6 +41,7 @@ Paths are relative to repository root. A crate's `src/lib.rs` lists its public A
 | Device/project keys, signatures, mailbox encryption, DPAPI | `crates/crypto/src/lib.rs` | Protocol signing bytes/AAD |
 | Scanner, chunk store, safe paths, Windows file/project locks | `crates/snapshot/src/lib.rs` | Manifest model and transfer disk operations |
 | Manifest/path validation, signing serialization, peer/IPC/mailbox types | `shared/protocol/src/lib.rs` | All crates |
+| Signed HTTP request scope, timestamp, nonce and body binding | `shared/protocol/src/mailbox.rs`, `crates/crypto/src/mailbox.rs` | Existing envelope signing/AAD unchanged |
 
 ## Public call paths
 
@@ -46,9 +51,11 @@ check:    Engine::check_peer → fetch_snapshot_chain → validate_snapshot → 
 receive:  Engine::receive_from_peer → fetch_snapshot_chain → Receiver::receive → download → apply
 recover:  Engine::recover → recover_project → trusted target validation → apply
 serve:    PeerRuntime → transfer::serve → project authorization → head/manifest/indexed chunk lookup
+publish:  Engine::publish_metadata → persist envelope → MailboxClient POST → matching ACK → PUBLISHED
+refresh:  Engine::refresh_metadata → bounded page → trust/signature/AEAD → page + cursor transaction
 ```
 
-`PeerRuntime` owns the network actor/responder lifetime. `Network` is a handle, not another swarm. SQLite ownership remains in `Store`; each domain module adds methods to that same type.
+`PeerRuntime` owns the network actor/responder lifetime. `MailboxRuntime` owns session-scoped metadata retry. `Network` is a handle, not another swarm. SQLite ownership remains in `Store`; each domain module adds methods to that same type. Infrastructure services own independent stores/swarms in their separate processes.
 
 ## Targeted search examples
 

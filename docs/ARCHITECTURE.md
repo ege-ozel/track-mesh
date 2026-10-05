@@ -9,6 +9,8 @@ flowchart TD
     Core --> Transfer[Transfer engine]
     Core --> Storage[SQLite storage]
     Core --> Crypto[Identity and cryptography]
+    Core --> Mailbox[Bounded HTTPS mailbox client]
+    Mailbox --> Metadata[Separate opaque metadata service]
     Transfer --> Network[Single libp2p actor]
     Transfer --> Snapshot
     Transfer --> Storage
@@ -29,9 +31,17 @@ Private peers authenticate through QUIC or Noise. TCP uses Yamux. A pinned relay
 3. Persist verified chunks to the local content store.
 4. Sign the complete immutable manifest. Unchanged files reuse the current snapshot.
 5. Commit snapshot, files, chunk index/catalog, and new local head in one SQLite transaction with an expected-head check.
-6. Keep authored metadata `PENDING` until the future mailbox client receives a server ACK.
+6. Keep authored metadata `PENDING` until the mailbox client receives a matching server ACK.
 
 The working folder may change after a snapshot. Retained chunk data keeps the committed snapshot retrievable. Automatic pruning is outside the current implementation.
+
+## Metadata publication and refresh
+
+Core persists one encrypted signed envelope before its first POST and reuses it after failure or ACK loss. The service authenticates a short-lived signed request against its explicit project/device ACL, durably rejects nonce replay, and returns an idempotent sequence/ACK only after the opaque record commits. The agent's ACK update matches its durable envelope. HTTP authentication has a separate domain/model; existing envelope/signing/AAD serialization is unchanged.
+
+Refresh verifies ordered bounded records, project membership, paired author/key, signature, AEAD, and immutable-history consistency. Storage checks authorization again under the transaction and commits the complete page plus its expected cursor together. It does not change the project head, local chunk availability, or verified equality. Disk/SQLite/DPAPI operations run in blocking workers outside the swarm. `MailboxRuntime` retries only during the explicit CLI serve session.
+
+The Axum service binds loopback behind HTTPS; its SQLite data is independent from local history. The private relay/rendezvous runs in another process with a retained DPAPI identity and a fail-closed signed-card allow-list. It has no transfer-serving behavior. Operator workflow and limits are in [PHASE3.md](PHASE3.md).
 
 ## Receive and recovery
 

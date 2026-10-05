@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 use std::{fs, path::Path};
 use uuid::Uuid;
 use zeroize::{Zeroize, Zeroizing};
+mod mailbox;
+pub use mailbox::verify_mailbox_auth;
 
 pub struct Identity {
     pub device_id: Uuid,

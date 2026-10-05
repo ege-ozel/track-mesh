@@ -2,16 +2,16 @@
 
 Private Windows transfer of Ableton Live and FL Studio project folders between two or three explicitly paired devices. Project files and samples stay on collaborator PCs. Immutable snapshots use BLAKE3, fixed 4 MiB chunks, signed manifests, and transactional SQLite history.
 
-**Current implementation: Phases 1–2, runnable through the Rust CLI.** The metadata service, desktop UI, and VST3 bridge follow in later phases.
+**Current implementation: Phases 1–3, runnable through the Rust CLI and separate infrastructure services.** Encrypted mailbox publication/refresh and a private relay/rendezvous service are implemented locally. Real NAT/HTTPS deployment validation, desktop UI, and VST3 integration remain unfinished.
 
 Build on Windows with Rust and the Visual Studio C++ build tools:
 
 ```powershell
-cargo build -p trackmesh-core --locked
+cargo build -p trackmesh-core -p trackmesh-mailbox-service -p trackmesh-relay-service --locked
 target\debug\trackmesh-agent.exe --help
 ```
 
-See [the Phase 2 operation guide](docs/PHASE2.md) for pairing, serving, receiving, and resuming a transfer. [Implementation progress](docs/IMPLEMENTATION.md) records completed phases, validation evidence, and integration gaps.
+See [the Phase 2 operation guide](docs/PHASE2.md) for pairing, serving, receiving, and resuming a transfer, and [Phase 3](docs/PHASE3.md) for encrypted publication/refresh, HTTPS, and private infrastructure. [Implementation progress](docs/IMPLEMENTATION.md) records completed phases, validation evidence, and integration gaps.
 
 ## For contributors and agents
 

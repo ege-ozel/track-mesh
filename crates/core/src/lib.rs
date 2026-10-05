@@ -8,7 +8,9 @@ use std::{
 };
 use storage::Store;
 use uuid::Uuid;
+mod mailbox;
 pub mod peer;
+pub use mailbox::{MailboxRuntime, PublicationStatus, RefreshStatus};
 mod workflows;
 pub use workflows::{LocalStatus, PeerCheck, ProjectStatus};
 
@@ -47,6 +49,9 @@ impl Engine {
         mailbox: Option<&str>,
         relay: Option<&str>,
     ) -> Result<()> {
+        if let Some(url) = mailbox {
+            ::mailbox::validate_mailbox_url(url)?;
+        }
         let root = snapshot::canonical_root(root)?;
         ensure!(
             !self.directory.starts_with(&root) && !root.starts_with(&self.directory),
@@ -142,6 +147,9 @@ impl Engine {
         use base64::Engine as _;
         protocol::require_protocol(invite.version)?;
         network::validate_card(&invite.device)?;
+        if let Some(url) = &invite.mailbox_url {
+            ::mailbox::validate_mailbox_url(url)?;
+        }
         ensure!(
             invite.device.device_id != self.identity.device_id,
             "invitation is from this device"
