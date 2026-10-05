@@ -3,13 +3,17 @@ use crate::Engine;
 use anyhow::Result;
 use protocol::DeviceCard;
 use serde::Serialize;
-use storage::{Project, SnapshotInfo, TransferInfo};
+use storage::{Lineage, Project, SnapshotInfo, TransferInfo};
 
 #[derive(Serialize)]
 pub struct PeerSummary {
     pub device: DeviceCard,
     /// Last-known authored metadata, not a claim about the peer's current head.
     pub announcement: Option<SnapshotInfo>,
+    /// Bounded newest-first history for adapter presentation.
+    pub history: Vec<SnapshotInfo>,
+    /// Conservative relationship from stored ancestry; never a live equality claim.
+    pub known_lineage: Option<Lineage>,
 }
 
 #[derive(Serialize)]
@@ -39,10 +43,23 @@ impl Engine {
             .peers(Some(project.project_id))?
             .into_iter()
             .map(|device| {
+                let history = self
+                    .store
+                    .author_history(project.project_id, device.device_id)?;
+                let announcement = history.first().cloned();
                 Ok(PeerSummary {
-                    announcement: self
-                        .store
-                        .latest_author_info(project.project_id, device.device_id)?,
+                    known_lineage: announcement
+                        .as_ref()
+                        .map(|snapshot| {
+                            self.store.known_lineage(
+                                project.project_id,
+                                project.latest_local_snapshot,
+                                snapshot.snapshot_id,
+                            )
+                        })
+                        .transpose()?,
+                    announcement,
+                    history,
                     device,
                 })
             })

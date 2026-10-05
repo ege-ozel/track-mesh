@@ -156,7 +156,7 @@ bool request(HANDLE pipe, const char* event, const std::string& session, const P
     view.connected = true;
     view.linked = !view.name.empty();
     const bool ok = jsonBool(object, "ok");
-    jsonBool(object, "peer_online");
+    view.peerOnline = jsonBool(object, "peer_online");
     if (!ok && view.state.empty()) view.state = L"ACTION REFUSED";
     std::lock_guard<std::mutex> lock(state->mutex);
     if (state->project == project) state->view = std::move(view);

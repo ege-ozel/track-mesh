@@ -106,7 +106,10 @@ LRESULT CALLBACK View::procedure(HWND handle, UINT message, WPARAM wparam, LPARA
             GetWindowTextW(self->uuid, text, 64);
             if (status.project != text) SetWindowTextW(self->uuid, status.project.c_str());
             EnableWindow(self->sendButton, status.connected && status.linked);
-            EnableWindow(self->receiveButton, status.connected && status.linked);
+            EnableWindow(self->receiveButton, status.connected && status.linked && status.peerOnline
+                && !status.remote.empty() && status.state != L"DIVERGED"
+                && status.state != L"RECOVERY_REQUIRED" && status.state != L"RECEIVING"
+                && status.state != L"APPLYING");
             InvalidateRect(handle, nullptr, FALSE);
             return 0;
         }

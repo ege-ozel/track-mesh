@@ -8,6 +8,8 @@ export interface SnapshotInfo {
 export interface Peer {
   device: { device_id: string; name: string; peer_id: string };
   announcement: SnapshotInfo | null;
+  history: SnapshotInfo[];
+  known_lineage: Lineage | null;
 }
 export interface Transfer {
   transfer_id: string; snapshot_id: string; source_device_id: string;
@@ -16,14 +18,16 @@ export interface Transfer {
 }
 export interface ProjectCard {
   project: { project_id: string; name: string; root: string; latest_local_snapshot: string | null;
-    last_verified_at: string | null; recovery_required: boolean; mailbox_url: string | null; relay_address: string | null; error: string | null };
+    last_verified_at: string | null; verified_peer_id: string | null; verified_snapshot_id: string | null;
+    recovery_required: boolean; mailbox_url: string | null; relay_address: string | null; error: string | null };
   local_snapshot: SnapshotInfo | null; peers: Peer[]; pending_publications: number; transfer: Transfer | null;
 }
 export interface Connection { online: boolean; route: 'DIRECT' | 'RELAYED' | 'OFFLINE'; transport: string }
+export type Lineage = 'EQUAL' | 'REMOTE_AHEAD' | 'LOCAL_AHEAD' | 'DIVERGED' | 'UNKNOWN';
 export interface Job { job_id: string; project_id: string | null; label: string; running: boolean; outcome: Record<string, unknown> | null; error: string | null }
 export interface CheckView { device_id: string; fresh: boolean; current_known: boolean; age_seconds: number; result: {
   project_id: string; local_snapshot: string | null; remote_snapshot: string | null;
-  lineage: 'EQUAL' | 'REMOTE_AHEAD' | 'LOCAL_AHEAD' | 'DIVERGED' | 'UNKNOWN' | null;
+  lineage: Lineage | null;
   verified_equal: boolean; connection: Connection | null; last_verified_at: string | null;
 } }
 export interface DesktopStatus {
