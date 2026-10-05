@@ -5,6 +5,7 @@ import type { Action, DesktopStatus, ProjectCard, SnapshotInfo } from './api';
 const short = (id: string | null | undefined) => id ? id.slice(0, 8) : '—';
 const time = (value: string | null | undefined) => value ? new Date(value).toLocaleString() : 'Never';
 const bytes = (n: number) => n >= 1024 ** 3 ? `${(n / 1024 ** 3).toFixed(1)} GB` : n >= 1024 ** 2 ? `${(n / 1024 ** 2).toFixed(1)} MB` : n >= 1024 ? `${(n / 1024).toFixed(1)} KB` : `${n} B`;
+const CHECK_TIMEOUT_SECONDS = 30;
 
 function Snapshot({ value, empty }: { value: SnapshotInfo | null; empty: string }) {
   return value ? <><div className="snapshot-id">{short(value.snapshot_id)} <span>{value.metadata_status}</span></div>
@@ -13,7 +14,19 @@ function Snapshot({ value, empty }: { value: SnapshotInfo | null; empty: string 
     : <p className="muted">{empty}</p>;
 }
 
-function Card({ card, status, act }: { card: ProjectCard; status: DesktopStatus; act: (action: Action) => Promise<void> }) {
+function jobStatus(job: DesktopStatus['jobs'][number], startedAt: number | undefined) {
+  if (!job.running) {
+    return job.error ? `${job.label}: ${job.error}`
+      : job.outcome?.publication_error ? `Snapshot committed locally. Publication pending: ${String(job.outcome.publication_error)}`
+      : job.outcome?.message ? String(job.outcome.message) : `${job.label} completed`;
+  }
+  if (job.label !== 'Check peer') return `${job.label}…`;
+  const elapsed = startedAt ? Math.floor((Date.now() - startedAt) / 1000) : 0;
+  const remaining = Math.max(0, CHECK_TIMEOUT_SECONDS - elapsed);
+  return `Check peer… trying to reach collaborator for up to ${CHECK_TIMEOUT_SECONDS}s (${remaining}s left)`;
+}
+
+function Card({ card, status, jobStartedAt, act }: { card: ProjectCard; status: DesktopStatus; jobStartedAt: Record<string, number>; act: (action: Action) => Promise<void> }) {
   const [selected, setSelected] = useState('');
   const [dawClosed, setDawClosed] = useState(false);
   const project = card.project;
@@ -65,9 +78,7 @@ function Card({ card, status, act }: { card: ProjectCard; status: DesktopStatus;
       {project.recovery_required && <button disabled={busy || !dawClosed} onClick={() => act({ kind: 'recover', project_id: project.project_id, daw_closed: dawClosed })}>Recover locally</button>}
       <button disabled={busy || !project.mailbox_url} onClick={() => request('refresh')}>Refresh metadata</button>
       <button disabled={busy || !project.mailbox_url || !card.pending_publications} onClick={() => request('publish')}>Retry publication</button></div>
-    {job && <div className={`job ${job.error ? 'danger' : ''}`} role="status">{job.running ? `${job.label}…` : job.error ? `${job.label}: ${job.error}`
-      : job.outcome?.publication_error ? `Snapshot committed locally. Publication pending: ${String(job.outcome.publication_error)}`
-      : job.outcome?.message ? String(job.outcome.message) : `${job.label} completed`}</div>}
+    {job && <div className={`job ${job.error ? 'danger' : ''}`} role="status">{jobStatus(job, jobStartedAt[job.job_id])}</div>}
     <details className="setup"><summary>Collaboration & connection details</summary>
       <p className="muted">Pair both directions. Invitations contain a private project capability; exchange files privately.</p>
       <div className="actions"><button disabled={busy} onClick={() => request('export_invite')}>Export private invitation</button><button disabled={busy} onClick={() => request('pair')}>Import collaborator card</button>
@@ -87,6 +98,7 @@ export default function App() {
   const [uuid, setUuid] = useState('');
   const [mailbox, setMailbox] = useState('');
   const [relay, setRelay] = useState('');
+  const [jobStartedAt, setJobStartedAt] = useState<Record<string, number>>({});
   const polling = useRef(false);
   const mounted = useRef(true);
   const generation = useRef(0);
@@ -106,6 +118,17 @@ export default function App() {
     const interval = window.setInterval(() => void poll(), 1500);
     return () => { mounted.current = false; generation.current += 1; window.clearInterval(interval); };
   }, [poll]);
+  useEffect(() => {
+    if (!status) return;
+    setJobStartedAt(current => {
+      const next: Record<string, number> = {};
+      const now = Date.now();
+      for (const job of status.jobs) {
+        next[job.job_id] = current[job.job_id] ?? now;
+      }
+      return next;
+    });
+  }, [status?.jobs]);
   const act = async (action: Action) => {
     if (submitted.current) return;
     submitted.current = true;
@@ -137,10 +160,10 @@ export default function App() {
         {setup === 'join' && <p className="muted">Select the private invitation file after choosing the local folder. Its key stays in the native backend.</p>}
         <div className="actions"><button className="primary" disabled={busy || !folder || (setup === 'link' && (!name || !uuid))} onClick={() => void saveSetup()}>{setup === 'join' ? 'Choose invitation…' : 'Link project'}</button><button onClick={() => setSetup(null)}>Cancel</button></div>
       </section>}
-      <div className="project-list">{status?.page?.projects.map(card => <Card key={card.project.project_id} card={card} status={status} act={act} />)}</div>
+      <div className="project-list">{status?.page?.projects.map(card => <Card key={card.project.project_id} card={card} status={status} jobStartedAt={jobStartedAt} act={act} />)}</div>
       {status?.ready && !status.page?.projects.length && !setup && <div className="empty"><div className="empty-icon">↗</div><h2>Your first shared project</h2><p>Link a project folder or import a collaborator’s invitation.<br />Snapshots stay immutable; files stay on your PCs.</p></div>}
       <div className="pagination"><button disabled={!offset || busy} onClick={() => setOffset(Math.max(0, offset - 32))}>Previous</button><span className="muted">Page {offset / 32 + 1}</span><button disabled={!status?.page?.has_more || busy} onClick={() => setOffset(offset + 32)}>Next</button></div>
-      {status?.jobs.filter(j => !j.project_id).map(job => <div key={job.job_id} className={`notice ${job.error ? 'danger' : ''}`} role="status">{job.running ? `${job.label}…` : job.error ?? String(job.outcome?.message ?? `${job.label} completed`)}</div>)}
+      {status?.jobs.filter(j => !j.project_id).map(job => <div key={job.job_id} className={`notice ${job.error ? 'danger' : ''}`} role="status">{jobStatus(job, jobStartedAt[job.job_id])}</div>)}
       <footer><div><span className="muted">Data directory</span><code>{status?.data_directory ?? 'Opening protected local storage…'}</code></div><div className="actions"><button disabled={busy} onClick={() => act({ kind: 'export_card' })}>Export my device card</button><button title="Close the window. Active DAW sessions, transfers and pending publication keep TRACKMESH running; it exits 60 seconds after work finishes. Reopen desktop to return." disabled={status?.closing} onClick={() => void closeApp().catch(err => setError(String(err)))}>Close safely</button></div></footer>
     </main></div>;
 }
