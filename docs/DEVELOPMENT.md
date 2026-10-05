@@ -6,6 +6,8 @@ Use `D:\CodeSpace\track-mesh`, Rust for Windows, and Visual Studio C++ build too
 
 The last successful implementation build used Rust 1.98.1. The workspace currently declares `rust-version = "1.85"`; the pinned dependency/toolchain combination has not been verified on that minimum version. Use the known working toolchain unless the task is explicitly minimum-version compatibility work.
 
+The Windows desktop package separately requires Rust 1.90, WebView2 and a supported Node/npm runtime. Phase 4 uses React/TypeScript/Vite and bundled static assets. Before checking the complete workspace, run `npm ci`, `npm run typecheck`, and `npm run build` in `apps/desktop`; no development server/watcher is needed. See [PHASE4.md](PHASE4.md) for the known local Node 24.19 fallback and native operation. Core-only CLI/service builds do not need frontend assets.
+
 ## Build and static checks
 
 Run from repository root:
@@ -15,9 +17,11 @@ cargo fmt --all -- --check
 cargo check --workspace --locked --offline
 cargo clippy --workspace --lib --bins --locked --offline -- -D warnings
 cargo build -p trackmesh-core -p trackmesh-mailbox-service -p trackmesh-relay-service --locked --offline
+cargo build -p trackmesh-desktop --locked --offline
 target\debug\trackmesh-agent.exe --help
 target\debug\trackmesh-mailbox-server.exe --help
 target\debug\trackmesh-relay-server.exe --help
+target\debug\trackmesh-desktop.exe --help
 ```
 
 `--offline` works when the locked dependencies are already cached. On a new machine, omit it for the initial dependency download while retaining `--locked`. For an optimized binary use `cargo build -p trackmesh-core --release --locked`; the release profile enables thin LTO and one codegen unit. No benchmark claim follows from those settings.

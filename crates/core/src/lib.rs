@@ -4,7 +4,7 @@ use protocol::SignedSnapshot;
 use snapshot::{ChunkStore, ScanOptions};
 use std::{
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 use storage::Store;
 use uuid::Uuid;
@@ -13,12 +13,17 @@ pub mod peer;
 pub use mailbox::{MailboxRuntime, PublicationStatus, RefreshStatus};
 mod workflows;
 pub use workflows::{LocalStatus, PeerCheck, ProjectStatus};
+mod status;
+pub use status::{PeerSummary, ProjectSummary, SummaryPage};
+mod sending;
+pub use sending::SendStatus;
 
 pub struct Engine {
     pub directory: PathBuf,
     pub store: Arc<Store>,
     pub chunks: ChunkStore,
     pub identity: Arc<Identity>,
+    metadata_jobs: Mutex<std::collections::HashMap<Uuid, Arc<tokio::sync::Mutex<()>>>>,
 }
 impl Engine {
     pub fn open(directory: PathBuf, name: &str) -> Result<Self> {
@@ -39,6 +44,7 @@ impl Engine {
             store,
             chunks,
             identity,
+            metadata_jobs: Mutex::new(std::collections::HashMap::new()),
         })
     }
     pub fn link(
@@ -108,6 +114,10 @@ impl Engine {
             "cannot pair this device with itself"
         );
         self.store.trust(project, &card)
+    }
+    pub fn revoke(&self, project: Uuid, device: Uuid) -> Result<()> {
+        self.store.project(project)?;
+        self.store.revoke(project, device)
     }
     pub fn namespaces(&self) -> Result<Vec<(libp2p::Multiaddr, String)>> {
         let mut result = Vec::new();

@@ -4,8 +4,12 @@ Read root `AGENTS.md`. Core owns reusable application decisions; adapters own pr
 
 - `src/lib.rs`: engine/data ownership, project linking, snapshot creation, pairing/invitations, private namespaces.
 - `src/workflows.rs`: typed local status, online peer check, receive setup, explicit recovery. Future UI/IPC should call these methods.
+- `src/status.rs`: compact bounded project/peer/transfer summaries for adapters; full CLI status remains unchanged.
+- `src/sending.rs`: explicit manual snapshot plus publication result; a mailbox failure must preserve and report the successful local commit.
 - `src/peer.rs`: network/responder lifetime, blocking request workers, signed ancestry retrieval.
+- Peer runtime startup acquires an exclusive Windows data-directory lease held through actor/responder drain, including when an adapter handle is dropped. Adapters must explicitly stop their session.
 - `src/mailbox.rs`: durable own-author publication, ACK validation, verified page/cursor commit, session-scoped retry. No head advance or online-equality claim from metadata.
+- Metadata methods share a per-project coordinator within an Engine so foreground commands and the session worker cannot race page cursors; SQLite expected-cursor guards remain authoritative across processes.
 - `src/main.rs`: CLI parsing, bounded input files, output, network startup/wait/stop, Ctrl+C. Keep lineage and snapshot-install decisions in core/transfer.
 
 Maintain separate project/data directories, persistent DPAPI identity, immutable manifests, and project locks. Snapshot creation rejects pending recovery. Every ancestor is checked for project/requested ID, trusted author, signature/hash, cycle, and bounded history depth.

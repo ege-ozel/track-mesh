@@ -1,0 +1,7 @@
+{
+  "identifier": "main",
+  "description": "Only the bundled main window may invoke the four desktop entry points.",
+  "windows": ["main"],
+  "platforms": ["windows"],
+  "permissions": ["allow-get-status", "allow-choose-folder", "allow-submit-action", "allow-close-app"]
+}

@@ -10,6 +10,9 @@ use rusqlite::{params, OptionalExtension};
 use uuid::Uuid;
 
 impl Store {
+    pub fn latest_transfer(&self, project: Uuid) -> Result<Option<TransferInfo>> {
+        Ok(self.lock()?.query_row("SELECT transfer_id,project_id,snapshot_id,source_device_id,state,completed_bytes,total_bytes,error,base_snapshot_id FROM transfer_sessions WHERE project_id=?1 ORDER BY updated_at DESC,transfer_id DESC LIMIT 1", [project.to_string()], transfer_row).optional()?)
+    }
     pub fn begin_transfer(&self, snapshot: &SignedSnapshot, source: Uuid) -> Result<Uuid> {
         let m = &snapshot.manifest;
         let mut db = self.lock()?;
@@ -143,4 +146,18 @@ impl Store {
         tx.commit()?;
         Ok(())
     }
+}
+
+fn transfer_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<TransferInfo> {
+    Ok(TransferInfo {
+        transfer_id: uuid_value(r.get(0)?)?,
+        project_id: uuid_value(r.get(1)?)?,
+        snapshot_id: uuid_value(r.get(2)?)?,
+        source_device_id: uuid_value(r.get(3)?)?,
+        state: r.get(4)?,
+        completed_bytes: r.get(5)?,
+        total_bytes: r.get(6)?,
+        error: r.get(7)?,
+        base_snapshot_id: optional_uuid(r.get(8)?)?,
+    })
 }

@@ -1,0 +1,58 @@
+# Phase 4 Windows desktop operation guide
+
+The native Tauri 2 / React / TypeScript desktop calls the existing Rust core. It owns an explicit window session with one peer runtime and the existing 30-second metadata worker. Phase evidence and unfinished integrations belong in [IMPLEMENTATION.md](IMPLEMENTATION.md).
+
+## Build and launch
+
+Use Windows 10/11 x64, the x64 Visual Studio C++ developer shell, Windows SDK, WebView2, Rust 1.98.1 (the known working toolchain), and a supported Node.js runtime. The desktop package declares Rust 1.90; other crates' declared 1.85 minimum remains unverified. This phase used Node 24.19. Vite requires Node 20.19+ or 22.12+; do not use the machine's older Node 22.11 for the desktop build.
+
+Build static assets before workspace checks/native builds. No development server or filesystem watcher is needed:
+
+```powershell
+Set-Location D:\CodeSpace\track-mesh\apps\desktop
+npm ci
+npm run typecheck
+npm run build
+Set-Location D:\CodeSpace\track-mesh
+cargo build -p trackmesh-desktop --locked --offline
+target\debug\trackmesh-desktop.exe
+```
+
+On this machine, the available bundled Node executable is `C:\Users\4D\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe`. The existing npm CLI is `D:\nodejs\node_modules\npm\bin\npm-cli.js`; invoking that CLI with the bundled Node and prepending its directory to the process `PATH` avoids changing the global Node installation. Use a supported ordinary Node/npm installation on another machine. Initial dependency download may require network access; keep lockfiles and use the development guide's prescribed static checks.
+
+The output is `target\debug\trackmesh-desktop.exe` with bundled frontend assets. No installer, code-signing certificate, autostart, updater, sidecar, or permanent Windows service is installed.
+
+Default data stays `%LOCALAPPDATA%\TrackMesh`; `--data-dir` or `TRACKMESH_DATA_DIR` selects another profile. The desktop default listener is port **43101**. It accepts `--device-name`, `--port`, repeated `--external-address` flags, and the same explicit literal-loopback `--allow-loopback-http` development option. An existing DPAPI identity retains its name/key. For example:
+
+```powershell
+target\debug\trackmesh-desktop.exe --device-name "Studio A" --port 43101 --external-address /ip4/192.168.1.10/udp/43101/quic-v1 --external-address /ip4/192.168.1.10/tcp/43101
+```
+
+Advertise only addresses collaborators can reach; production mailbox URLs use valid HTTPS and relay addresses include the pinned infrastructure PeerId. A second desktop launch focuses the existing window. A peer-runtime file lease prevents CLI `serve`/`check`/`receive` and desktop from running separate peers against the same data directory. Read-only CLI status and project operations retain their existing project/SQLite safeguards. Use a different device profile for a second peer in a one-PC manual fixture.
+
+## Link and pair
+
+1. Select **Link folder**, enter a project name and its permanent UUID, and choose the actual project folder. **New UUID** creates an initial identifier; retain it across collaborators and future VST state. Agent data and project folders must be separate.
+2. Configure the optional HTTPS mailbox and pinned relay address when linking. Relinking uses the same UUID/folder; retain endpoint values because omitted options clear them, as with the CLI.
+3. Expand **Collaboration & connection details**, then **Export private invitation**. Exchange this capability-bearing file privately. The desktop never places its payload/project key in React, the clipboard, or logs.
+4. The collaborator selects **Import invitation**, chooses their local folder, then selects the invitation through the native file dialog.
+5. The collaborator exports their public device card. The inviter selects **Import collaborator card** so pairing is mutual. At most two other devices may be paired per project.
+
+Document inputs are bounded at 64 KiB. Exports require a new `.json` filename and preserve existing files. Revocation changes local project authorization; the infrastructure operator must also update mailbox/relay ACLs as described in [PHASE3.md](PHASE3.md).
+
+## Controls and status
+
+- **Send Snapshot** scans/hashes and commits locally, then attempts own-author metadata publication. A transport failure leaves the successful local commit visible with `PENDING`. **Retry publication** and the active session worker use the same metadata coordinator; `PUBLISHED` requires a matching durable ACK.
+- **Refresh metadata** verifies encrypted signed announcements. It does not download project files or advance the local head. A remote announcement remains last-known metadata; an offline source is not a file-delivery promise.
+- **Check peer** obtains signed ancestry and a fresh equality ACK. `UP TO DATE` is shown only for a recent verified check in the current session. Head/known-metadata changes, disconnection, or age invalidate that claim. Known non-equal lineage remains visible while the compared heads/metadata still match; a new check is needed after restarting the desktop.
+- **Receive** needs an online selected collaborator and an explicit DAW-closed confirmation. Core rejects divergence, unsuitable ancestry, and unsnapshotted folder edits. **Resume receive** targets the existing paused snapshot/session rather than silently selecting a different head.
+- **Recover locally** appears when the durable recovery marker is set. Close the DAW first. It uses the existing trusted journal recovery and does not require the source peer to be online.
+- Transfer progress shows durable verified bytes; snapshot preparation has a busy label rather than an invented percentage. Cards show the latest transfer's snapshot ID so a historical completion is not confused with the current local head.
+
+Status pages contain at most 32 projects, one local snapshot, two trusted-peer metadata summaries per project, and one latest transfer. Complete CLI history is unchanged. Foreground jobs are bounded and project operations reject overlapping clicks. Keys, signed serialization, SQLite schema v2, transfer labels and journal phases remain owned by their existing modules.
+
+## Close safely
+
+The window close control and **Close safely** stop accepting new work. Network shutdown makes an unfinished download use the normal durable `PAUSED` path. Started blocking scans, file installation and recovery are awaited; responders drain before the runtime lease is released. Pending publication remains durable for another explicit session and does not prevent exit forever. Keep staging/recovery backups intact.
+
+There is no per-transfer Cancel API in this phase. VST/Named Pipe signals, settled-save processing, DAW-session/grace-period lifetime and complete remote-history UX remain Phases 5–8. Native desktop validation on one PC does not establish real HTTPS, firewall/NAT, forced relay or DCUtR behavior.

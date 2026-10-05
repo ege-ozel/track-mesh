@@ -13,4 +13,5 @@
 *.key
 *.log
 /local-data/
+/apps/desktop/src-tauri/gen/
 

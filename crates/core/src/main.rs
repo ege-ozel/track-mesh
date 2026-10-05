@@ -219,7 +219,7 @@ async fn main() -> Result<()> {
             project_id,
             device_id,
         } => {
-            engine.store.revoke(project_id, device_id)?;
+            engine.revoke(project_id, device_id)?;
             println!("Device authorization removed from {project_id}");
         }
         Command::Invite {

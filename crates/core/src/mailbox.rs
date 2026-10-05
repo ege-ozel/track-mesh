@@ -23,6 +23,13 @@ pub struct RefreshStatus {
 }
 
 impl Engine {
+    fn metadata_gate(&self, project: Uuid) -> Result<Arc<tokio::sync::Mutex<()>>> {
+        let mut jobs = self
+            .metadata_jobs
+            .lock()
+            .map_err(|_| anyhow::anyhow!("metadata job lock poisoned"))?;
+        Ok(jobs.entry(project).or_default().clone())
+    }
     fn mailbox_client(&self, project: Uuid, allow_loopback_http: bool) -> Result<MailboxClient> {
         let project = self.store.project(project)?;
         let url = project.mailbox_url.context("project has no mailbox URL")?;
@@ -69,6 +76,7 @@ impl Engine {
         project: Uuid,
         allow_loopback_http: bool,
     ) -> Result<PublicationStatus> {
+        let _job = self.metadata_gate(project)?.lock_owned().await;
         let engine = self.clone();
         let (client, ids) = tokio::task::spawn_blocking(move || -> Result<_> {
             Ok((
@@ -110,6 +118,7 @@ impl Engine {
         project: Uuid,
         allow_loopback_http: bool,
     ) -> Result<RefreshStatus> {
+        let _job = self.metadata_gate(project)?.lock_owned().await;
         let engine = self.clone();
         let (client, mut cursor) = tokio::task::spawn_blocking(move || -> Result<_> {
             Ok((
@@ -172,7 +181,7 @@ impl Engine {
     }
 }
 
-/// Retries metadata only while an explicitly started CLI serve session remains active.
+/// Retries metadata only while an explicitly started adapter session remains active.
 pub struct MailboxRuntime {
     stop: tokio::sync::oneshot::Sender<()>,
     task: tokio::task::JoinHandle<Result<()>>,
