@@ -6,6 +6,7 @@ use uuid::Uuid;
 #[derive(Clone)]
 pub(super) enum Notice {
     Queued,
+    Saving,
     Committed(Uuid),
     Failed,
     Receive,
@@ -15,9 +16,10 @@ impl Notice {
     fn message(&self, pending: u64) -> (bool, String) {
         match self {
             Self::Queued => (true, "Snapshot queued in the agent.".into()),
+            Self::Saving => (true, "Save observed; waiting for project files to settle.".into()),
             Self::Committed(id) if pending > 0 => (true, format!("Snapshot {id} committed locally; {pending} metadata announcement(s) PENDING. Retry in desktop.")),
             Self::Committed(id) => (true, format!("Snapshot {id} committed locally; no pending authored metadata.")),
-            Self::Failed => (false, "Snapshot failed. Check the project and recovery state in desktop.".into()),
+            Self::Failed => (false, "Snapshot failed or files did not settle. Check locks/recovery in desktop, then retry Send Snapshot.".into()),
             Self::Receive => (true, "Close this DAW project, then use Receive in TRACKMESH desktop.".into()),
         }
     }

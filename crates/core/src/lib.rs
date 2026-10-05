@@ -1,7 +1,6 @@
 use anyhow::{ensure, Result};
 use crypto::Identity;
-use protocol::SignedSnapshot;
-use snapshot::{ChunkStore, ScanOptions};
+use snapshot::ChunkStore;
 use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
@@ -19,6 +18,7 @@ mod sending;
 pub use sending::SendStatus;
 #[cfg(windows)]
 mod ipc;
+mod snapshots;
 #[cfg(windows)]
 pub use ipc::{plugin_pipe_name, PluginRuntime};
 
@@ -69,37 +69,6 @@ impl Engine {
         );
         crypto::project_key(&self.directory.join("secrets/projects"), project, None)?;
         self.store.link(project, name, &root, mailbox, relay)
-    }
-    pub fn snapshot(&self, project: Uuid) -> Result<SignedSnapshot> {
-        let _lock = snapshot::ProjectLock::acquire(&self.directory, project)?;
-        let project = self.store.project(project)?;
-        ensure!(
-            !project.recovery_required,
-            "receive recovery must finish before snapshotting"
-        );
-        let parent = self.store.head(project.project_id)?;
-        let manifest = snapshot::scan(
-            Path::new(&project.root),
-            &self.chunks,
-            project.project_id,
-            self.identity.device_id,
-            parent.as_ref().map(|s| &s.manifest),
-            &ScanOptions::default(),
-        )?;
-        if let Some(parent) = &parent {
-            if parent.manifest.files == manifest.files {
-                return Ok(parent.clone());
-            }
-        }
-        let signed = self.identity.sign_snapshot(manifest)?;
-        // Always pending until a mailbox ACK; local-only setup remains visibly pending.
-        self.store.commit_local(
-            &signed,
-            &self.identity.name,
-            parent.map(|s| s.manifest.snapshot_id),
-            true,
-        )?;
-        Ok(signed)
     }
 }
 

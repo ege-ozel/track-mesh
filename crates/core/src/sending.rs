@@ -18,9 +18,31 @@ impl Engine {
         project: Uuid,
         allow_loopback_http: bool,
     ) -> Result<SendStatus> {
+        self.send_impl(project, allow_loopback_http, false).await
+    }
+
+    pub async fn send_saved_snapshot(
+        self: &Arc<Self>,
+        project: Uuid,
+        allow_loopback_http: bool,
+    ) -> Result<SendStatus> {
+        self.send_impl(project, allow_loopback_http, true).await
+    }
+
+    async fn send_impl(
+        self: &Arc<Self>,
+        project: Uuid,
+        allow_loopback_http: bool,
+        settled: bool,
+    ) -> Result<SendStatus> {
         let engine = self.clone();
         let snapshot_id = tokio::task::spawn_blocking(move || {
-            engine.snapshot(project).map(|s| s.manifest.snapshot_id)
+            let snapshot = if settled {
+                engine.snapshot_after_save(project)
+            } else {
+                engine.snapshot(project)
+            };
+            snapshot.map(|s| s.manifest.snapshot_id)
         })
         .await??;
         let (publication, publication_error) =
