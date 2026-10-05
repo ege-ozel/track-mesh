@@ -2,7 +2,14 @@ use crate::Engine;
 use anyhow::{ensure, Context, Result};
 use network::{Network, NetworkConfig};
 use protocol::{PeerRequest, PeerResponse, SignedSnapshot};
-use std::{collections::HashSet, sync::Arc, time::Duration};
+use std::{
+    collections::HashSet,
+    sync::{
+        atomic::{AtomicU64, AtomicUsize, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 use tokio::task::{JoinHandle, JoinSet};
 use uuid::Uuid;
 
@@ -12,6 +19,18 @@ pub struct PeerRuntime {
     responder: JoinHandle<Result<()>>,
     // Windows closes this exclusive handle only after this runtime is drained.
     _lease: Arc<std::fs::File>,
+    activity: Arc<ResponderActivity>,
+}
+#[derive(Default)]
+struct ResponderActivity {
+    active: AtomicUsize,
+    epoch: AtomicU64,
+}
+struct ResponderWork(Arc<ResponderActivity>);
+impl Drop for ResponderWork {
+    fn drop(&mut self) {
+        self.0.active.fetch_sub(1, Ordering::SeqCst);
+    }
 }
 impl PeerRuntime {
     pub fn start(engine: Arc<Engine>, mut config: NetworkConfig) -> Result<Self> {
@@ -27,6 +46,8 @@ impl PeerRuntime {
         });
         let network_copy = network.clone();
         let responder_lease = lease.clone();
+        let activity = Arc::new(ResponderActivity::default());
+        let responder_activity = activity.clone();
         let responder = tokio::spawn(async move {
             let _lease = responder_lease;
             let mut workers = JoinSet::new();
@@ -38,8 +59,12 @@ impl PeerRuntime {
                 tokio::select! {
                     message=incoming.recv(),if !closed && workers.len()<8=>{
                         let Some(message)=message else {closed=true;continue;};
+                        responder_activity.active.fetch_add(1, Ordering::SeqCst);
+                        responder_activity.epoch.fetch_add(1, Ordering::SeqCst);
+                        let work = ResponderWork(responder_activity.clone());
                         let engine=engine.clone();let network=network_copy.clone();
                         workers.spawn(async move {
+                            let _work = work;
                             let peer=message.peer.to_string();let request=message.request.clone();
                             let response=tokio::task::spawn_blocking(move||transfer::serve(&engine.store,&engine.chunks,&peer,&request)).await;
                             let response=match response {Ok(Ok(r))=>r,Ok(Err(e))=>PeerResponse::Error {message:e.to_string()},Err(_)=>PeerResponse::Error {message:"peer disk operation failed".into()}};
@@ -56,10 +81,15 @@ impl PeerRuntime {
             actor,
             responder,
             _lease: lease,
+            activity,
         })
     }
     pub fn is_finished(&self) -> bool {
         self.actor.is_finished()
+    }
+    pub fn idle_epoch(&self) -> Option<u64> {
+        let epoch = self.activity.epoch.load(Ordering::SeqCst);
+        (self.activity.active.load(Ordering::SeqCst) == 0).then_some(epoch)
     }
     pub async fn wait_for_peer(&self, peer: &str, timeout: Duration) -> Result<()> {
         let deadline = tokio::time::Instant::now() + timeout;

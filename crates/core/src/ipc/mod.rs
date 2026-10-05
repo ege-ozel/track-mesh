@@ -26,6 +26,7 @@ use uuid::Uuid;
 
 #[derive(Default)]
 struct State {
+    epoch: u64,
     sessions: HashMap<Uuid, Uuid>,
     messages: HashMap<Uuid, status::Notice>,
     jobs: HashMap<Uuid, jobs::Job>,
@@ -90,9 +91,23 @@ impl PluginRuntime {
         self.task.is_finished()
     }
     pub fn is_idle(&self) -> bool {
-        self.shared.lock().is_ok_and(|state| {
-            state.sessions.is_empty() && state.jobs.values().all(|job| job.task.is_finished())
-        })
+        self.idle_epoch().is_some()
+    }
+    pub fn idle_epoch(&self) -> Option<u64> {
+        let state = self.shared.lock().ok()?;
+        (state.sessions.is_empty() && state.jobs.values().all(|job| job.task.is_finished()))
+            .then_some(state.epoch)
+    }
+    /// Claim idle shutdown under the same gate used to accept connections/jobs.
+    pub fn close_if_idle(&self) -> bool {
+        let Ok(state) = self.shared.lock() else {
+            return false;
+        };
+        if !state.sessions.is_empty() || state.jobs.values().any(|job| !job.task.is_finished()) {
+            return false;
+        }
+        self.begin_close();
+        true
     }
     /// Stop accepting commands immediately; `stop` still awaits started local work.
     pub fn begin_close(&self) {
@@ -196,10 +211,15 @@ async fn connection(
                 ensure!(binding.is_none(), "Plugin connection already bound");
                 let mut state = shared.lock()?;
                 ensure!(
+                    !shared.closing.load(Ordering::Acquire),
+                    "Plugin bridge is closing"
+                );
+                ensure!(
                     !state.sessions.contains_key(&session),
                     "Plugin session already connected"
                 );
                 state.sessions.insert(session, project);
+                state.epoch = state.epoch.wrapping_add(1);
                 *binding = Some((session, project));
             }
             PluginEvent::ProjectId { .. } => {

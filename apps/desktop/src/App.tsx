@@ -117,7 +117,7 @@ export default function App() {
     <main><header className="topbar"><div><div className="eyebrow">YOUR STUDIO, CONNECTED</div><h1>TRACKMESH</h1><p>Immutable snapshots. Trusted collaborators.</p></div>
       <div className="device"><span className={`status-dot ${status?.ready ? 'active' : ''}`} />{status?.device?.name ?? 'Starting device…'}<small>{short(status?.device?.device_id)}</small></div></header>
       {(error || status?.error || status?.network?.error) && <div className="notice danger" role="alert">{error || status?.error || status?.network?.error}</div>}
-      {status?.closing && <div className="notice">Closing safely. Downloads pause; started file installation and local work finish before exit.</div>}
+      {status?.closing && <div className="notice">Work finished. TRACKMESH is shutting down safely.</div>}
       <div className="section-heading"><div><h2>Projects</h2><span className="muted">Project files travel between collaborator PCs.</span></div><div className="actions">
         <button disabled={busy} onClick={() => { setSetup('join'); setFolder(''); }}>Import invitation</button>
         <button className="primary" disabled={busy} onClick={() => { setSetup('link'); setFolder(''); setUuid(''); setName(''); }}>+ Link folder</button></div></div>
@@ -133,6 +133,6 @@ export default function App() {
       {status?.ready && !status.page?.projects.length && !setup && <div className="empty"><div className="empty-icon">↗</div><h2>Your first shared project</h2><p>Link a project folder or import a collaborator’s invitation.<br />Snapshots stay immutable; files stay on your PCs.</p></div>}
       <div className="pagination"><button disabled={!offset || busy} onClick={() => setOffset(Math.max(0, offset - 32))}>Previous</button><span className="muted">Page {offset / 32 + 1}</span><button disabled={!status?.page?.has_more || busy} onClick={() => setOffset(offset + 32)}>Next</button></div>
       {status?.jobs.filter(j => !j.project_id).map(job => <div key={job.job_id} className={`notice ${job.error ? 'danger' : ''}`} role="status">{job.running ? `${job.label}…` : job.error ?? String(job.outcome?.message ?? `${job.label} completed`)}</div>)}
-      <footer><div><span className="muted">Data directory</span><code>{status?.data_directory ?? 'Opening protected local storage…'}</code></div><div className="actions"><button disabled={busy} onClick={() => act({ kind: 'export_card' })}>Export my device card</button><button disabled={status?.closing} onClick={() => void closeApp().catch(err => setError(String(err)))}>Close safely</button></div></footer>
+      <footer><div><span className="muted">Data directory</span><code>{status?.data_directory ?? 'Opening protected local storage…'}</code></div><div className="actions"><button disabled={busy} onClick={() => act({ kind: 'export_card' })}>Export my device card</button><button title="Close the window. Active DAW sessions, transfers and pending publication keep TRACKMESH running; it exits 60 seconds after work finishes. Reopen desktop to return." disabled={status?.closing} onClick={() => void closeApp().catch(err => setError(String(err)))}>Close safely</button></div></footer>
     </main></div>;
 }

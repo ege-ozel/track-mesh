@@ -2,7 +2,7 @@ use anyhow::{ensure, Result};
 use clap::{Args, Parser, Subcommand};
 use std::{path::PathBuf, sync::Arc, time::Duration};
 use trackmesh_core::{
-    default_data_directory, peer::PeerRuntime, Engine, MailboxRuntime, PluginRuntime,
+    default_data_directory, peer::PeerRuntime, Engine, MailboxRuntime, PluginRuntime, SessionGrace,
 };
 use uuid::Uuid;
 
@@ -110,7 +110,7 @@ enum Command {
         #[command(flatten)]
         mailbox: MailboxArgs,
     },
-    /// Local VST bridge; exits after 60 idle seconds. Full session lifetime is Phase 7.
+    /// Local VST owner; exits 60 seconds after sessions, work and publication finish.
     PluginServe {
         #[command(flatten)]
         network: NetworkArgs,
@@ -269,13 +269,15 @@ async fn main() -> Result<()> {
             };
             let metadata = MailboxRuntime::start(engine.clone(), mailbox.allow_loopback_http);
             let mut heartbeat = tokio::time::interval(Duration::from_secs(1));
-            let mut idle_since = tokio::time::Instant::now();
+            let mut grace = SessionGrace::default();
             loop {
                 tokio::select! {
                     _ = heartbeat.tick() => {
-                        if !plugin.is_idle() { idle_since = tokio::time::Instant::now(); }
+                        let disk = engine.clone();
+                        let pending = tokio::task::spawn_blocking(move || disk.has_pending_publication())
+                            .await.ok().and_then(Result::ok).unwrap_or(true);
                         if plugin.is_finished() || runtime.is_finished() || metadata.is_finished()
-                            || idle_since.elapsed() >= Duration::from_secs(60) { break; }
+                            || (grace.ready(&plugin, &runtime, pending) && plugin.close_if_idle()) { break; }
                     },
                     _ = tokio::signal::ctrl_c() => break,
                 }
