@@ -1,0 +1,127 @@
+use async_trait::async_trait;
+use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use libp2p::{request_response::Codec, StreamProtocol};
+use protocol::{PeerRequest, PeerResponse, MAX_CHUNK_SIZE, MAX_MANIFEST_BYTES};
+use serde::{de::DeserializeOwned, Serialize};
+use std::io;
+
+#[derive(Clone, Default)]
+pub struct TransferCodec;
+fn invalid(error: impl std::fmt::Display) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidData, error.to_string())
+}
+async fn read_json<T: AsyncRead + Unpin + Send, V: DeserializeOwned>(
+    io: &mut T,
+    limit: usize,
+) -> io::Result<V> {
+    let mut size = [0; 4];
+    io.read_exact(&mut size).await?;
+    let size = u32::from_le_bytes(size) as usize;
+    if size == 0 || size > limit {
+        return Err(invalid("frame length exceeds protocol limit"));
+    }
+    let mut data = vec![0; size];
+    io.read_exact(&mut data).await?;
+    serde_json::from_slice(&data).map_err(invalid)
+}
+async fn write_json<T: AsyncWrite + Unpin + Send, V: Serialize>(
+    io: &mut T,
+    value: &V,
+    limit: usize,
+) -> io::Result<()> {
+    let data = serde_json::to_vec(value).map_err(invalid)?;
+    if data.len() > limit {
+        return Err(invalid("frame exceeds protocol limit"));
+    }
+    io.write_all(&(data.len() as u32).to_le_bytes()).await?;
+    io.write_all(&data).await
+}
+#[async_trait]
+impl Codec for TransferCodec {
+    type Protocol = StreamProtocol;
+    type Request = PeerRequest;
+    type Response = PeerResponse;
+    async fn read_request<T>(&mut self, _: &Self::Protocol, io: &mut T) -> io::Result<Self::Request>
+    where
+        T: AsyncRead + Unpin + Send,
+    {
+        read_json(io, 16 * 1024).await
+    }
+    async fn write_request<T>(
+        &mut self,
+        _: &Self::Protocol,
+        io: &mut T,
+        request: Self::Request,
+    ) -> io::Result<()>
+    where
+        T: AsyncWrite + Unpin + Send,
+    {
+        write_json(io, &request, 16 * 1024).await?;
+        io.close().await
+    }
+    async fn read_response<T>(
+        &mut self,
+        _: &Self::Protocol,
+        io: &mut T,
+    ) -> io::Result<Self::Response>
+    where
+        T: AsyncRead + Unpin + Send,
+    {
+        let mut tag = [0];
+        io.read_exact(&mut tag).await?;
+        match tag[0] {
+            0 => {
+                let response = read_json(io, MAX_MANIFEST_BYTES).await?;
+                if matches!(response, PeerResponse::Chunk { .. }) {
+                    return Err(invalid("chunks must use binary frames"));
+                }
+                Ok(response)
+            }
+            1 => {
+                let mut hash = [0; 64];
+                io.read_exact(&mut hash).await?;
+                let hash = String::from_utf8(hash.to_vec()).map_err(invalid)?;
+                if !protocol::valid_hash(&hash) {
+                    return Err(invalid("invalid digest"));
+                }
+                let mut size = [0; 4];
+                io.read_exact(&mut size).await?;
+                let size = u32::from_le_bytes(size);
+                if size == 0 || size > MAX_CHUNK_SIZE {
+                    return Err(invalid("chunk exceeds limit"));
+                }
+                let mut data = vec![0; size as usize];
+                io.read_exact(&mut data).await?;
+                Ok(PeerResponse::Chunk { hash, data })
+            }
+            _ => Err(invalid("unknown response frame")),
+        }
+    }
+    async fn write_response<T>(
+        &mut self,
+        _: &Self::Protocol,
+        io: &mut T,
+        response: Self::Response,
+    ) -> io::Result<()>
+    where
+        T: AsyncWrite + Unpin + Send,
+    {
+        // Chunks are binary: JSON integer arrays would waste memory, bandwidth, and CPU.
+        match response {
+            PeerResponse::Chunk { hash, data } => {
+                if !protocol::valid_hash(&hash) || data.len() > MAX_CHUNK_SIZE as usize {
+                    return Err(invalid("invalid chunk"));
+                }
+                io.write_all(&[1]).await?;
+                io.write_all(hash.as_bytes()).await?;
+                io.write_all(&(data.len() as u32).to_le_bytes()).await?;
+                io.write_all(&data).await?;
+            }
+            value => {
+                io.write_all(&[0]).await?;
+                write_json(io, &value, MAX_MANIFEST_BYTES).await?;
+            }
+        }
+        io.close().await
+    }
+}

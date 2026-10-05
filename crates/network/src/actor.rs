@@ -1,0 +1,321 @@
+//! The sole swarm owner. Application requests, retry ticks, and events are serialized here.
+use crate::{
+    behaviour::{build_swarm, BehaviourEvent, PeerSwarm},
+    discovery::{configure, Discovery},
+    handle::Command,
+    status::{refresh_status, Connections},
+    Incoming, Network, NetworkConfig, NetworkStatus,
+};
+use anyhow::Result;
+use crypto::Identity;
+use futures::StreamExt;
+use libp2p::{
+    identify,
+    multiaddr::Protocol,
+    ping, request_response,
+    swarm::{ConnectionId, SwarmEvent},
+    Multiaddr, PeerId,
+};
+use protocol::PeerResponse;
+use std::{
+    collections::HashMap,
+    sync::{Arc, RwLock},
+    time::Duration,
+};
+use storage::Store;
+use tokio::sync::{mpsc, oneshot};
+
+pub fn start(
+    identity: Arc<Identity>,
+    store: Arc<Store>,
+    config: NetworkConfig,
+) -> Result<(
+    Network,
+    mpsc::Receiver<Incoming>,
+    tokio::task::JoinHandle<Result<()>>,
+)> {
+    let swarm = build_swarm(&identity, &store, &config)?;
+    let id = *swarm.local_peer_id();
+    let (tx, commands) = mpsc::channel(128);
+    let (incoming_tx, incoming_rx) = mpsc::channel(24);
+    let status = Arc::new(RwLock::new(NetworkStatus {
+        peer_id: id.to_string(),
+        ..Default::default()
+    }));
+    let handle = Network {
+        command: tx,
+        status: status.clone(),
+    };
+    let actor = Actor {
+        swarm,
+        store,
+        namespaces: config.rendezvous,
+        commands,
+        incoming_tx,
+        status,
+        pending: HashMap::new(),
+        connections: HashMap::new(),
+        discovery: Discovery::default(),
+    };
+    let task = tokio::spawn(actor.run());
+    Ok((handle, incoming_rx, task))
+}
+
+struct Actor {
+    swarm: PeerSwarm,
+    store: Arc<Store>,
+    namespaces: Vec<(Multiaddr, String)>,
+    commands: mpsc::Receiver<Command>,
+    incoming_tx: mpsc::Sender<Incoming>,
+    status: Arc<RwLock<NetworkStatus>>,
+    pending: HashMap<request_response::OutboundRequestId, oneshot::Sender<Result<PeerResponse>>>,
+    connections: Connections,
+    discovery: Discovery,
+}
+
+impl Actor {
+    async fn run(mut self) -> Result<()> {
+        let result = self.run_loop().await;
+        let stopped = result
+            .as_ref()
+            .err()
+            .map(|e| format!("network stopped: {e:#}"))
+            .unwrap_or_else(|| "network stopped".into());
+        for (_, reply) in self.pending {
+            let _ = reply.send(Err(anyhow::anyhow!(stopped.clone())));
+        }
+        if let Ok(mut state) = self.status.write() {
+            state.error = result.as_ref().err().map(|e| format!("{e:#}"));
+            state.addresses.clear();
+            for peer in state.peers.values_mut() {
+                peer.online = false;
+                peer.route = "OFFLINE".into();
+                peer.transport.clear();
+            }
+        }
+        result
+    }
+
+    async fn run_loop(&mut self) -> Result<()> {
+        let mut retry = tokio::time::interval(Duration::from_secs(6));
+        loop {
+            tokio::select! {
+                command = self.commands.recv() => {
+                    if !self.command(command)? { break; }
+                },
+                _ = retry.tick() => {
+                    configure(&mut self.swarm, &self.store, &self.namespaces)?;
+                    self.pending.retain(|_, reply| !reply.is_closed());
+                    self.discovery.tick(&mut self.swarm, &self.store, &self.namespaces, &self.connections)?;
+                },
+                event = self.swarm.select_next_some() => self.event(event)?,
+            }
+        }
+        Ok(())
+    }
+
+    fn command(&mut self, command: Option<Command>) -> Result<bool> {
+        match command {
+            Some(Command::Request(peer, request, reply)) => {
+                if self
+                    .store
+                    .authorized(protocol::request_project(&request), &peer.to_string())?
+                    .is_none()
+                {
+                    let _ =
+                        reply.send(Err(anyhow::anyhow!("peer is not trusted for this project")));
+                    return Ok(true);
+                }
+                let id = self
+                    .swarm
+                    .behaviour_mut()
+                    .transfer
+                    .send_request(&peer, request);
+                self.pending.insert(id, reply);
+            }
+            Some(Command::Respond(incoming, response)) => {
+                let _ = self
+                    .swarm
+                    .behaviour_mut()
+                    .transfer
+                    .send_response(incoming.channel, *response);
+            }
+            Some(Command::Reload(new)) => {
+                self.namespaces = new;
+                configure(&mut self.swarm, &self.store, &self.namespaces)?;
+                self.discovery.reload();
+            }
+            Some(Command::Shutdown) | None => return Ok(false),
+        }
+        Ok(true)
+    }
+
+    fn event(&mut self, event: SwarmEvent<BehaviourEvent>) -> Result<()> {
+        match event {
+            SwarmEvent::NewListenAddr { address, .. } => {
+                let id = *self.swarm.local_peer_id();
+                let address = if address.iter().last() == Some(Protocol::P2p(id)) {
+                    address
+                } else {
+                    address.with(Protocol::P2p(id))
+                };
+                tracing::info!(%address, "listening");
+                if let Ok(mut state) = self.status.write() {
+                    let address = address.to_string();
+                    if !state.addresses.contains(&address) {
+                        state.addresses.push(address);
+                    }
+                }
+            }
+            SwarmEvent::ExpiredListenAddr { address, .. } => {
+                if let Ok(mut state) = self.status.write() {
+                    state
+                        .addresses
+                        .retain(|a| !a.starts_with(&address.to_string()));
+                }
+            }
+            SwarmEvent::ConnectionEstablished {
+                peer_id,
+                connection_id,
+                endpoint,
+                ..
+            } => self.connected(peer_id, connection_id, endpoint.get_remote_address()),
+            SwarmEvent::ConnectionClosed {
+                connection_id,
+                peer_id,
+                ..
+            } => {
+                self.connections.remove(&connection_id);
+                refresh_status(&self.status, &self.connections);
+                self.discovery.disconnected(peer_id, &self.namespaces);
+            }
+            SwarmEvent::Behaviour(BehaviourEvent::Identify(identify::Event::Received {
+                peer_id,
+                info,
+                ..
+            })) => self
+                .discovery
+                .identified(&mut self.swarm, peer_id, info, &self.namespaces),
+            SwarmEvent::Behaviour(BehaviourEvent::Rendezvous(event)) => {
+                self.discovery.event(&mut self.swarm, &self.store, event)?
+            }
+            SwarmEvent::Behaviour(BehaviourEvent::Transfer(request_response::Event::Message {
+                peer,
+                message,
+                ..
+            })) => match message {
+                request_response::Message::Request {
+                    request, channel, ..
+                } => {
+                    if self
+                        .store
+                        .authorized(protocol::request_project(&request), &peer.to_string())?
+                        .is_none()
+                    {
+                        let _ = self.swarm.behaviour_mut().transfer.send_response(
+                            channel,
+                            PeerResponse::Error {
+                                message: "project access denied".into(),
+                            },
+                        );
+                        return Ok(());
+                    }
+                    let incoming = Incoming {
+                        peer,
+                        request,
+                        channel,
+                    };
+                    if let Err(error) = self.incoming_tx.try_send(incoming) {
+                        let incoming = error.into_inner();
+                        let _ = self.swarm.behaviour_mut().transfer.send_response(
+                            incoming.channel,
+                            PeerResponse::Error {
+                                message: "peer busy or shutting down; retry".into(),
+                            },
+                        );
+                    }
+                }
+                request_response::Message::Response {
+                    request_id,
+                    response,
+                } => {
+                    if let Some(reply) = self.pending.remove(&request_id) {
+                        let _ = reply.send(Ok(response));
+                    }
+                }
+            },
+            SwarmEvent::Behaviour(BehaviourEvent::Transfer(
+                request_response::Event::OutboundFailure {
+                    request_id, error, ..
+                },
+            )) => {
+                if let Some(reply) = self.pending.remove(&request_id) {
+                    let _ = reply.send(Err(anyhow::anyhow!("peer request failed: {error}")));
+                }
+            }
+            SwarmEvent::Behaviour(BehaviourEvent::Ping(ping::Event {
+                peer,
+                result: Err(_),
+                ..
+            })) => {
+                let _ = self.swarm.disconnect_peer_id(peer);
+            }
+            SwarmEvent::OutgoingConnectionError { error, .. } => {
+                tracing::debug!(%error, "dial failed")
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn connected(&mut self, peer: PeerId, connection: ConnectionId, address: &Multiaddr) {
+        let relayed = address.iter().any(|p| matches!(p, Protocol::P2pCircuit));
+        let transport = if relayed {
+            "NOISE/YAMUX"
+        } else if address.iter().any(|p| matches!(p, Protocol::QuicV1)) {
+            "QUIC"
+        } else {
+            "TCP"
+        }
+        .to_owned();
+        let better = self
+            .connections
+            .values()
+            .any(|(p, r, t)| *p == peer && !r && (relayed || (t == "QUIC" && transport != "QUIC")));
+        if better {
+            self.swarm.close_connection(connection);
+            return;
+        }
+        tracing::info!(peer=%peer, route=if relayed {"RELAYED"} else {"DIRECT"}, %transport, "peer connected");
+        if !relayed && transport == "QUIC" {
+            let close: Vec<_> = self
+                .connections
+                .iter()
+                .filter_map(|(cid, (p, _, t))| {
+                    if *p == peer && t == "TCP" {
+                        Some(*cid)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            for cid in close {
+                self.swarm.close_connection(cid);
+            }
+        }
+        self.connections
+            .insert(connection, (peer, relayed, transport));
+        // Request/response then uses the remaining direct peer connection.
+        if !relayed {
+            let close: Vec<_> = self
+                .connections
+                .iter()
+                .filter_map(|(cid, (p, r, _))| if *p == peer && *r { Some(*cid) } else { None })
+                .collect();
+            for cid in close {
+                self.swarm.close_connection(cid);
+            }
+        }
+        refresh_status(&self.status, &self.connections);
+    }
+}

@@ -1,0 +1,16 @@
+/target/
+/.build/
+/vendor/
+**/node_modules/
+**/dist/
+**/build/
+**/.vs/
+*.db
+*.db-shm
+*.db-wal
+*.protected
+*.pem
+*.key
+*.log
+/local-data/
+
