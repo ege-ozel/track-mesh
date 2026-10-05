@@ -23,7 +23,7 @@ pub struct LocalStatus {
     pub verification: &'static str,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct PeerCheck {
     pub project_id: Uuid,
     pub local_snapshot: Option<Uuid>,

@@ -3,7 +3,7 @@
 ## Read this first
 
 - Canonical repository: `D:\CodeSpace\track-mesh`. Work in this repository; do not edit another checkout by assumption.
-- Current product: Windows Rust CLI and separate infrastructure services, Phases 1–3 implemented locally. Phases 4–8 and real NAT/HTTPS deployment validation remain pending. The complete DAW workflow is unfinished.
+- Current product: Windows Rust CLI, Tauri 2/React desktop, and separate infrastructure services, Phases 1–4 implemented locally. Phases 5–8 and real NAT/HTTPS deployment validation remain pending. The complete DAW workflow is unfinished.
 - Priorities: integrity/security → practical direct-transfer speed → reliability → simple workflow → development speed.
 - Preserve architecture, protocol names, signed serialization, database values, and recovery ordering unless the task explicitly changes them.
 - No automated tests, benchmarks, filesystem watchers, continuous sync, cloud project files, public sharing/discovery, automatic project conflict merging, or non-Windows desktop work in this MVP.
@@ -18,6 +18,7 @@ Use [docs/CODEMAP.md](docs/CODEMAP.md) to select files. Read the local `AGENTS.m
 | SQLite/history/trust/publication state | `crates/storage/AGENTS.md` |
 | Connectivity/discovery/transport | `crates/network/AGENTS.md` |
 | Shared application workflow or CLI | `crates/core/AGENTS.md` |
+| Desktop window, native documents, controls/status | `apps/desktop/AGENTS.md` |
 | Mailbox HTTP transport or infrastructure | `crates/mailbox/AGENTS.md`, `services/mailbox/AGENTS.md` |
 | Separate private relay/rendezvous service | `services/relay/AGENTS.md` |
 | Identity/signatures/encryption | `crates/crypto/src/lib.rs` and `shared/protocol/src/lib.rs` |
@@ -27,7 +28,7 @@ Use [docs/CODEMAP.md](docs/CODEMAP.md) to select files. Read the local `AGENTS.m
 ## Working rules
 
 - Keep `lib.rs` files as API/ownership maps. Public APIs are re-exported at crate roots; private modules hold implementation.
-- Put reusable project decisions in `core`; CLI, future desktop, and IPC are adapters. The VST3 bridge is a tiny control/status surface.
+- Put reusable project decisions in `core`; CLI, desktop, and future IPC are adapters. The VST3 bridge is a tiny control/status surface.
 - One network actor owns the swarm. Blocking disk work stays outside it and outside any audio callback.
 - Snapshot creation and transfer installation are different operations. Preserve their locks, transactional commits, and failure states.
 - `TransferState` owns session labels; `ApplyPhase` owns journal phases. Do not duplicate either with string literals.

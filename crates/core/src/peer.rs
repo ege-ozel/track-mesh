@@ -10,14 +10,25 @@ pub struct PeerRuntime {
     pub network: Network,
     actor: JoinHandle<Result<()>>,
     responder: JoinHandle<Result<()>>,
+    // Windows closes this exclusive handle only after this runtime is drained.
+    _lease: Arc<std::fs::File>,
 }
 impl PeerRuntime {
     pub fn start(engine: Arc<Engine>, mut config: NetworkConfig) -> Result<Self> {
+        let lease = Arc::new(runtime_lease(&engine.directory)?);
         config.rendezvous = engine.namespaces()?;
         let (network, mut incoming, actor) =
             network::start(engine.identity.clone(), engine.store.clone(), config)?;
+        // The lease outlives an accidentally dropped adapter handle as well.
+        let actor_lease = lease.clone();
+        let actor = tokio::spawn(async move {
+            let _lease = actor_lease;
+            actor.await.context("network actor panicked")?
+        });
         let network_copy = network.clone();
+        let responder_lease = lease.clone();
         let responder = tokio::spawn(async move {
+            let _lease = responder_lease;
             let mut workers = JoinSet::new();
             let mut closed = false;
             loop {
@@ -44,6 +55,7 @@ impl PeerRuntime {
             network,
             actor,
             responder,
+            _lease: lease,
         })
     }
     pub fn is_finished(&self) -> bool {
@@ -70,6 +82,23 @@ impl PeerRuntime {
         self.responder.await.context("peer responder panicked")??;
         actor
     }
+}
+
+fn runtime_lease(directory: &std::path::Path) -> Result<std::fs::File> {
+    let locks = directory.join("locks");
+    std::fs::create_dir_all(&locks)?;
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true).write(true).create(true).truncate(false);
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        options.share_mode(0);
+    }
+    #[cfg(not(windows))]
+    anyhow::bail!("peer runtime ownership requires Windows");
+    options
+        .open(locks.join("peer-runtime.lock"))
+        .context("another TrackMesh peer runtime already owns this data directory")
 }
 
 impl Engine {

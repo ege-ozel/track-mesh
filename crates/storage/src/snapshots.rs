@@ -10,6 +10,19 @@ use rusqlite::{params, OptionalExtension, Transaction};
 use uuid::Uuid;
 
 impl Store {
+    pub fn snapshot_info(&self, id: Uuid) -> Result<Option<SnapshotInfo>> {
+        Ok(self
+            .lock()?
+            .query_row(
+                &format!("SELECT {INFO_COLUMNS} FROM snapshots WHERE snapshot_id=?1"),
+                [id.to_string()],
+                info_row,
+            )
+            .optional()?)
+    }
+    pub fn latest_author_info(&self, project: Uuid, author: Uuid) -> Result<Option<SnapshotInfo>> {
+        Ok(self.lock()?.query_row(&format!("SELECT {INFO_COLUMNS} FROM snapshots WHERE project_id=?1 AND author_device_id=?2 ORDER BY created_at DESC,snapshot_id DESC LIMIT 1"), params![project.to_string(), author.to_string()], info_row).optional()?)
+    }
     pub fn snapshot(&self, id: Uuid) -> Result<Option<SignedSnapshot>> {
         let value: Option<Option<String>> = self
             .lock()?

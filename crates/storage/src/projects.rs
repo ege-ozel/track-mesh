@@ -9,6 +9,20 @@ use std::path::Path;
 use uuid::Uuid;
 
 impl Store {
+    pub fn projects_page(&self, offset: u32, limit: u32) -> Result<Vec<Project>> {
+        ensure!(
+            (1..=33).contains(&limit),
+            "project page must contain at most 33 records"
+        );
+        let db = self.lock()?;
+        let mut statement = db.prepare(&format!(
+            "SELECT {PROJECT_COLUMNS} FROM projects ORDER BY name,project_id LIMIT ?1 OFFSET ?2"
+        ))?;
+        let rows = statement
+            .query_map(params![limit, offset], project_row)?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
     pub fn projects(&self) -> Result<Vec<Project>> {
         let db = self.lock()?;
         let mut statement = db.prepare(&format!(

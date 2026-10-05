@@ -1,6 +1,6 @@
 # TrackMesh MVP implementation
 
-**Phases 1–3 are implemented locally through the Windows Rust CLI and separate infrastructure services.** Development takes place in `D:\CodeSpace\track-mesh`. Real HTTPS deployment, two-PC NAT/relay/DCUtR validation, and Phases 4–8 remain unfinished.
+**Phases 1–4 are implemented locally through the Windows Rust CLI, Tauri 2/React desktop, and separate infrastructure services.** Development takes place in `D:\CodeSpace\track-mesh`. Real HTTPS deployment, two-PC NAT/relay/DCUtR validation, and Phases 5–8 remain unfinished.
 
 The repository follows the eight requested phases. Compilation, static checks, and manual operation are the validation tools. No automated tests, benchmarks, project watchers, cloud file storage, or continuous synchronization have been added.
 
@@ -11,7 +11,7 @@ The repository follows the eight requested phases. Compilation, static checks, a
 | 1 | Implemented | Rust workspace, DPAPI device/project keys, signed immutable manifests, fixed 4 MiB BLAKE3 chunks, local chunk store, and transactional SQLite history. |
 | 2 | Implemented | Explicit mutual pairing, direct QUIC, TCP with Noise/Yamux fallback, signed ancestry comparison, missing-chunk transfer, durable resume, verified installation, and journal recovery. Private rendezvous, relay, and DCUtR client behaviors are integrated. |
 | 3 | Implemented locally; deployment/NAT unverified | Encrypted signed metadata publication/refresh, durable ACK/retry/cursor flow, Axum/SQLite opaque mailbox behind HTTPS, separate allow-listed relay/rendezvous service. |
-| 4 | Pending | Tauri 2 / React desktop controls and status. |
+| 4 | Implemented locally; Windows native validation on one PC | Tauri 2 / React controls, pairing, bounded status, manual snapshot/publication, receive/resume/recovery, and safe window-session shutdown. |
 | 5 | Pending | Official Steinberg SDK C++ VST3 surface and Rust Windows Named Pipe bridge. |
 | 6 | Pending | Settled save processing and publication retry. |
 | 7 | Pending | Session-aware agent lifetime after DAW shutdown. |
@@ -121,8 +121,55 @@ Manual operations used only separate disposable device/project/service directori
 
 The Phase 3 operation/deployment guide is [PHASE3.md](PHASE3.md). A real HTTPS proxy/certificate deployment, forced circuit data transfer, relay revocation behavior under active traffic, and real two-PC firewall/NAT/DCUtR remain unverified. No throughput benchmark or complete Phase 2 runtime regression was run for this change.
 
+## Phase 4 implementation and validation
+
+Implemented on the separate local `codex/phase-4-desktop` branch from Phase 3 integration commit `d4483c5`. The native Windows executable bundles React/TypeScript/Vite assets; it needs WebView2. This phase provides manual desktop controls, not the complete VST/save/session workflow. Operation instructions are in [PHASE4.md](PHASE4.md).
+
+- `apps/desktop` owns the window, four explicitly permitted main-window commands, native document/folder dialogs, bounded tracked jobs, and an explicit session. It uses one `PeerRuntime` plus the existing session-scoped metadata worker. Disk work runs in blocking workers. Closing stops new work, pauses unfinished network downloads, awaits started snapshot/install/recovery work, and drains the runtime.
+- React cards display local snapshot/author/time, selected collaborator's last-known metadata, direct/relay/offline connection status, pending publication, durable transfer progress, lineage and recovery. Controls include link/import invitation, device cards, local revocation, Send Snapshot, Check, Refresh, Retry, Receive/Resume and Recover. Receiving/recovering requires a DAW-closed confirmation; core still enforces all integrity guards.
+- Core owns reusable bounded project summaries and the explicit snapshot-then-publication workflow. A successful local commit remains visible when HTTP fails. Publish/refresh share a per-project coordinator with the worker, preserving durable envelope, ACK and cursor semantics. Storage adds narrow summary queries without loading complete history/manifests during polling; existing CLI JSON remains intact.
+- A Windows file lease protects data-directory peer-runtime ownership across CLI and desktop, including actor/responder drain. Tauri's single-instance plugin focuses an existing desktop window. Default desktop listening port is 43101; the existing data-directory and DPAPI contracts remain in effect.
+- Invitations/cards use bounded native file access; invitation payloads and project keys never enter React. Export creates a new file rather than overwriting one. CSP and navigation rules restrict the window to bundled content, with no generic JavaScript filesystem/shell/HTTP capability.
+- Fresh verified equality lasts at most 30 seconds and is invalidated by compared head/known-metadata changes or disconnection. Known divergence persists while those comparison inputs remain unchanged; it does not vanish when the equality freshness interval expires. Restart requires a new check.
+
+Existing protocol names/version, signing bytes, envelope AAD, crypto/scanner/network/transfer implementations, SQLite schema v2 and persisted state labels, project locks, snapshot/apply transactions, and `BACKUP → INSTALL → COMMIT → DONE` ordering remain unchanged. The Cargo lock adds desktop dependencies while retaining every pre-existing locked package/version. No tests, benchmarks, watchers, permanent daemon, installer/updater, cloud project files, VST/IPC, or automatic conflict merge were added.
+
+Final checks completed on 2026-10-05 with Rust/Cargo 1.98.1, Node 24.19.0, installed MSVC 14.44.35207, Windows SDK 10.0.26100.0 and WebView2 154.0.4258.53:
+
+| Check | Result |
+| --- | --- |
+| `npm ci --offline`, `npm run typecheck`, `npm run build` | Passed using the locked dependencies and local npm cache; bundled static frontend produced. |
+| `cargo fmt --all -- --check` | Passed |
+| `cargo check --workspace --locked --offline` | Passed |
+| `cargo clippy --workspace --lib --bins --locked --offline -- -D warnings` | Passed |
+| `cargo build -p trackmesh-core -p trackmesh-mailbox-service -p trackmesh-relay-service -p trackmesh-desktop --locked --offline` | Passed; all four Windows executables linked. |
+| `--help` for all four executables | Passed |
+| Staged Git whitespace check with Windows CR-at-EOL handling; local Markdown links | Passed; 30 relative links resolved. |
+
+The desktop declares Rust 1.90; neither that minimum nor the other crates' declared 1.85 minimum was validated. Dependency fetching required network access during setup; final builds/checks used cached locked dependencies. The developer guide describes the required C++ developer environment and supported Node runtime.
+
+Manual operation used the actual native desktop/WebView2, native file dialogs and separately identified CLI/mailbox processes, with disposable device/project/service data only under `.build/phase4-manual-414e2123`. These were individually performed manual operations, not an automated test suite. Normal-user execution was needed for DPAPI. Fixtures used dummy `.als`/`.flp` files, empty data, random sample data and small files; no real DAW host was exercised. All fixture processes were stopped after validation, while databases, chunks, projects and recovery backups were retained.
+
+| Phase 4 manual operation | Observed result |
+| --- | --- |
+| Native invitation import, device-card export/import, mutual pairing | Linked the local folder and paired the devices; private invitation stayed in the native backend. |
+| Metadata refresh with source stopped | Remote announcement visible; local head/last verification remained null and file receive unavailable. |
+| Desktop Check and Receive over loopback QUIC | `DIRECT`, completed the 32 MiB sample fixture; all four received file hashes independently matched. Signed equality check returned `EQUAL` and `verified_equal=true`. |
+| CLI attempted a second peer runtime using desktop's data directory | Refused by the exclusive Windows runtime lease. |
+| Generic WebView filesystem request for a dummy file | Refused; no filesystem plugin/capability available. |
+| Receive after unsnapshotted local edit | Refused; local edit and committed head preserved. |
+| Mailbox unavailable during Send Snapshot | Local snapshot committed, metadata remained `PENDING`, publication failure displayed. A simultaneous second send was rejected. |
+| Mailbox restored, Retry publication | Matching ACK changed metadata to `PUBLISHED`, pending count zero. |
+| Independent children of the same parent | Check reported `DIVERGED`; backend receive refused overwrite. Known divergence remained visible with `fresh=false` beyond 30 seconds. |
+| Safe close during a 256 MiB receive, then restart and Resume receive | 8 MiB completed progress remained `PAUSED`; same transfer UUID resumed to `COMPLETE`. Independent SHA-256 of the entire file matched. |
+| Fixture desktop stopped during journal `INSTALL`, source stopped, desktop restarted | Recovery marker remained set, local head remained at the base. **Recover locally** completed without the source; marker cleared, target head committed, all 1,601 file hashes independently matched. |
+| Final binary equality check, then source stopped | Fresh signed equality was visible as `UP TO DATE`; later offline status retained the last verification with `fresh=false`. |
+| Final safe close | Desktop exited and its owned fixture services stopped; durable data/backups retained. |
+
+Native appearance was inspected after the final equality/divergence checks. Installer/signing, real DAW compatibility, real HTTPS deployment, two-PC NAT/firewall, forced circuit transfer and DCUtR remain unverified. The Phase 2 TCP/corruption/unpaired-device checks and Phase 3 service adversarial checks were not rerun as a full regression matrix for this phase. Native invitation export, revocation and pagination were implemented and statically inspected; they were not separately exercised as manual acceptance operations.
+
 ## Remaining integration work
 
 Deploy the Phase 3 services with real DNS, valid HTTPS certificates, private ACLs, pinned infrastructure PeerId, and reachable advertised addresses; then validate on two real Windows PCs. Real firewall behavior, Internet NAT traversal, forced circuit relay, and DCUtR remain unverified. Direct transfers still do not imply a mailbox acknowledgement.
 
-Snapshot chunks are retained locally without automatic pruning. This keeps earlier snapshots retrievable when the working folder changes. The mailbox receives small encrypted announcements only; file manifests and chunks travel through authenticated peer connections. Next implementation phase: create a new local `codex/phase-4-desktop` branch for Tauri 2/React controls and status; Phases 5–8 remain after that.
+Snapshot chunks are retained locally without automatic pruning. This keeps earlier snapshots retrievable when the working folder changes. The mailbox receives small encrypted announcements only; file manifests and chunks travel through authenticated peer connections. Next implementation phase: create a new local `codex/phase-5-vst3-ipc` branch for the official Steinberg SDK C++ VST3 surface and Rust Windows Named Pipe bridge; Phases 6–8 remain after that.

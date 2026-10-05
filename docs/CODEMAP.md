@@ -8,6 +8,13 @@ Paths are relative to repository root. A crate's `src/lib.rs` lists its public A
 | --- | --- | --- |
 | Link folder, make snapshot, pair device, import/export invitation | `crates/core/src/lib.rs` | Snapshot, crypto, and storage APIs |
 | Local status, compare with online peer, receive from peer, recover | `crates/core/src/workflows.rs` | `peer.rs`, transfer API |
+| Bounded project/peer metadata cards | `crates/core/src/status.rs` | Narrow storage queries; existing CLI status unchanged |
+| Manual snapshot commit followed by publication | `crates/core/src/sending.rs` | Snapshot workflow and durable mailbox ACK |
+| Windows desktop entry point, capability inventory, navigation | `apps/desktop/src-tauri/src/lib.rs`, `build.rs`, `capabilities/main.json` | Tauri adapter; local bundled React |
+| Desktop jobs, status freshness, explicit session shutdown | `apps/desktop/src-tauri/src/runtime.rs` | Core workflows and one leased `PeerRuntime` |
+| Native invitation/card files and folder dialogs | `apps/desktop/src-tauri/src/documents.rs` | Bounded private documents; payloads stay in Rust |
+| Main-window command boundary and typed frontend | `apps/desktop/src-tauri/src/commands.rs`, `apps/desktop/src/api.ts` | Narrow invoke API |
+| Desktop project controls and styling | `apps/desktop/src/App.tsx`, `src/styles.css` | Core-derived state, no filesystem watcher |
 | Start/stop peer runtime, answer disk requests, fetch signed ancestry | `crates/core/src/peer.rs` | Network actor and transfer serving |
 | CLI arguments, JSON output, Ctrl+C | `crates/core/src/main.rs` | Core workflows; keep decisions out of this adapter |
 | Receive decisions, local lock, failure state | `crates/transfer/src/receiver.rs` | Verification, download, apply |
@@ -53,9 +60,13 @@ recover:  Engine::recover → recover_project → trusted target validation → 
 serve:    PeerRuntime → transfer::serve → project authorization → head/manifest/indexed chunk lookup
 publish:  Engine::publish_metadata → persist envelope → MailboxClient POST → matching ACK → PUBLISHED
 refresh:  Engine::refresh_metadata → bounded page → trust/signature/AEAD → page + cursor transaction
+desktop:  typed Tauri command → bounded tracked job → Engine workflow → compact status page
+send:     Engine::send_snapshot → blocking snapshot commit → publish_metadata → ACK or durable PENDING
 ```
 
 `PeerRuntime` owns the network actor/responder lifetime. `MailboxRuntime` owns session-scoped metadata retry. `Network` is a handle, not another swarm. SQLite ownership remains in `Store`; each domain module adds methods to that same type. Infrastructure services own independent stores/swarms in their separate processes.
+
+`PeerRuntime` holds an exclusive Windows data-directory lease shared with its actor/responder tasks. Desktop owns its window/job lifetime and calls `stop` after awaiting local work. Status summaries use bounded storage queries in `projects.rs`, `snapshots.rs`, and `transfers.rs`; `local_status` retains its complete CLI output.
 
 ## Targeted search examples
 
