@@ -13,7 +13,8 @@ use std::{
 };
 use tauri::AppHandle;
 use trackmesh_core::{
-    default_data_directory, peer::PeerRuntime, Engine, MailboxRuntime, PeerCheck, SummaryPage,
+    default_data_directory, peer::PeerRuntime, Engine, MailboxRuntime, PeerCheck, PluginRuntime,
+    SummaryPage,
 };
 use uuid::Uuid;
 
@@ -34,6 +35,8 @@ pub struct Options {
     /// Development only: permit HTTP to a literal loopback IP.
     #[arg(long)]
     allow_loopback_http: bool,
+    #[arg(long, env = "TRACKMESH_IPC_SUFFIX", default_value = "")]
+    ipc_suffix: String,
 }
 
 #[derive(Deserialize)]
@@ -179,6 +182,7 @@ struct Session {
     peer: Option<PeerRuntime>,
     network: Option<Network>,
     metadata: Option<MailboxRuntime>,
+    plugin: Option<PluginRuntime>,
     tasks: Vec<tauri::async_runtime::JoinHandle<()>>,
     jobs: Vec<Job>,
     checks: HashMap<(Uuid, Uuid), Checked>,
@@ -262,12 +266,23 @@ impl Desktop {
             PeerRuntime::start(engine_for_network, config)
         })
         .await??;
-        let metadata = MailboxRuntime::start(engine, self.options.allow_loopback_http);
+        let metadata = MailboxRuntime::start(engine.clone(), self.options.allow_loopback_http);
         let mut state = self.lock()?;
         state.network = Some(peer.network.clone());
         state.peer = Some(peer);
         state.metadata = Some(metadata);
-        state.ready = true;
+        state.plugin = Some(PluginRuntime::start(
+            engine,
+            state.network.clone().context("Peer runtime missing")?,
+            self.options.allow_loopback_http,
+            &self.options.ipc_suffix,
+        )?);
+        if state.closing {
+            if let Some(plugin) = &state.plugin {
+                plugin.begin_close();
+            }
+        }
+        state.ready = !state.closing;
         Ok(())
     }
 
@@ -562,6 +577,9 @@ impl Desktop {
                     false
                 } else {
                     state.closing = true;
+                    if let Some(plugin) = &state.plugin {
+                        plugin.begin_close();
+                    }
                     true
                 }
             })
@@ -605,10 +623,19 @@ impl Desktop {
             }
         }
         // Initialization may have installed the runtime while close was waiting for it.
-        let (metadata, peer) = {
+        let (metadata, peer, plugin) = {
             let mut state = self.lock()?;
-            (state.metadata.take(), state.peer.take())
+            (
+                state.metadata.take(),
+                state.peer.take(),
+                state.plugin.take(),
+            )
         };
+        if let Some(plugin) = plugin {
+            if let Err(error) = plugin.stop().await {
+                errors.push(error.to_string());
+            }
+        }
         if let Some(metadata) = metadata {
             if let Err(error) = metadata.stop().await {
                 errors.push(error.to_string());

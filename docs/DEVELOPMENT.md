@@ -30,6 +30,8 @@ Do not add/run automated tests or benchmarks for this MVP. Formatting, compilati
 
 ## Data and manual operation
 
+Phase 5 VST3 builds separately through CMake/Ninja with the pinned official SDK. Build Rust core/desktop and static frontend first; follow [PHASE5.md](PHASE5.md). CMake disables validator execution and installed-folder links. Build only requested plugin/manual editor-host targets; do not run SDK test suites or benchmarks. On this host, Ninja avoids inherited duplicate `Path`/`PATH` entries that made MSBuild reject its compiler launch; no machine-wide environment change is required.
+
 - Default data: `%LOCALAPPDATA%\TrackMesh`; override with `--data-dir` or `TRACKMESH_DATA_DIR`.
 - Local storage: `trackmesh.db`, `chunks`, protected `secrets`, and per-project lock files. Keep it separate from DAW project folders.
 - Each simulated device needs a separate data directory and working folder. Fixtures/logs/build outputs belong in ignored scratch paths, never beside production samples.

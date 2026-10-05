@@ -1,7 +1,9 @@
 use anyhow::{ensure, Result};
 use clap::{Args, Parser, Subcommand};
 use std::{path::PathBuf, sync::Arc, time::Duration};
-use trackmesh_core::{default_data_directory, peer::PeerRuntime, Engine, MailboxRuntime};
+use trackmesh_core::{
+    default_data_directory, peer::PeerRuntime, Engine, MailboxRuntime, PluginRuntime,
+};
 use uuid::Uuid;
 
 #[derive(Parser)]
@@ -107,6 +109,15 @@ enum Command {
         network: NetworkArgs,
         #[command(flatten)]
         mailbox: MailboxArgs,
+    },
+    /// Local VST bridge; exits after 60 idle seconds. Full session lifetime is Phase 7.
+    PluginServe {
+        #[command(flatten)]
+        network: NetworkArgs,
+        #[command(flatten)]
+        mailbox: MailboxArgs,
+        #[arg(long, env = "TRACKMESH_IPC_SUFFIX", default_value = "")]
+        ipc_suffix: String,
     },
     Check {
         project_id: Uuid,
@@ -237,6 +248,44 @@ async fn main() -> Result<()> {
         Command::Recover { project_id } => {
             engine.recover(project_id)?;
             println!("Recovery complete for {project_id}");
+        }
+        Command::PluginServe {
+            network,
+            mailbox,
+            ipc_suffix,
+        } => {
+            let runtime = PeerRuntime::start(engine.clone(), network.config())?;
+            let plugin = match PluginRuntime::start(
+                engine.clone(),
+                runtime.network.clone(),
+                mailbox.allow_loopback_http,
+                &ipc_suffix,
+            ) {
+                Ok(plugin) => plugin,
+                Err(error) => {
+                    runtime.stop().await?;
+                    return Err(error);
+                }
+            };
+            let metadata = MailboxRuntime::start(engine.clone(), mailbox.allow_loopback_http);
+            let mut heartbeat = tokio::time::interval(Duration::from_secs(1));
+            let mut idle_since = tokio::time::Instant::now();
+            loop {
+                tokio::select! {
+                    _ = heartbeat.tick() => {
+                        if !plugin.is_idle() { idle_since = tokio::time::Instant::now(); }
+                        if plugin.is_finished() || runtime.is_finished() || metadata.is_finished()
+                            || idle_since.elapsed() >= Duration::from_secs(60) { break; }
+                    },
+                    _ = tokio::signal::ctrl_c() => break,
+                }
+            }
+            let plugin_shutdown = plugin.stop().await;
+            let metadata_shutdown = metadata.stop().await;
+            let peer_shutdown = runtime.stop().await;
+            plugin_shutdown?;
+            metadata_shutdown?;
+            peer_shutdown?;
         }
         Command::Serve { network, mailbox } => {
             let runtime = PeerRuntime::start(engine.clone(), network.config())?;

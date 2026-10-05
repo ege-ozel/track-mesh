@@ -3,7 +3,7 @@
 ## Read this first
 
 - Canonical repository: `D:\CodeSpace\track-mesh`. Work in this repository; do not edit another checkout by assumption.
-- Current product: Windows Rust CLI, Tauri 2/React desktop, and separate infrastructure services, Phases 1–4 implemented locally. Phases 5–8 and real NAT/HTTPS deployment validation remain pending. The complete DAW workflow is unfinished.
+- Current product: Windows Rust CLI, Tauri 2/React desktop, C++ VST3/Named Pipe surface, and separate infrastructure services, Phases 1–5 implemented locally. Phase 5 has SDK editor-host validation; actual DAW UUID persistence/audio remain unverified. Phases 6–8 and real NAT/HTTPS deployment validation remain pending. The complete DAW workflow is unfinished.
 - Priorities: integrity/security → practical direct-transfer speed → reliability → simple workflow → development speed.
 - Preserve architecture, protocol names, signed serialization, database values, and recovery ordering unless the task explicitly changes them.
 - No automated tests, benchmarks, filesystem watchers, continuous sync, cloud project files, public sharing/discovery, automatic project conflict merging, or non-Windows desktop work in this MVP.
@@ -19,6 +19,7 @@ Use [docs/CODEMAP.md](docs/CODEMAP.md) to select files. Read the local `AGENTS.m
 | Connectivity/discovery/transport | `crates/network/AGENTS.md` |
 | Shared application workflow or CLI | `crates/core/AGENTS.md` |
 | Desktop window, native documents, controls/status | `apps/desktop/AGENTS.md` |
+| Native Windows VST3, UUID state, plugin IPC | `plugins/vst3/AGENTS.md`, `crates/core/AGENTS.md` |
 | Mailbox HTTP transport or infrastructure | `crates/mailbox/AGENTS.md`, `services/mailbox/AGENTS.md` |
 | Separate private relay/rendezvous service | `services/relay/AGENTS.md` |
 | Identity/signatures/encryption | `crates/crypto/src/lib.rs` and `shared/protocol/src/lib.rs` |
