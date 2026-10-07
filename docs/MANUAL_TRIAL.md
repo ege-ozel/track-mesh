@@ -38,6 +38,8 @@ Modem arızalarını ayırmak için [üreticinin port-forward sorun giderme rehb
 
 ## 1. Uygulamayı edinme ve açma — iki kişi de
 
+Arkadaşınız Claude Code ile terminalden deneyecekse [peer paketi yönergesini](PEER_TRIAL_CLAUDE.md) kullanın. Pakette aynı belge `CLAUDE.md`, yanında Desktop ve CLI executable'ları bulunur. Özel davet ayrıca paylaşılır; pakete anahtar/profil/proje dosyası konmaz.
+
 Proje sahibinden aynı sürüme ait `trackmesh-desktop.exe` ve varsa gerekli native bağımlılıkları alın. Windows 10/11 x64 ve WebView2 gerekir. Bu dosya bir installer değildir; çift tıklayarak çalıştırılır. Dağıtım paketinin başka bir Windows PC'deki çalışma durumu ayrıca doğrulanmalıdır. Eksik DLL veya WebView2 hatası alırsanız hata metnini proje sahibine iletin.
 
 Kaynak koddan hazırlayacak kişi için Rust, Visual Studio C++ Build Tools/Windows SDK ve desteklenen Node/npm gerekir. Bilinen çalışan sürümler Rust 1.98.1 ve Node 24.19'dur. x64 Visual Studio developer shell içinde:

@@ -339,6 +339,16 @@ Added a short seven-step A/B checklist at the beginning of `MANUAL_TRIAL.md` and
 
 Checks: documentation reviewed against the existing guide and the manufacturer's port-forward troubleshooting reference; local Markdown links and `git diff --check` passed. Documentation only: no application code/contracts changed, and no builds, automated tests, benchmarks or manual network operations ran. Next action remains an actual two-PC trial, recording the failing step and observed message here.
 
+### Peer trial executable package (2026-10-07)
+
+Prepared a private manual-trial ZIP under ignored `.build/peer-packages/TrackMesh-PeerTrial-20261007-162413.zip` (14,539,736 bytes). It contains only release x64 `trackmesh-desktop.exe`, `trackmesh-agent.exe`, app-local `vcruntime140.dll` from Visual Studio's redistributable directory, `CLAUDE.md`, public build metadata and SHA-256 sums. Application code is from `32941db`; no application source changed for packaging. The ZIP does not include invitations, project files, data profiles, databases or secrets, and is not an installer or a public release upload.
+
+The source template `PEER_TRIAL_CLAUDE.md` is linked from the documentation index and manual trial guide. It instructs a collaborator's Claude Code to import a private invitation by path without reading its payload, export a device card, wait for mutual pairing/source snapshot, obtain UUIDs from safe local status, then check/receive/check. A separate persistent trial data profile avoids existing profiles; CLI network jobs and Desktop must not compete for its owner lease. The source remains online in Desktop. Mailbox/relay and Windows canonical path limitations are described; no automatic firewall/router/UAC/service setup was added.
+
+Checks performed for this package: supported Node 24.19 `npm run typecheck` and `npm run build` passed; `cargo build -p trackmesh-core -p trackmesh-desktop --release --locked --offline` passed with Rust 1.98.1. Release CLI top-level/join/card/check/receive help and Desktop help passed. `dumpbin /DEPENDENTS` inspected both executable imports and the app-local CRT; packaged executables passed help checks as well. Copied executables match build hashes; ZIP entry allowlist and every archived file hash match the source package. Local Markdown links and Git whitespace checks passed. ZIP SHA-256: `149b61f085e9b94551f1f359515bab8fe46959877bb81b4b227eca4ab5b532dc`.
+
+No automated tests/benchmarks, clean second-PC launch, real invitation import, DAW operation or Internet transfer ran for this package. Desktop still requires WebView2 on the recipient PC; CLI does not. Next action: privately send the ZIP plus a separately exported public-address invitation, import the collaborator's returned device card in the sender's Desktop, create a snapshot, and record actual Check/Receive outcomes on two PCs here.
+
 ## Remaining integration work
 
 Deploy the Phase 3 services with real DNS, valid HTTPS certificates, private ACLs, pinned infrastructure PeerId, and reachable advertised addresses; then validate on two real Windows PCs. Real firewall behavior, Internet NAT traversal, forced circuit relay, and DCUtR remain unverified. Direct transfers still do not imply a mailbox acknowledgement.
