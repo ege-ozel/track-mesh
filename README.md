@@ -4,6 +4,8 @@ Private Windows transfer of Ableton Live and FL Studio project folders between t
 
 **Current implementation: Phases 1–8, runnable through the Rust CLI, Windows Tauri 2/React desktop, native C++ VST3/Named Pipe surface, and separate infrastructure services.** Manual snapshot/publication, receive/resume, pairing, bounded remote history, offline availability, divergence UX, event-triggered settled save/publication and session/work-based owner retention are implemented locally. The plugin was operated in the official SDK editor host; simulated save events, loopback publication, and disposable remote-history/divergence surfaces were validated. Actual DAW save/reopen/audio/hooks and real NAT/HTTPS deployment remain unverified.
 
+For a first trial with a collaborator, follow the [two-PC desktop trial steps (Türkçe)](docs/MANUAL_TRIAL.md): launch the executable, configure LAN/public IP and TCP/UDP forwarding, exchange private invitations/cards, and receive a snapshot. There is no installer yet; the app guides connection setup but does not configure the router or Windows Firewall automatically.
+
 Build on Windows with Rust and the Visual Studio C++ build tools:
 
 ```powershell
