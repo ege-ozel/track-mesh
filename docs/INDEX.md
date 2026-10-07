@@ -6,6 +6,7 @@ Choose the page for the current task; these pages are not a required reading seq
 | --- | --- |
 | [Root README](../README.md) | Product status and quick build entry point |
 | [Two-PC desktop trial (Türkçe)](MANUAL_TRIAL.md) | First executable launch, LAN/Internet setup, firewall/router obstacles, private pairing, and manual snapshot/receive steps |
+| [Sender/receiver checklist (Türkçe)](TWO_PC_CHECKLIST.md) | Ordered A/B actions, TP-Link form fields, firewall profiles, private ZIP/invitation exchange, and continuation after the peer card arrives |
 | [Peer trial Claude instructions (Türkçe)](PEER_TRIAL_CLAUDE.md) | Distribution-package instructions for a collaborator's terminal join/card/check/receive, with private documents kept out of agent context |
 | [Agent entry point](../AGENTS.md) | Repository rules and task routing |
 | [Code map](CODEMAP.md) | Exact file ownership, public entry points, and targeted searches |
