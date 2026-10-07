@@ -7,6 +7,7 @@ Paths are relative to repository root. A crate's `src/lib.rs` lists its public A
 | Task | Primary owner | Related boundary |
 | --- | --- | --- |
 | Link folder, pair device, import/export invitation | `crates/core/src/lib.rs` | Snapshot, crypto, and storage APIs |
+| Public IPv4 endpoint validation/construction for adapters | `crates/core/src/connection.rs` | Native desktop invitation export; no swarm restart |
 | Manual/settled snapshot creation, unchanged-content reuse and commit | `crates/core/src/snapshots.rs` | Project lock, snapshot scanner and transactional storage |
 | Local status, compare with online peer, receive from peer, recover | `crates/core/src/workflows.rs` | `peer.rs`, transfer API |
 | Bounded project/peer metadata cards, remote history and known lineage | `crates/core/src/status.rs` | Narrow bounded storage queries; existing CLI status unchanged |

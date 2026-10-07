@@ -7,6 +7,45 @@ const time = (value: string | null | undefined) => value ? new Date(value).toLoc
 const bytes = (n: number) => n >= 1024 ** 3 ? `${(n / 1024 ** 3).toFixed(1)} GB` : n >= 1024 ** 2 ? `${(n / 1024 ** 2).toFixed(1)} MB` : n >= 1024 ? `${(n / 1024).toFixed(1)} KB` : `${n} B`;
 const CHECK_TIMEOUT_SECONDS = 30;
 
+function publicIpv4(value: string) {
+  const parts = value.split('.');
+  if (parts.length !== 4 || parts.some(p => !/^(0|[1-9]\d{0,2})$/.test(p) || Number(p) > 255)) return false;
+  const [a, b, c] = parts.map(Number);
+  return a > 0 && a < 224 && a !== 10 && a !== 127
+    && !(a === 100 && b >= 64 && b <= 127) && !(a === 169 && b === 254)
+    && !(a === 172 && b >= 16 && b <= 31) && !(a === 192 && b === 168)
+    && !(a === 192 && b === 0 && c === 2) && !(a === 198 && b === 51 && c === 100)
+    && !(a === 203 && b === 0 && c === 113) && !(a === 198 && (b === 18 || b === 19));
+}
+
+function ConnectionSetup({ status, projectId, busy, act }: { status: DesktopStatus; projectId: string; busy: boolean; act: (action: Action) => Promise<void> }) {
+  const [ip, setIp] = useState('');
+  const [port, setPort] = useState(String(status.listen_port));
+  const publicIp = ip.trim();
+  const validPort = /^\d{1,5}$/.test(port) && Number(port) > 0 && Number(port) <= 65535;
+  const valid = publicIpv4(publicIp) && validPort;
+  const addresses = status.network?.addresses ?? [];
+  const localIps = [...new Set(addresses.flatMap(address => {
+    const match = address.match(/^\/ip4\/([^/]+)\/(tcp|udp)\/(\d+)(?:\/|$)/);
+    return match && match[1] !== '0.0.0.0' && !match[1].startsWith('127.') && Number(match[3]) === status.listen_port ? [match[1]] : [];
+  }))];
+  return <details className="connection-setup"><summary>Connection setup</summary>
+    <p>Local listen port: <strong>{status.listen_port}</strong> (default 43101). This session keeps its listen port; a different local port requires reopening with that startup port after the current owner exits.</p>
+    <p>Local IPv4 / destination port: {localIps.length ? localIps.map(localIp => <code key={localIp}>{localIp}:{status.listen_port} </code>) : 'Waiting for a local IPv4 listen address. Do not use 0.0.0.0 as the router destination.'}</p>
+    <p>Select the IP on the network connected to your router. Reserve that PC address in the router DHCP settings.</p>
+    <div className="connection-inputs"><label>Public IPv4 (router WAN / ISP)<input value={ip} maxLength={15} disabled={busy} onChange={e => setIp(e.target.value)} placeholder="Enter public IPv4" /></label>
+      <label>External router port<input type="number" min={1} max={65535} value={port} disabled={busy} onChange={e => setPort(e.target.value)} /></label></div>
+    {publicIp && !valid && <p className="error">Enter a public IPv4 and a port from 1 to 65535.</p>}
+    <p>CGNAT / private ranges: 100.64.0.0/10, 10/8, 172.16/12 and 192.168/16 are not public IPs. If your router WAN is in these ranges, ask your ISP for a reachable public IPv4 or use a configured private relay. Entering an address does not verify reachability.</p>
+    {valid && <div className="connection-addresses"><code>/ip4/{publicIp}/tcp/{port}</code><code>/ip4/{publicIp}/udp/{port}/quic-v1</code></div>}
+    <p>Router port forwarding: TCP {validPort ? port : 'PORT'} → this PC, local port {status.listen_port}; UDP {validPort ? port : 'PORT'} → this PC, local port {status.listen_port}. In Windows Firewall, allow TrackMesh inbound TCP {status.listen_port} and UDP {status.listen_port} on the active network profile. No firewall or router rules are changed automatically.</p>
+    <p>Keep TrackMesh open, configure forwarding and firewall, then export. The generated public endpoints are included in this invitation only; these fields are not saved or advertised by the running swarm. Re-export and privately exchange a new invitation if the public IP changes.</p>
+    <button disabled={busy || !valid} onClick={() => act({ kind: 'export_invite', project_id: projectId, public_ip: publicIp, external_port: Number(port) })}>Export invitation with public addresses</button>
+    <details><summary>Current advertised / listen addresses</summary>{addresses.map(address => <code className="connection-address" key={address}>{address}</code>)}
+      {status.configured_external_addresses.map(address => <code className="connection-address" key={`external-${address}`}>{address} (startup external address)</code>)}</details>
+  </details>;
+}
+
 function Snapshot({ value, empty }: { value: SnapshotInfo | null; empty: string }) {
   return value ? <><div className="snapshot-id">{short(value.snapshot_id)} <span>{value.metadata_status}</span></div>
     <p>{value.author_name} · {time(value.created_at)}</p>
@@ -60,7 +99,7 @@ function Card({ card, status, jobStartedAt, act }: { card: ProjectCard; status: 
         </details>}</section></div>
     <div className="peer-line"><label>Collaborator <select value={peerId ?? ''} disabled={busy || !card.peers.length} onChange={e => { setSelected(e.target.value); setDawClosed(false); }}>
       {!card.peers.length && <option value="">No paired devices</option>}{card.peers.map(p => <option key={p.device.device_id} value={p.device.device_id}>{p.device.name}</option>)}</select></label>
-      <span className="muted">{online ? connection?.transport.toUpperCase() : 'Last-known status'}</span>
+      <span className="muted">{online ? connection?.transport.toUpperCase() : 'Last-known status · Check peer may take up to 30s'}</span>
       <button className="text-button" disabled={busy || !peer} onClick={() => peer && act({ kind: 'check', project_id: project.project_id, device_id: peer.device.device_id })}>Check peer</button></div>
     <div className={`verification ${divergence ? 'danger' : ''}`}>
       {fresh && check?.result.verified_equal ? `UP TO DATE · verified ${check.age_seconds}s ago`
@@ -81,9 +120,11 @@ function Card({ card, status, jobStartedAt, act }: { card: ProjectCard; status: 
     {job && <div className={`job ${job.error ? 'danger' : ''}`} role="status">{jobStatus(job, jobStartedAt[job.job_id])}</div>}
     <details className="setup"><summary>Collaboration & connection details</summary>
       <p className="muted">Pair both directions. Invitations contain a private project capability; exchange files privately.</p>
-      <div className="actions"><button disabled={busy} onClick={() => request('export_invite')}>Export private invitation</button><button disabled={busy} onClick={() => request('pair')}>Import collaborator card</button>
+      <div className="actions"><button disabled={busy} onClick={() => request('export_invite')}>Export invitation with current addresses</button><button disabled={busy} onClick={() => request('pair')}>Import collaborator card</button>
         <button className="text-button danger" disabled={busy || !peer} onClick={() => peer && window.confirm(`Remove ${peer.device.name}'s local access to this project? Infrastructure ACLs also need an operator update.`) && act({ kind: 'revoke', project_id: project.project_id, device_id: peer.device.device_id })}>Revoke selected peer</button></div>
       <p>UUID <code>{project.project_id}</code></p><p>Mailbox <code>{project.mailbox_url ?? 'Not configured'}</code></p><p>Relay <code>{project.relay_address ?? 'Not configured'}</code></p>
+      <p>Mailbox stores encrypted metadata / snapshot announcements only. It does not carry project files. A configured private relay provides a peer connection path when direct connection fails; file transfer still requires the collaborator online.</p>
+      <ConnectionSetup status={status} projectId={project.project_id} busy={busy} act={act} />
     </details>
   </article>;
 }

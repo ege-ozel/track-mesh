@@ -7,7 +7,9 @@ use std::{
 };
 use storage::Store;
 use uuid::Uuid;
+mod connection;
 mod mailbox;
+pub use connection::public_ipv4_addresses;
 pub mod peer;
 pub use mailbox::{MailboxRuntime, PublicationStatus, RefreshStatus};
 mod workflows;

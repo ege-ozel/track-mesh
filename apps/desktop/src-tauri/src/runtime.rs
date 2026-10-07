@@ -64,6 +64,8 @@ pub enum Action {
     },
     ExportInvite {
         project_id: Uuid,
+        public_ip: Option<String>,
+        external_port: Option<u16>,
     },
     ExportCard,
     Send {
@@ -98,7 +100,7 @@ impl Action {
             Self::Link { project_id, .. }
             | Self::Pair { project_id }
             | Self::Revoke { project_id, .. }
-            | Self::ExportInvite { project_id }
+            | Self::ExportInvite { project_id, .. }
             | Self::Send { project_id }
             | Self::Publish { project_id }
             | Self::Refresh { project_id }
@@ -159,6 +161,8 @@ pub struct CheckView {
 
 #[derive(Serialize)]
 pub struct DesktopStatus {
+    pub listen_port: u16,
+    pub configured_external_addresses: Vec<String>,
     pub ready: bool,
     pub closing: bool,
     pub device: Option<Device>,
@@ -436,6 +440,8 @@ impl Desktop {
                     .map(|_| "Metadata worker stopped; reopen the desktop to retry".to_owned())
             });
         Ok(DesktopStatus {
+            listen_port: self.options.port,
+            configured_external_addresses: self.options.external_address.clone(),
             ready: state.ready,
             closing: state.closing,
             device: state.device.clone(),
@@ -613,7 +619,19 @@ impl Desktop {
                             disk.revoke(project_id, device_id)?;
                             Ok(json!({"message": "Project access revoked locally. The service operator must also update infrastructure ACLs."}))
                         }
-                        Action::ExportInvite { project_id } => {
+                        Action::ExportInvite { project_id, public_ip, external_port } => {
+                            match (public_ip, external_port) {
+                                (Some(ip), Some(port)) => {
+                                    // Keep the explicitly entered endpoints ahead of the bounded local list.
+                                    let mut external = trackmesh_core::public_ipv4_addresses(&ip, port)?;
+                                    addresses.retain(|address| !external.contains(address));
+                                    external.extend(addresses);
+                                    addresses = external;
+                                    addresses.truncate(16);
+                                }
+                                (None, None) => {}
+                                _ => anyhow::bail!("Public IPv4 and external port must be supplied together"),
+                            }
                             let invite = disk.export_invite(project_id, addresses)?;
                             let path = documents::write_document(&app, "trackmesh-invite.json", &invite)?;
                             Ok(json!({"message": "Private invitation saved", "path": path}))
