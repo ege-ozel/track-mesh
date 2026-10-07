@@ -333,6 +333,12 @@ Added `MANUAL_TRIAL.md` (Turkish) and entry links in README, the documentation i
 
 Documentation was checked against current desktop/core code and official Microsoft firewall/RFC 6598 references; local Markdown links and Git whitespace were checked. No application code, secrets, protocols, schema/state labels or recovery order changed. No builds, automated tests, benchmarks or live two-PC operations were run for this documentation change. Installer packaging and real Windows/NAT/firewall/relay trial results remain unverified; next action is to follow the guide with two collaborators and record actual outcomes here.
 
+### Trial quick checklist follow-up (2026-10-07)
+
+Added a short seven-step A/B checklist at the beginning of `MANUAL_TRIAL.md` and an ordered symptom/action table for missing firewall permission, managed rules, disabled/locked modem forwarding, external-port conflicts, timeout, CGNAT, double NAT, changed addresses and Receive prerequisites. Public/external and local ports remain distinct; entered fields do not configure router/firewall rules. The guide treats timeout as an observation, not a diagnosis, and requires prepared infrastructure for a relay fallback.
+
+Checks: documentation reviewed against the existing guide and the manufacturer's port-forward troubleshooting reference; local Markdown links and `git diff --check` passed. Documentation only: no application code/contracts changed, and no builds, automated tests, benchmarks or manual network operations ran. Next action remains an actual two-PC trial, recording the failing step and observed message here.
+
 ## Remaining integration work
 
 Deploy the Phase 3 services with real DNS, valid HTTPS certificates, private ACLs, pinned infrastructure PeerId, and reachable advertised addresses; then validate on two real Windows PCs. Real firewall behavior, Internet NAT traversal, forced circuit relay, and DCUtR remain unverified. Direct transfers still do not imply a mailbox acknowledgement.
