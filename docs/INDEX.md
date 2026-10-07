@@ -5,6 +5,7 @@ Choose the page for the current task; these pages are not a required reading seq
 | Page | Purpose |
 | --- | --- |
 | [Root README](../README.md) | Product status and quick build entry point |
+| [Two-PC desktop trial (Türkçe)](MANUAL_TRIAL.md) | First executable launch, LAN/Internet setup, firewall/router obstacles, private pairing, and manual snapshot/receive steps |
 | [Agent entry point](../AGENTS.md) | Repository rules and task routing |
 | [Code map](CODEMAP.md) | Exact file ownership, public entry points, and targeted searches |
 | [Architecture](ARCHITECTURE.md) | Dependency boundaries, durable flows, and security/recovery invariants |

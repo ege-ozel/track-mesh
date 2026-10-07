@@ -317,8 +317,6 @@ Checks performed on 2026-10-05 with Rust 1.98.1, supported Node 24.19.0, MSVC 14
 
 The disposable profile was copied under ignored `.build/phase8-manual-remote-workflow`; original historical fixture data and project folders were not changed. The source peer and mailbox were intentionally offline, so Phase 8 did not rerun a live receive, mailbox refresh, direct/relayed connection, recovery or fresh equality ACK. The current VST3 target was compiled, but its native editor view was not reopened for this phase. Real Ableton/FL Studio UUID restore, audio, save/session events, forced host termination, HTTPS deployment and two-PC NAT/relay/DCUtR remain unverified.
 
-## Remaining integration work
-
 ### Desktop connection setup follow-up (2026-10-07)
 
 Implemented on local `codex/phase-8-connection-setup`. Collaboration details now show a Connection setup panel with live network listen addresses, local IPv4/port destinations, the current listen port (default 43101), public IPv4 and external router port entry, TCP/QUIC multiaddr previews, Windows Firewall/port-forward guidance and CGNAT/private-address warnings. Offline Check peer help states the existing 30-second connection window; the running countdown remains intact. Mailbox help describes encrypted metadata only, and relay help describes the fallback peer path with an online source.
@@ -328,6 +326,12 @@ The desktop export action accepts optional public IPv4/external port fields. Cor
 Public entry is per export and is not persisted or applied to the running swarm. The external router port may differ from the fixed local listen port; guidance maps both TCP and UDP to that local port. Changing the local listener still requires a new startup configuration after the existing owner exits. The UI does not detect public IP, configure router/firewall rules, verify reachability or diagnose CGNAT automatically.
 
 Checks: supported Node 24.19 `npm ci`, `npm run typecheck` and `npm run build` passed; `cargo fmt --all -- --check`, `cargo check -p trackmesh-core -p trackmesh-desktop --locked --offline` and `cargo clippy -p trackmesh-core -p trackmesh-desktop --lib --bins --locked --offline -- -D warnings` passed. Initial sandbox/offline npm installation lacked the Vite cache; installation succeeded with the locked dependencies through normal registry access. `cargo build -p trackmesh-core -p trackmesh-desktop --locked --offline` and `target/debug/trackmesh-desktop.exe --help` also passed; the final desktop build includes the final static frontend. No live WebView/native invitation export or two-PC NAT/firewall/relay operation was performed for this follow-up. Next concrete validation: configure two real Windows PCs, export through the public-address button, privately exchange invitations/cards and run Check peer/direct Receive over separate networks.
+
+### Manual two-PC trial documentation (2026-10-07)
+
+Added `MANUAL_TRIAL.md` (Turkish) and entry links in README, the documentation index and the desktop operation guide. The guide separates current executable/source-build operation from future installer work, covers LAN and separate-Internet trials, Windows Firewall TCP/UDP rules, router mapping, CGNAT/double-NAT/disabled forwarding, public-address invitation export, mutual pairing and direct snapshot/Receive. It explicitly records per-export public fields, the device-card export limitation, optional metadata-only mailbox/private relay, 30-second Check peer, pending-publication retention and safe recovery.
+
+Documentation was checked against current desktop/core code and official Microsoft firewall/RFC 6598 references; local Markdown links and Git whitespace were checked. No application code, secrets, protocols, schema/state labels or recovery order changed. No builds, automated tests, benchmarks or live two-PC operations were run for this documentation change. Installer packaging and real Windows/NAT/firewall/relay trial results remain unverified; next action is to follow the guide with two collaborators and record actual outcomes here.
 
 ## Remaining integration work
 
