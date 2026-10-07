@@ -4,6 +4,38 @@ Bu belge uygulamayı ilk kez deneyecek proje sahibi ve collaborator (peer) için
 
 İlk denemede **A** daveti ve snapshot'ı gönderen bilgisayar, **B** daveti kabul edip dosyaları alan bilgisayar olsun. Küçük, gözden çıkarılabilir bir proje kopyası kullanın. Gerçek DAW projesiyle başlamayın. İlk aktarım için VST3 kurmanız gerekmez.
 
+## Hızlı deneme: sırayla yapacaklarımız
+
+İki farklı internet bağlantısı için bağlantı yolu: **B → A'nın public IP'si ve dış portu → A'nın modemi → A'nın yerel PC IP'si ve local portu → TrackMesh**. Windows Firewall da bu PC'ye gelen bağlantıya izin vermeli. Bir noktadaki engel tüm yolu kesebilir; Check peer timeout tek başına hangi noktanın hatalı olduğunu söylemez.
+
+1. **İkiniz de uygulamayı açın.** Aynı sürümü kullanın. A küçük bir deneme klasörünü **Link folder** ile bağlasın; B almak için boş bir klasör hazırlasın. İlk denemede mailbox/relay boş kalabilir.
+2. **A yerel IP/portu not etsin.** **Collaboration & connection details → Connection setup** içinde örneğin `192.168.1.50:43101` görürsünüz. Bu IP modemde hedef olacak. Kendi IP'nizi kullanın.
+3. **A firewall iznini versin.** Gelen TCP `43101` ve UDP `43101` için izin kuralı oluşturun; kurallar aktif Windows ağ profilinde geçerli olsun. Uygulama bunu otomatik yapmaz.
+4. **A modemden port yönlendirsin.** TCP `43101 → PC_IP:43101` ve UDP `43101 → PC_IP:43101` kurallarını etkinleştirip kaydedin. Modemin WAN adresinin public IPv4 olup olmadığını kontrol edin. Aynı LAN'daysanız bu adımı atlayın.
+5. **Daveti ve karşı kartı değişin.** Ayrı internetlerde A, public IP + dış portu girip **Export invitation with public addresses** kullansın. Aynı LAN'da **Export invitation with current addresses** yeterli. B daveti **Import invitation** ile açsın, kendi kartını **Export my device card** ile A'ya göndersin. A da **Import collaborator card** yapsın. Dosyaları özel kanaldan paylaşın.
+6. **A → Send Snapshot.** Yerel snapshot oluşmasını bekleyin. Mailbox yoksa `PENDING` dosya aktarımının kesin başarısız olduğu anlamına gelmez.
+7. **B → Check peer → Receive.** Check peer için 30 saniyeye kadar bekleyin. Erişim sağlandıysa B DAW'ı kapatıp onay kutusunu işaretlesin ve Receive yapsın. İkiniz de uygulamayı açık tutun. Bitince dosyaları ve yeniden Check peer sonucunu kontrol edin.
+
+Local portunuz farklıysa `43101` yerine paneldeki portu kullanın. Her değişiklikten sonra B'den Check peer'ı yeniden deneyin; aynı anda birden çok ayarı değiştirmeyin.
+
+### Takılırsak: belirti → sonraki adım
+
+Tabloyu sırayla inceleyin; size uymayan satırı geçin. İnternete geçmeden aynı LAN'da deneme yapabiliyorsanız, LAN'da çalışan aktarım uygulama/pairing tarafını ayırmaya yardımcı olur.
+
+| Takıldığımız yer | Şimdi ne yapacağız? |
+| --- | --- |
+| **Firewall izni hiç verilmedi / izin penceresi gelmedi** | A'da Windows Güvenliği → Firewall → Gelişmiş ayarlar → Gelen Kuralları üzerinden TCP ve UDP local port izinlerini elle ekleyin. Popup gelmesini beklemeyin; firewall'ı tamamen kapatmayın. |
+| **Firewall kuralını ekleyemiyoruz veya hâlâ engelleniyor** | Windows yönetici yetkisini, kuralın etkinliğini ve aktif Private/Public ağ profilini kontrol edin. Kurumsal politika/başka güvenlik yazılımı yönetiyorsa yetkili kişiden izin isteyin. |
+| **Modemde port-forward kapalı / menü yok / erişim reddedildi** | Kuralı ve varsa port-forward özelliğini etkinleştirin. Ayar ISP/yönetici tarafından kilitliyse onlardan açılmasını isteyin. Yetki alınamıyorsa erişilebilir başka ağ veya hazır özel relay gerekir; uygulamadan bu kilidi açamayız. |
+| **Modem “port kullanımda” diyor** | Çakışan kuralı kontrol edin. Kullanılmayan bir dış port seçebilirsiniz: örneğin TCP ve UDP `45000 → PC_IP:43101`. UI'da External router port `45000` olur; firewall local portu `43101` kalır. Yeni public-address davetini B'ye gönderin. |
+| **Kural kaydoldu ama Check peer timeout oluyor** | A açık mı ve pairing iki yönde tamam mı? Sonra hedef LAN IP, iç/dış port, TCP ve UDP kurallarının etkinliği ve firewall profilini kontrol edin. B gerçekten ayrı internetten denesin. Kuralın kaydolması dışarıdan erişildiğini kanıtlamaz. |
+| **WAN IP 100.64–100.127 ile başlıyor; ISP CGNAT olduğunu doğruluyor** | Kendi modeminizde port açmak ISP'nin NAT katmanını açmaz. ISP'den erişilebilir public IPv4 isteyin; alamıyorsanız hazır özel relay veya uygun başka ağ kullanın. Aynı port kuralını tekrar tekrar değiştirmek çözmez. |
+| **WAN IP 10.x / 172.16–31.x / 192.168.x** | Önde başka router mı var, yoksa ISP özel IP mi veriyor, belirleyin. İki yerel router varsa iki katmanda yönlendirme gerekir; ISP tarafındaysa public IPv4/relay yoluna geçin. |
+| **Daha önce çalıştı, bugün çalışmıyor** | A'nın LAN IP'si veya public IP'si değişmiş olabilir. LAN IP için modem hedefini/adres rezervasyonunu düzeltin; public IP/dış port değiştiyse yeni daveti çıkarıp B'de aynı proje klasörüne import edin. |
+| **Check peer çalışıyor ama Receive pasif/reddediliyor** | Modem ayarını değiştirmeden A'da snapshot olduğunu, B'de doğru peer ve DAW-closed onayını, yerel değişiklik/divergence/recovery mesajlarını kontrol edin. |
+
+Modem arızalarını ayırmak için [üreticinin port-forward sorun giderme rehberi](https://www.tp-link.com/uk/support/faq/785/) de WAN IP, upstream NAT ve firewall kontrollerini anlatır; menü adları sizin modeminizde farklı olabilir. Aşağıdaki bölümler bu kısa sıranın ayrıntılarıdır. Henüz hazır relay'iniz yoksa bunu anında kullanılabilecek bir fallback gibi düşünmeyin; önce operatör kurulumu ve erişim izinleri gerekir.
+
 ## 1. Uygulamayı edinme ve açma — iki kişi de
 
 Proje sahibinden aynı sürüme ait `trackmesh-desktop.exe` ve varsa gerekli native bağımlılıkları alın. Windows 10/11 x64 ve WebView2 gerekir. Bu dosya bir installer değildir; çift tıklayarak çalıştırılır. Dağıtım paketinin başka bir Windows PC'deki çalışma durumu ayrıca doğrulanmalıdır. Eksik DLL veya WebView2 hatası alırsanız hata metnini proje sahibine iletin.
