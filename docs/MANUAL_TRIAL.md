@@ -4,6 +4,8 @@ Bu belge uygulamayı ilk kez deneyecek proje sahibi ve collaborator (peer) için
 
 İlk denemede **A** daveti ve snapshot'ı gönderen bilgisayar, **B** daveti kabul edip dosyaları alan bilgisayar olsun. Küçük, gözden çıkarılabilir bir proje kopyası kullanın. Gerçek DAW projesiyle başlamayın. İlk aktarım için VST3 kurmanız gerekmez.
 
+Modem/firewall ayarlarından karşı tarafın kartını beklemeye ve ilk Receive'e kadar işlemleri işaretleyerek takip etmek için [gönderen/alıcı kontrol listesini](TWO_PC_CHECKLIST.md) kullanın.
+
 ## Hızlı deneme: sırayla yapacaklarımız
 
 İki farklı internet bağlantısı için bağlantı yolu: **B → A'nın public IP'si ve dış portu → A'nın modemi → A'nın yerel PC IP'si ve local portu → TrackMesh**. Windows Firewall da bu PC'ye gelen bağlantıya izin vermeli. Bir noktadaki engel tüm yolu kesebilir; Check peer timeout tek başına hangi noktanın hatalı olduğunu söylemez.

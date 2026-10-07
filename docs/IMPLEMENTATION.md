@@ -349,6 +349,16 @@ Checks performed for this package: supported Node 24.19 `npm run typecheck` and 
 
 No automated tests/benchmarks, clean second-PC launch, real invitation import, DAW operation or Internet transfer ran for this package. Desktop still requires WebView2 on the recipient PC; CLI does not. Next action: privately send the ZIP plus a separately exported public-address invitation, import the collaborator's returned device card in the sender's Desktop, create a snapshot, and record actual Check/Receive outcomes on two PCs here.
 
+### Guided sender setup and two-PC checklist (2026-10-07)
+
+During the user-guided trial, the sender's Desktop Connection setup showed local listener 43101, two interface addresses and a manually entered router WAN IPv4 outside the private/shared ranges. A read-only `Get-NetConnectionProfile`/`Get-NetIPAddress` inspection confirmed that the router-subnet PC address belonged to the active Wi-Fi interface with Windows category Public. The user reported saving TP-Link TCP/UDP port-forward rules and completing Windows Firewall rules after guidance to use normal Allow and the active profile; router/firewall rule contents were not independently read back. No full public IPv4, credentials or invitation payload are recorded here.
+
+Added reusable `TWO_PC_CHECKLIST.md` with sender/receiver responsibilities, the observed TP-Link form fields, Windows rule/profile choices, private ZIP plus separate invitation handoff, Claude/card steps, and the continuation when the collaborator's card arrives. Links were added to the index and manual trial guide. This is an operational checklist; this implementation record remains the authoritative validation history.
+
+The user is waiting on the collaborator. Invitation delivery/import, returned card, mutual pairing, fresh check, direct/relayed receive and DAW reopening have not been confirmed. Next action: receive the collaborator's card, import it into the existing sender project, create/confirm the current snapshot, keep the source online, and run the collaborator's check/receive/check sequence.
+
+Documentation-only follow-up: local Markdown links and Git whitespace checks passed; no application code/contracts changed and no builds, automated tests, benchmarks or network-transfer operations ran for this edit. The earlier executable ZIP remains unchanged.
+
 ## Remaining integration work
 
 Deploy the Phase 3 services with real DNS, valid HTTPS certificates, private ACLs, pinned infrastructure PeerId, and reachable advertised addresses; then validate on two real Windows PCs. Real firewall behavior, Internet NAT traversal, forced circuit relay, and DCUtR remain unverified. Direct transfers still do not imply a mailbox acknowledgement.
