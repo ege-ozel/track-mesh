@@ -65,6 +65,14 @@ function jobStatus(job: DesktopStatus['jobs'][number], startedAt: number | undef
   return `Check peer… trying to reach collaborator for up to ${CHECK_TIMEOUT_SECONDS}s (${remaining}s left)`;
 }
 
+function JobNotice({ job, startedAt }: { job: DesktopStatus['jobs'][number]; startedAt: number | undefined }) {
+  const warning = job.error || job.outcome?.reply_saved === false;
+  return <div className={`job ${warning ? 'danger' : ''}`} role="status">
+    {jobStatus(job, startedAt)}
+    {typeof job.outcome?.path === 'string' && <p>Saved file: <code>{job.outcome.path}</code></p>}
+  </div>;
+}
+
 function Card({ card, status, jobStartedAt, act }: { card: ProjectCard; status: DesktopStatus; jobStartedAt: Record<string, number>; act: (action: Action) => Promise<void> }) {
   const [selected, setSelected] = useState('');
   const [dawClosed, setDawClosed] = useState(false);
@@ -117,10 +125,20 @@ function Card({ card, status, jobStartedAt, act }: { card: ProjectCard; status: 
       {project.recovery_required && <button disabled={busy || !dawClosed} onClick={() => act({ kind: 'recover', project_id: project.project_id, daw_closed: dawClosed })}>Recover locally</button>}
       <button disabled={busy || !project.mailbox_url} onClick={() => request('refresh')}>Refresh metadata</button>
       <button disabled={busy || !project.mailbox_url || !card.pending_publications} onClick={() => request('publish')}>Retry publication</button></div>
-    {job && <div className={`job ${job.error ? 'danger' : ''}`} role="status">{jobStatus(job, jobStartedAt[job.job_id])}</div>}
+    {job && <JobNotice job={job} startedAt={jobStartedAt[job.job_id]} />}
     <details className="setup"><summary>Collaboration & connection details</summary>
-      <p className="muted">Pair both directions. Invitations contain a private project capability; exchange files privately.</p>
-      <div className="actions"><button disabled={busy} onClick={() => request('export_invite')}>Export invitation with current addresses</button><button disabled={busy} onClick={() => request('pair')}>Import collaborator card</button>
+      <details className="pairing-setup"><summary>Pair collaborator</summary>
+        <ol>
+          <li><strong>Send an invitation.</strong> Use current addresses on the same LAN, or public addresses in Connection setup below for separate Internet connections. Share the invitation privately.</li>
+          <li><strong>Your collaborator accepts it.</strong> Accept invitation imports the project and opens a save dialog for their pairing reply. They send that saved reply back to you.</li>
+          <li><strong>Open the reply for this project.</strong> This authorizes their device. Tell them pairing is complete, then Send Snapshot and keep TrackMesh open while they Check peer and Receive.</li>
+        </ol>
+        <div className="actions"><button disabled={busy} onClick={() => request('export_invite')}>Export invitation with current addresses</button>
+          <button disabled={busy} onClick={() => request('pair')}>Open pairing reply</button>
+          <button className="text-button" disabled={busy} onClick={() => act({ kind: 'export_card' })}>Save pairing reply again</button></div>
+        <p>The reply contains your signed device identity; it also works with an existing device card. It does not grant access until the inviter opens it for the intended project. If you cancelled saving a reply, save it again here. Invitations contain a private project capability; their contents stay in the native backend.</p>
+      </details>
+      <div className="actions">
         <button className="text-button danger" disabled={busy || !peer} onClick={() => peer && window.confirm(`Remove ${peer.device.name}'s local access to this project? Infrastructure ACLs also need an operator update.`) && act({ kind: 'revoke', project_id: project.project_id, device_id: peer.device.device_id })}>Revoke selected peer</button></div>
       <p>UUID <code>{project.project_id}</code></p><p>Mailbox <code>{project.mailbox_url ?? 'Not configured'}</code></p><p>Relay <code>{project.relay_address ?? 'Not configured'}</code></p>
       <p>Mailbox stores encrypted metadata / snapshot announcements only. It does not carry project files. A configured private relay provides a peer connection path when direct connection fails; file transfer still requires the collaborator online.</p>
@@ -191,20 +209,20 @@ export default function App() {
       {(error || status?.error || status?.network?.error) && <div className="notice danger" role="alert">{error || status?.error || status?.network?.error}</div>}
       {status?.closing && <div className="notice">Work finished. TRACKMESH is shutting down safely.</div>}
       <div className="section-heading"><div><h2>Projects</h2><span className="muted">Project files travel between collaborator PCs.</span></div><div className="actions">
-        <button disabled={busy} onClick={() => { setSetup('join'); setFolder(''); }}>Import invitation</button>
+        <button disabled={busy} onClick={() => { setSetup('join'); setFolder(''); }}>Accept invitation</button>
         <button className="primary" disabled={busy} onClick={() => { setSetup('link'); setFolder(''); setUuid(''); setName(''); }}>+ Link folder</button></div></div>
-      {setup && <section className="setup-panel"><h2>{setup === 'join' ? 'Join a private project' : 'Link a local project'}</h2>
+      {setup && <section className="setup-panel"><h2>{setup === 'join' ? 'Pair with an inviter' : 'Link a local project'}</h2>
         {setup === 'link' && <><label>Project name<input value={name} maxLength={320} onChange={e => setName(e.target.value)} placeholder="Track 07" /></label>
           <label>Permanent project UUID<div className="input-row"><input value={uuid} onChange={e => setUuid(e.target.value)} placeholder="Existing UUID, or create one" /><button onClick={() => setUuid(crypto.randomUUID())}>New UUID</button></div></label></>}
         <label>Local project folder<div className="input-row"><input value={folder} onChange={e => setFolder(e.target.value)} placeholder="D:\Projects\Track 07" /><button onClick={() => void browse()}>Browse…</button></div></label>
         {setup === 'link' && <><label>HTTPS mailbox (optional)<input value={mailbox} onChange={e => setMailbox(e.target.value)} placeholder="https://mailbox.example.com" /></label><label>Pinned relay address (optional)<input value={relay} onChange={e => setRelay(e.target.value)} placeholder="/dns4/relay.example.com/udp/4001/quic-v1/p2p/…" /></label></>}
-        {setup === 'join' && <p className="muted">Select the private invitation file after choosing the local folder. Its key stays in the native backend.</p>}
-        <div className="actions"><button className="primary" disabled={busy || !folder || (setup === 'link' && (!name || !uuid))} onClick={() => void saveSetup()}>{setup === 'join' ? 'Choose invitation…' : 'Link project'}</button><button onClick={() => setSetup(null)}>Cancel</button></div>
+        {setup === 'join' && <p className="muted">Choose your local folder, then open the private invitation. TrackMesh accepts it and asks where to save a pairing reply. Send that reply privately to the inviter and wait for their confirmation. The invitation key stays in the native backend.</p>}
+        <div className="actions"><button className="primary" disabled={busy || !folder || (setup === 'link' && (!name || !uuid))} onClick={() => void saveSetup()}>{setup === 'join' ? 'Accept invitation & save reply…' : 'Link project'}</button><button onClick={() => setSetup(null)}>Cancel</button></div>
       </section>}
       <div className="project-list">{status?.page?.projects.map(card => <Card key={card.project.project_id} card={card} status={status} jobStartedAt={jobStartedAt} act={act} />)}</div>
       {status?.ready && !status.page?.projects.length && !setup && <div className="empty"><div className="empty-icon">↗</div><h2>Your first shared project</h2><p>Link a project folder or import a collaborator’s invitation.<br />Snapshots stay immutable; files stay on your PCs.</p></div>}
       <div className="pagination"><button disabled={!offset || busy} onClick={() => setOffset(Math.max(0, offset - 32))}>Previous</button><span className="muted">Page {offset / 32 + 1}</span><button disabled={!status?.page?.has_more || busy} onClick={() => setOffset(offset + 32)}>Next</button></div>
-      {status?.jobs.filter(j => !j.project_id).map(job => <div key={job.job_id} className={`notice ${job.error ? 'danger' : ''}`} role="status">{jobStatus(job, jobStartedAt[job.job_id])}</div>)}
-      <footer><div><span className="muted">Data directory</span><code>{status?.data_directory ?? 'Opening protected local storage…'}</code></div><div className="actions"><button disabled={busy} onClick={() => act({ kind: 'export_card' })}>Export my device card</button><button title="Close the window. Active DAW sessions, transfers and pending publication keep TRACKMESH running; it exits 60 seconds after work finishes. Reopen desktop to return." disabled={status?.closing} onClick={() => void closeApp().catch(err => setError(String(err)))}>Close safely</button></div></footer>
+      {status?.jobs.filter(j => !j.project_id).map(job => <JobNotice key={job.job_id} job={job} startedAt={jobStartedAt[job.job_id]} />)}
+      <footer><div><span className="muted">Data directory</span><code>{status?.data_directory ?? 'Opening protected local storage…'}</code></div><div className="actions"><button title="Close the window. Active DAW sessions, transfers and pending publication keep TRACKMESH running; it exits 60 seconds after work finishes. Reopen desktop to return." disabled={status?.closing} onClick={() => void closeApp().catch(err => setError(String(err)))}>Close safely</button></div></footer>
     </main></div>;
 }

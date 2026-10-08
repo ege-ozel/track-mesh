@@ -8,9 +8,13 @@ Bu belge dağıtım paketinde `CLAUDE.md` adıyla bulunur. Paket bir installer d
 2. Gönderenden özel davet `.json` dosyasını ayrıca alın. Dosyayı Claude'a eklemeyin/içeriğini yapıştırmayın; yalnızca yerel dosya yolunu verin.
 3. Bu paket klasöründe PowerShell açın. Claude Code kurulu ve giriş yapılmışsa `claude` komutuyla başlatın. Proje dizinindeki `CLAUDE.md` başlangıçta talimat olarak okunur; MD bir executable değildir. [Claude Code belgesi](https://code.claude.com/docs/en/memory).
 4. Claude'a şunu söyleyin: **“CLAUDE.md yönergesine göre TrackMesh denemesini başlat. Davet dosyamın yolunu ve boş hedef klasörümü sor; önce kendi cihaz kartımı hazırlayalım. Gönderen kartımı import edip snapshot oluşturunca dosyaları alacağız.”**
-5. Claude kart dosyasını oluşturunca onu gönderene özel kanaldan iletin. Gönderen **Import collaborator card** ve **Send Snapshot** yapıp uygulamasını açık tutsun. Sonra Claude'a **“Gönderen kartımı import etti, snapshot hazır. DAW kapalı; seçtiğim hedef klasöre Receive yap.”** deyin.
+5. Claude kart dosyasını oluşturunca onu gönderene özel kanaldan iletin. Gönderen **Pair collaborator → Open pairing reply** (eski Desktop: **Import collaborator card**) ve **Send Snapshot** yapıp uygulamasını açık tutsun. Sonra Claude'a **“Gönderen kartımı import etti, snapshot hazır. DAW kapalı; seçtiğim hedef klasöre Receive yap.”** deyin.
 
 Bağlantı başarılı olursa Receive proje dosyalarını seçilen klasöre indirir, doğrular ve yerleştirir. Paket tek başına projeye erişim vermez; davet, karşılıklı pairing, kaynak snapshot ve erişilebilir/online kaynak gerekir. Sürekli sync veya otomatik DAW açma yoktur.
+
+## Birleşik eşleştirme akışı
+
+Yeni Desktop daveti kabul edince eşleştirme yanıtını aynı işlemde kaydettirir. Yanıt, mevcut imzalı cihaz kartı formatıdır; CLI'de aşağıdaki `join` ve `card --output` adımları aynı görevi tamamlar. Kartı/yanıtı A'ya özel gönderme ve A'nın doğru projede açması hâlâ gerekir; otomatik Internet enrollment yoktur. Eski cihaz kartları uyumludur. Bu repo yönergesindeki yeni UI etiketleri eski executable ZIP'te bulunmayabilir; paket build sürümünü kontrol et.
 
 ## Claude için görev ve sınırlar
 
@@ -51,7 +55,7 @@ $trialCard = Join-Path (Get-Location) ('peer-card-' + (Get-Date -Format 'yyyyMMd
 & $trialAgent --data-dir $trialData card --output $trialCard
 ```
 
-Kart için mevcut dosyayı ezmeyecek yeni bir dosya adı kullan. Kullanıcıya sadece oluşan kartın yolunu söyle ve bu dosyayı gönderene özel kanaldan iletmesini iste. Kartı gönderenin proje kartındaki **Import collaborator card** ile içe aktarmasını, ardından **Send Snapshot** yapıp uygulamasını açık tutmasını bekle. Bu dış adımlar tamamlanmadan otomatik Receive denemelerine girme.
+Kart için mevcut dosyayı ezmeyecek yeni bir dosya adı kullan. Kullanıcıya sadece oluşan kartın yolunu söyle ve bu dosyayı gönderene özel kanaldan iletmesini iste. Kartı gönderenin proje kartındaki **Pair collaborator → Open pairing reply** (eski Desktop: **Import collaborator card**) ile içe aktarmasını, ardından **Send Snapshot** yapıp uygulamasını açık tutmasını bekle. Bu dış adımlar tamamlanmadan otomatik Receive denemelerine girme.
 
 ### C. Proje ve gönderen kimliğini güvenli status'tan seç
 

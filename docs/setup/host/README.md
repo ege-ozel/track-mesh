@@ -88,12 +88,12 @@ Aynı LAN'daysanız public IPv4/modem yönlendirmesini atlayıp firewall izninde
 
 [RFC 6598](https://www.rfc-editor.org/rfc/rfc6598) paylaşımlı adres alanını tanımlar. Her özel WAN adresi kesin CGNAT değildir; önde başka router olabilir. Modem menüsü kilitliyse ISP/yöneticiden izin iste; ISP NAT'ında erişilebilir public IPv4 veya hazırlanmış özel relay gerekir. Statik IP şart değildir. [Ortak sorun giderme tablosu](../README.md) ayrıntılı sırayı verir.
 
-Public alanlar **Export my device card** düğmesine uygulanmaz. İlk denemeyi B'nin A'ya bağlanmasıyla yapın. Ters yönde bağımsız erişim için B kendi public-address davetini çıkarabilir; A mevcut proje klasörüne import eder. Startup `--external-address` seçeneği [PHASE4.md](../../PHASE4.md) içindedir. Listen port runtime'da değişmez; yeni portla açmak için mevcut owner'ın güvenli çıkışı gerekir.
+Public alanlar **Save pairing reply again** düğmesine uygulanmaz (eski build: **Export my device card**). İlk denemeyi B'nin A'ya bağlanmasıyla yapın. Ters yönde bağımsız erişim için B kendi public-address davetini çıkarabilir; A mevcut proje klasörüne import eder. Startup `--external-address` seçeneği [PHASE4.md](../../PHASE4.md) içindedir. Listen port runtime'da değişmez; yeni portla açmak için mevcut owner'ın güvenli çıkışı gerekir.
 
-## 6. Peer kartı gelince snapshot hazırla
+## 6. Eşleştirme yanıtı gelince snapshot hazırla
 
-- [ ] B'nin cihaz kartı `.json` dosyasını al. Bu davetten farklıdır; B'nin kamuya açık cihaz kimliğini taşır.
-- [ ] Mevcut proje kartında **Collaboration & connection details → Import collaborator card** ile import et. Yalnızca davet göndermek karşılıklı yetkilendirmeyi tamamlamaz.
+- [ ] B'nin eşleştirme yanıtı `.json` dosyasını al. B daveti kabul ederken aynı akışta kaydeder; mevcut imzalı cihaz kartı formatındadır. Eski cihaz kartları da kullanılabilir. Bu dosya davetten farklıdır; B'nin kamuya açık cihaz kimliğini taşır.
+- [ ] Mevcut proje kartında **Collaboration & connection details → Pair collaborator → Open pairing reply** ile import et. Yalnızca davet göndermek karşılıklı yetkilendirmeyi tamamlamaz.
 - [ ] Ableton test projesini kaydet; ilk denemede DAW'ı kapat. **Send Snapshot** yap; LOCAL SNAPSHOT tarihini/dosya sayısını kontrol et.
 - [ ] B'ye “Kartını import ettim, snapshot hazır, TrackMesh açık” bilgisini ilet.
 - [ ] B Check peer → Receive → tekrar Check peer yaparken TrackMesh'i açık tut. Dosya eklemek tek başına otomatik sync yapmaz; sonraki değişiklik için yeni Send Snapshot gerekir.
