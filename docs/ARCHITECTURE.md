@@ -24,6 +24,12 @@ All crates use shared protocol types as needed. Storage persists domain records;
 
 Private peers authenticate through QUIC or Noise. TCP uses Yamux. A pinned relay/rendezvous service helps trusted peers connect; the client has no public DHT or multicast discovery. Project data may cross a relay fallback, with authenticated peer transport. The mailbox stores encrypted announcements only.
 
+## Setup roles and documentation
+
+The [setup entry point](setup/README.md) separates [sender/host preparation](setup/host/README.md) from [receiving peer preparation](setup/peer/README.md). Host means the source of the first snapshot, not a central server or a persistent master role. The receiver initiates the first connection to the reachable source; reverse-direction reachability is prepared separately.
+
+Setup documents describe existing adapters and manual router/firewall configuration. They do not introduce another swarm, installer, continuous sync or automatic network administration. [The peer package template](setup/peer/CLAUDE.md) drives native CLI operations without exposing invitation payloads to the agent; the root [CLAUDE.md](../CLAUDE.md) instead routes repository development. Actual validation evidence remains in [IMPLEMENTATION.md](IMPLEMENTATION.md).
+
 ## Local snapshot commit
 
 1. Acquire the Windows project lock; refuse snapshotting during recovery.
