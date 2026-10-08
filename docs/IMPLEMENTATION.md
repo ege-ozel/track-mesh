@@ -359,6 +359,12 @@ The user is waiting on the collaborator. Invitation delivery/import, returned ca
 
 Documentation-only follow-up: local Markdown links and Git whitespace checks passed; no application code/contracts changed and no builds, automated tests, benchmarks or network-transfer operations ran for this edit. The earlier executable ZIP remains unchanged.
 
+### Role-based setup documentation (2026-10-07)
+
+Reorganized manual trial instructions under `docs/setup`: a shared entry point/order/troubleshooting guide, `host/README.md` for the source PC's project/address/router/firewall/export/snapshot steps, and `peer/README.md` for package launch, Desktop or CLI pairing and check/receive/check. The standalone distribution-package template moved to `setup/peer/CLAUDE.md`; its contents remain byte-equivalent after newline normalization. The earlier three document URLs remain short redirect pages for existing links. README, documentation index, Phase 4, code map, architecture and agent routing now use the role-based paths. Root `CLAUDE.md` routes repository development to canonical `AGENTS.md`, separately from package instructions.
+
+Documentation-only change: local Markdown links, peer-template equivalence and Git whitespace checks passed. No application code, protocol/signing/schema/state labels, network ownership, secrets or recovery ordering changed; no builds, automated tests, benchmarks or live transfers ran. The previously prepared executable ZIP is unchanged; future packages must copy `docs/setup/peer/CLAUDE.md` to the package root as `CLAUDE.md` and update metadata/checksums if package contents change. The current trial still awaits the returned peer card; the next action remains sender import/snapshot followed by receiver check/receive/check.
+
 ## Remaining integration work
 
 Deploy the Phase 3 services with real DNS, valid HTTPS certificates, private ACLs, pinned infrastructure PeerId, and reachable advertised addresses; then validate on two real Windows PCs. Real firewall behavior, Internet NAT traversal, forced circuit relay, and DCUtR remain unverified. Direct transfers still do not imply a mailbox acknowledgement.

@@ -14,6 +14,7 @@ Use [docs/CODEMAP.md](docs/CODEMAP.md) to select files. Read the local `AGENTS.m
 
 | Task | Start here |
 | --- | --- |
+| Two-PC setup, sender/peer instructions, trial package agent template | [docs/setup/README.md](docs/setup/README.md), then `docs/setup/host/README.md` or `docs/setup/peer/README.md`; package template: `docs/setup/peer/CLAUDE.md` |
 | Receive/resume/installation/recovery | `crates/transfer/AGENTS.md` |
 | SQLite/history/trust/publication state | `crates/storage/AGENTS.md` |
 | Connectivity/discovery/transport | `crates/network/AGENTS.md` |
@@ -37,6 +38,7 @@ Use [docs/CODEMAP.md](docs/CODEMAP.md) to select files. Read the local `AGENTS.m
 - Never print device secrets, decrypted project keys, or invitation payloads. The invitation is a private capability-bearing document.
 - Do not change or delete user project folders, local databases, chunk stores, or recovery backups as cleanup.
 - Update the code map when moving modules. Update phase status only when the deliverable works; mark unverified integrations explicitly.
+- Keep setup instructions under `docs/setup/host` and `docs/setup/peer`, with shared order/troubleshooting in `docs/setup/README.md`. Root `CLAUDE.md` routes repository development; `docs/setup/peer/CLAUDE.md` is the standalone peer-package template. Keep package instructions usable without the repository and private invitations outside agent context.
 - Use a separate local `codex/phase-N-description` branch for each phase. After validation, commit and merge locally into `master` with `--no-ff`, then push `master` normally. Keep phase branches local; do not force push.
 
 ## Checks and handoff
