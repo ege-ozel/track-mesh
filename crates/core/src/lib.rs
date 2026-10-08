@@ -8,6 +8,8 @@ use std::{
 use storage::Store;
 use uuid::Uuid;
 mod connection;
+mod pairing;
+pub use pairing::{PairingCandidate, PairingStatus, PAIRING_WINDOW};
 mod mailbox;
 pub use connection::public_ipv4_addresses;
 pub mod peer;
@@ -34,6 +36,7 @@ pub struct Engine {
     pub chunks: ChunkStore,
     pub identity: Arc<Identity>,
     metadata_jobs: Mutex<std::collections::HashMap<Uuid, Arc<tokio::sync::Mutex<()>>>>,
+    pairing: Mutex<pairing::PairingState>,
 }
 impl Engine {
     pub fn open(directory: PathBuf, name: &str) -> Result<Self> {
@@ -55,6 +58,7 @@ impl Engine {
             chunks,
             identity,
             metadata_jobs: Mutex::new(std::collections::HashMap::new()),
+            pairing: Mutex::new(pairing::PairingState::default()),
         })
     }
     pub fn link(

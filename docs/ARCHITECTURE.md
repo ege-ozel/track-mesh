@@ -88,11 +88,13 @@ Typed transfer state conversion preserves existing schema-v2 text/JSON labels; u
 ## Trust and compatibility rules
 
 - The signed application public key must derive the advertised PeerId. Device UUID bindings cannot silently replace keys. A project supports this device plus at most two explicitly paired devices.
-- Transport allow lists include paired devices and pinned infrastructure. Every inbound/outbound project request also checks project authorization; infrastructure receives no implicit project-data access.
+- Transport allow lists include paired devices and pinned infrastructure. An explicit short-lived pairing window permits at most four temporary inbound connections for enrollment only; outbound discovery still uses trust. Every inbound/outbound project request also checks project authorization; infrastructure receives no implicit project-data access.
 - Every fetched manifest/ancestor validates structure, manifest hash, Ed25519 signature, project/requested snapshot ID, and trusted author key. An own-device author must match the own public key too.
 - Preserve protocol version, domain separators, signing bytes, field order, AAD, binary framing, manifest/chunk limits, and relative-path validation when moving code.
 - Preserve SQL transaction boundaries, expected-head checks, schema version, durable filenames, and journal fields. A refactor alone is not a format migration.
 - `PUBLISHED` requires a mailbox ACK. Received copies are `REMOTE`; direct transfer is not publication.
 - `UP TO DATE` requires fresh contact and verified equality. Offline views show last-known history and last verification; they cannot promise a download from an offline source.
+
+Automatic enrollment is core-owned in `crates/core/src/pairing.rs`; [security details](setup/PAIRING_SECURITY.md) describe the isolated `/trackmesh/pairing/1` channel. It shares the single swarm and leaves transfer/invitation/card serialization and database values unchanged. The native Desktop opens the window and presents candidates; approval calls existing core pairing/storage authorization.
 
 Actual module owners are listed in [CODEMAP.md](CODEMAP.md). Full accepted scope is in [MVP.md](MVP.md).

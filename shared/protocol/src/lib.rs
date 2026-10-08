@@ -4,9 +4,13 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 mod mailbox;
+mod pairing;
 pub use mailbox::{
     mailbox_scope, MailboxAuth, MAX_MAILBOX_AUTH_BYTES, MAX_MAILBOX_ENVELOPE_BYTES,
     MAX_MAILBOX_PAGE_BYTES, MAX_MAILBOX_PAGE_RECORDS,
+};
+pub use pairing::{
+    pairing_scope, PairingRequest, PairingResponse, MAX_PAIRING_BYTES, PAIRING_PROTOCOL,
 };
 
 pub const PROTOCOL_VERSION: u32 = 1;

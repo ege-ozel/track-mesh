@@ -12,7 +12,9 @@ use std::{fs, path::Path};
 use uuid::Uuid;
 use zeroize::{Zeroize, Zeroizing};
 mod mailbox;
+mod pairing;
 pub use mailbox::verify_mailbox_auth;
+pub use pairing::{pairing_challenge, pairing_proof, verify_pairing_proof};
 
 pub struct Identity {
     pub device_id: Uuid,

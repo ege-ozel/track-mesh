@@ -1,0 +1,29 @@
+# Otomatik eşleştirme: güvenlik sınırları
+
+Kart dosyası geri gönderilmez; cihaz kimliği ve davet sahipliği kanıtı şifreli peer bağlantısından gelir. **Otomatik yanıt, otomatik yetkilendirme değildir:** gönderen doğru projede beklenen cihazı doğrulayıp onaylar. Yalnızca onay mevcut SQLite trust/project association kayıtlarını oluşturur.
+
+## İşlem sırası
+
+1. Gönderen daveti native olarak export eder. Yalnızca o proje için 10 dakikalık pencere açılır; başka projeye pencere açmak önceki onaysız istekleri temizler. Pencere ayrıca elle açılabilir/kapatılabilir; restart veya süre sonu onaysız istekleri temizler.
+2. Alıcı native import ile davetteki imzalı inviter kimliğini ve proje anahtarını yerelde öğrenir. TCP/Noise veya QUIC/TLS bağlantısı davetteki PeerId'ye yapılır. Davet ve anahtar React/agent/clipboard/log üzerinden geçirilmez.
+3. `/trackmesh/pairing/1` kanalındaki Begin mesajı proje UUID'si ve mevcut imzalı DeviceCard'ı taşır. Core kart imzasını, public key'den türetilen PeerId'yi ve gerçek transport PeerId eşleşmesini doğrular.
+4. Gönderen 24-byte OS-random challenge üretir. Challenge 60 saniye geçerlidir, tek peer'a ve o anki imzalı karta bağlıdır. Prove mesajı nonce ve empty-message XChaCha20-Poly1305 authentication tag taşır; **proje anahtarını taşımaz**. AAD domain, proje UUID'si, inviter/requester PeerId ve kartın mevcut signing bytes/imzasını bağlar. Crypto mevcut AEAD primitive'ini kullanır; yeni dependency yoktur.
+5. Challenge doğrulamadan önce tüketilir; geçersiz veya tekrar kullanılan proof aynı nonce ile yeniden denenemez. Başarılı proof yalnızca bekleyen aday oluşturur, DB yetkisi vermez. İsim kimlik kanıtı değildir; public Device/Identity değerlerini beklediğiniz kişiyle karşılaştırın. Gönderen Approve veya Reject seçer.
+6. Alıcı Status mesajlarıyla 60 saniyeye kadar onayı sorgular. Daha geç onayda Retry automatic pairing / CLI request-pairing sonucu alır. Pencere/bağlantı kapanırsa yeniden import yerine uygun koşullarda retry yapılır. Reddedilen PeerId aynı pencere içinde yeniden aday oluşturamaz; yeni pencere bunu sıfırlar.
+
+## Ağ ve kaynak sınırları
+
+- Tek mevcut swarm/actor kullanılır. Eşleştirme kapısı normalde kapalıdır; yalnızca aktif pencerede en fazla dört geçici inbound connection, PeerId başına bir connection kabul eder. Geçici bağlantılar yaklaşık 60 saniye sonra veya pencere kapanınca actor'ın 6 saniyelik bakım turunda kapatılır. Mevcut genel transport/connection limitleri korunur.
+- Outbound keşif/dial hâlâ paired cihazlar ve pinned altyapı içindir. Eşleştirme için kabul edilen bilinmeyen kimlikler identify/discovery learned-address kayıtlarına eklenmez.
+- Eşleştirme mesajı üst sınırı 32 KiB; kanal en fazla sekiz concurrent stream, 20 saniye request timeout kullanır. Actor en fazla sekiz outbound pairing RPC ve 64 peer için dakikada 16 mesajlık bounded rate kayıtları tutar. Mevcut incoming queue/responder worker sınırları korunur.
+- Core tek proje penceresinde en fazla sekiz challenge, sekiz bekleyen aday ve sekiz ret kimliği tutar; ret kapasitesi aşılırsa pencere kapatılır. Adaylar sadece bellektedir; onaysız adaylar kalıcı DB/schema/state label eklemez.
+- Ordinary transfer Head/Manifest/Chunk/Verified istekleri mevcut project authorization kontrolünden geçer. Eşleştirme bağlantısı/proof tek başına dosya erişimi sağlamaz. Eski `/trackmesh/transfer/1`, invitation/card signing serialization, schema v2 ve recovery/journal sırası değişmez.
+- Pairing request/response Debug çıktısı alanları gizler; generic unavailable hataları anahtar, proof, challenge veya invitation payload loglamaz. Frontend yalnızca public aday kimliği, request UUID, pencere süresi ve güvenli sonuç mesajlarını görür.
+
+## Sniffing ve kalan riskler
+
+Pasif ağ dinleme şifreli bağlantının uygulama içeriğini açık metin olarak vermez; IP/port, trafik boyutu ve zamanlama gizlenmez. [libp2p güvenli kanallar](https://libp2p.io/docs/secure-channels-overview/), [Noise](https://docs.libp2p.io/concepts/secure-comm/noise/) ve [QUIC/TLS RFC 9001](https://www.rfc-editor.org/info/rfc9001/) transport korumasını açıklar.
+
+Çalınmış davet, proje anahtarına sahip olma kanıtını üretebilir; bu yüzden son onayda beklenen cihazı doğrulamak gerekir. 10 dakikalık pencere davet/proje anahtarının ömrünü kısaltmaz ve eski daveti iptal etmez. Zararlı uç cihaz, yanlış kişiyi onaylama, yanlış/yerine konmuş davet paylaşımı ve pairing penceresi açıkken kaynak tüketme/DoS ayrı risklerdir. Bu sınırlar bir güvenlik denetimi veya gerçek internet saldırı doğrulaması değildir. Gerçek gözlem ve kalan doğrulama işleri yalnızca [IMPLEMENTATION.md](../IMPLEMENTATION.md) içinde kaydedilir.
+
+İki taraf yeni build kullanmalıdır. Eski invitation/card dosyaları uyumludur; eski uygulamayla manuel kart alışverişi **Legacy file pairing** altında kalır. Eski dağıtım ZIP'i otomatik protokol/CLI komutunu içermez. [Ortak akış](README.md), [gönderen](host/README.md), [alıcı](peer/README.md).

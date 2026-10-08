@@ -66,9 +66,17 @@ impl PeerRuntime {
                         workers.spawn(async move {
                             let _work = work;
                             let peer=message.peer.to_string();let request=message.request.clone();
-                            let response=tokio::task::spawn_blocking(move||transfer::serve(&engine.store,&engine.chunks,&peer,&request)).await;
-                            let response=match response {Ok(Ok(r))=>r,Ok(Err(e))=>PeerResponse::Error {message:e.to_string()},Err(_)=>PeerResponse::Error {message:"peer disk operation failed".into()}};
-                            let _=network.respond(message,response).await;
+                            match request {
+                                network::IncomingRequest::Transfer(request) => {
+                                    let response=tokio::task::spawn_blocking(move||transfer::serve(&engine.store,&engine.chunks,&peer,&request)).await;
+                                    let response=match response {Ok(Ok(r))=>r,Ok(Err(e))=>PeerResponse::Error {message:e.to_string()},Err(_)=>PeerResponse::Error {message:"peer disk operation failed".into()}};
+                                    let _=network.respond(message,response).await;
+                                }
+                                network::IncomingRequest::Pairing(request) => {
+                                    let response = tokio::task::spawn_blocking(move || engine.handle_pairing(&peer, request)).await.unwrap_or(protocol::PairingResponse::Unavailable);
+                                    let _ = network.respond_pairing(message, response).await;
+                                }
+                            }
                         });
                     },
                     result=workers.join_next(),if !workers.is_empty()=>{if let Some(Err(error))=result {tracing::warn!(%error,"peer responder worker stopped");}},

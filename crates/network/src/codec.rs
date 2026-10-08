@@ -7,6 +7,52 @@ use std::io;
 
 #[derive(Clone, Default)]
 pub struct TransferCodec;
+
+#[derive(Clone, Default)]
+pub struct PairingCodec;
+
+#[async_trait]
+impl Codec for PairingCodec {
+    type Protocol = StreamProtocol;
+    type Request = protocol::PairingRequest;
+    type Response = protocol::PairingResponse;
+    async fn read_request<T: AsyncRead + Unpin + Send>(
+        &mut self,
+        _: &Self::Protocol,
+        io: &mut T,
+    ) -> io::Result<Self::Request> {
+        read_json(io, protocol::MAX_PAIRING_BYTES)
+            .await
+            .map_err(|_| invalid("invalid pairing frame"))
+    }
+    async fn read_response<T: AsyncRead + Unpin + Send>(
+        &mut self,
+        _: &Self::Protocol,
+        io: &mut T,
+    ) -> io::Result<Self::Response> {
+        read_json(io, protocol::MAX_PAIRING_BYTES)
+            .await
+            .map_err(|_| invalid("invalid pairing frame"))
+    }
+    async fn write_request<T: AsyncWrite + Unpin + Send>(
+        &mut self,
+        _: &Self::Protocol,
+        io: &mut T,
+        value: Self::Request,
+    ) -> io::Result<()> {
+        write_json(io, &value, protocol::MAX_PAIRING_BYTES).await?;
+        io.close().await
+    }
+    async fn write_response<T: AsyncWrite + Unpin + Send>(
+        &mut self,
+        _: &Self::Protocol,
+        io: &mut T,
+        value: Self::Response,
+    ) -> io::Result<()> {
+        write_json(io, &value, protocol::MAX_PAIRING_BYTES).await?;
+        io.close().await
+    }
+}
 fn invalid(error: impl std::fmt::Display) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, error.to_string())
 }

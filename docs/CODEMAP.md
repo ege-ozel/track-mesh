@@ -8,6 +8,9 @@ Paths are relative to repository root. A crate's `src/lib.rs` lists its public A
 | --- | --- | --- |
 | Two-PC setup documentation and distribution-package agent instructions | `docs/setup/README.md`, `docs/setup/host/README.md`, `docs/setup/peer/README.md`, `docs/setup/peer/CLAUDE.md` | Root `AGENTS.md`/`CLAUDE.md` route repo work; `IMPLEMENTATION.md` owns validation history |
 | Link folder, pair device, import/export invitation | `crates/core/src/lib.rs` | Snapshot, crypto, and storage APIs |
+| Automatic pairing windows, capability challenge and explicit project approval | `crates/core/src/pairing.rs` | Native Desktop candidate controls and CLI `request-pairing`; no DB/schema change |
+| Pairing-only inbound gate and bounded RPC frames | `crates/network/src/gate.rs`, `codec.rs`, `actor.rs`, `handle.rs` | Same swarm; transfer authorization and trusted discovery unchanged |
+| Additive pairing messages and empty-message AEAD proof | `shared/protocol/src/pairing.rs`, `crates/crypto/src/pairing.rs` | Existing signed invite/card/transfer formats preserved |
 | Public IPv4 endpoint validation/construction for adapters | `crates/core/src/connection.rs` | Native desktop invitation export; no swarm restart |
 | Manual/settled snapshot creation, unchanged-content reuse and commit | `crates/core/src/snapshots.rs` | Project lock, snapshot scanner and transactional storage |
 | Local status, compare with online peer, receive from peer, recover | `crates/core/src/workflows.rs` | `peer.rs`, transfer API |
