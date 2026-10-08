@@ -24,6 +24,7 @@ Bilinen çalışan toolchain Rust 1.98.1 / Node 24.19'dur; ayrıntılar [DEVELOP
 
 - [ ] Küçük deneme projesini ayrı bir proje klasörüne kaydet. Yeni Ableton dosyası, bağladığın klasörün içinde olsun.
 - [ ] TrackMesh'te **Link folder → New UUID → Browse… → Link project** ile ilk kez bağla. Mevcut projenin UUID'sini koru. Aynı klasörü yeni UUID ile tekrar link etmek reddedilir; aynı UUID ile relink mevcut kaydı günceller.
+- [ ] Hazır ve izin verilmiş altyapın yoksa HTTPS mailbox/pinned relay alanlarını boş bırak; ilk direct-transfer denemesi servis kurulumu gerektirmez.
 - [ ] **Collaboration & connection details → Connection setup** aç. Local listen portu ve router'a bağlı PC IPv4'ünü kontrol et.
 - [ ] Önceki denemede görülen PC adresi **`192.168.1.200`**, local port **`43101`** idi. Diğer adaptörün `172.17.192.1` adresi yerine modemle aynı LAN'daki adresi kullan. IP değişirse aşağıdaki hedefi güncelle; mümkünse modemde DHCP adres rezervasyonu yap.
 - [ ] `ipconfig` içindeki **Default Gateway** adresini tarayıcının adres çubuğuna yaz: örneğin `http://192.168.1.1`. Bu modem/router yönetim adresidir, PC hedefi veya public IP değildir.
@@ -35,6 +36,8 @@ Bilinen çalışan toolchain Rust 1.98.1 / Node 24.19'dur; ayrıntılar [DEVELOP
 `\\?\D:\tm-test\a-project` biçimi Windows'un canonical/uzun yol önekidir; normal `D:\tm-test\a-project` klasörünü ifade eder. Link ederken normal yolu kullanabilirsin; veritabanındaki yolu elle değiştirme.
 
 ## 3. Modem port yönlendirmesi
+
+Varsayılan local port `43101`'dir. Panel farklı bir local port gösteriyorsa aşağıdaki hedef portları ve Windows Firewall portunu ona göre değiştir; dış port davetteki External router port ile eşleşsin.
 
 **Port Yönlendirme / Sanal Sunucular** ekranında iki kural oluştur. Aşağıdaki LAN IP bu denemenin örneğidir; başka PC'de kendi Connection setup adresini kullan.
 
