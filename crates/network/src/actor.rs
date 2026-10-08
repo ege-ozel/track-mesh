@@ -2,9 +2,9 @@
 use crate::{
     behaviour::{build_swarm, BehaviourEvent, PeerSwarm},
     discovery::{configure, Discovery},
-    handle::Command,
+    handle::{Command, IncomingChannel},
     status::{refresh_status, Connections},
-    Incoming, Network, NetworkConfig, NetworkStatus,
+    Incoming, IncomingRequest, Network, NetworkConfig, NetworkStatus,
 };
 use anyhow::Result;
 use crypto::Identity;
@@ -16,11 +16,11 @@ use libp2p::{
     swarm::{ConnectionId, SwarmEvent},
     Multiaddr, PeerId,
 };
-use protocol::PeerResponse;
+use protocol::{PairingResponse, PeerResponse};
 use std::{
     collections::HashMap,
     sync::{Arc, RwLock},
-    time::Duration,
+    time::{Duration, Instant},
 };
 use storage::Store;
 use tokio::sync::{mpsc, oneshot};
@@ -54,6 +54,8 @@ pub fn start(
         incoming_tx,
         status,
         pending: HashMap::new(),
+        pairing_pending: HashMap::new(),
+        pairing_rates: HashMap::new(),
         connections: HashMap::new(),
         discovery: Discovery::default(),
     };
@@ -69,6 +71,9 @@ struct Actor {
     incoming_tx: mpsc::Sender<Incoming>,
     status: Arc<RwLock<NetworkStatus>>,
     pending: HashMap<request_response::OutboundRequestId, oneshot::Sender<Result<PeerResponse>>>,
+    pairing_pending:
+        HashMap<request_response::OutboundRequestId, oneshot::Sender<Result<PairingResponse>>>,
+    pairing_rates: HashMap<PeerId, (Instant, u8)>,
     connections: Connections,
     discovery: Discovery,
 }
@@ -83,6 +88,9 @@ impl Actor {
             .unwrap_or_else(|| "network stopped".into());
         for (_, reply) in self.pending {
             let _ = reply.send(Err(anyhow::anyhow!(stopped.clone())));
+        }
+        for (_, reply) in self.pairing_pending {
+            let _ = reply.send(Err(anyhow::anyhow!("pairing network stopped")));
         }
         if let Ok(mut state) = self.status.write() {
             state.error = result.as_ref().err().map(|e| format!("{e:#}"));
@@ -106,6 +114,11 @@ impl Actor {
                 _ = retry.tick() => {
                     configure(&mut self.swarm, &self.store, &self.namespaces)?;
                     self.pending.retain(|_, reply| !reply.is_closed());
+                    self.pairing_pending.retain(|_, reply| !reply.is_closed());
+                    self.pairing_rates.retain(|_, (at, _)| at.elapsed() < Duration::from_secs(60));
+                    for peer in self.swarm.behaviour().allow.expired_peers() {
+                        let _ = self.swarm.disconnect_peer_id(peer);
+                    }
                     self.discovery.tick(&mut self.swarm, &self.store, &self.namespaces, &self.connections)?;
                 },
                 event = self.swarm.select_next_some() => self.event(event)?,
@@ -134,11 +147,44 @@ impl Actor {
                 self.pending.insert(id, reply);
             }
             Some(Command::Respond(incoming, response)) => {
+                let IncomingChannel::Transfer(channel) = incoming.channel else {
+                    return Ok(true);
+                };
                 let _ = self
                     .swarm
                     .behaviour_mut()
                     .transfer
-                    .send_response(incoming.channel, *response);
+                    .send_response(channel, *response);
+            }
+            Some(Command::PairingWindow(duration)) => {
+                self.swarm.behaviour_mut().allow.window(duration);
+                for peer in self.swarm.behaviour().allow.expired_peers() {
+                    let _ = self.swarm.disconnect_peer_id(peer);
+                }
+            }
+            Some(Command::PairingRequest(peer, request, reply)) => {
+                // Outbound enrollment is only to a locally paired inviter, never a public peer.
+                if !self.swarm.behaviour().allow.allowed_peers().contains(&peer)
+                    || self.pairing_pending.len() >= 8
+                {
+                    let _ = reply.send(Err(anyhow::anyhow!("inviter is unavailable for pairing")));
+                    return Ok(true);
+                }
+                let id = self
+                    .swarm
+                    .behaviour_mut()
+                    .pairing
+                    .send_request(&peer, request);
+                self.pairing_pending.insert(id, reply);
+            }
+            Some(Command::PairingRespond(incoming, response)) => {
+                if let IncomingChannel::Pairing(channel) = incoming.channel {
+                    let _ = self
+                        .swarm
+                        .behaviour_mut()
+                        .pairing
+                        .send_response(channel, response);
+                }
             }
             Some(Command::Reload(new)) => {
                 self.namespaces = new;
@@ -193,9 +239,77 @@ impl Actor {
                 peer_id,
                 info,
                 ..
-            })) => self
-                .discovery
-                .identified(&mut self.swarm, peer_id, info, &self.namespaces),
+            })) => {
+                // Enrollment-only identities must not populate discovery or learned addresses.
+                if self
+                    .swarm
+                    .behaviour()
+                    .allow
+                    .allowed_peers()
+                    .contains(&peer_id)
+                {
+                    self.discovery
+                        .identified(&mut self.swarm, peer_id, info, &self.namespaces);
+                }
+            }
+            SwarmEvent::Behaviour(BehaviourEvent::Pairing(request_response::Event::Message {
+                peer,
+                message,
+                ..
+            })) => match message {
+                request_response::Message::Request {
+                    request, channel, ..
+                } => {
+                    let allow = &self.swarm.behaviour().allow;
+                    let available = allow.is_open() || allow.allowed_peers().contains(&peer);
+                    let within_limit = if let Some((_, count)) = self.pairing_rates.get_mut(&peer) {
+                        *count = count.saturating_add(1);
+                        *count <= 16
+                    } else if self.pairing_rates.len() < 64 {
+                        self.pairing_rates.insert(peer, (Instant::now(), 1));
+                        true
+                    } else {
+                        false
+                    };
+                    if !available || !within_limit {
+                        let _ = self
+                            .swarm
+                            .behaviour_mut()
+                            .pairing
+                            .send_response(channel, PairingResponse::Unavailable);
+                        return Ok(());
+                    }
+                    let incoming = Incoming {
+                        peer,
+                        request: IncomingRequest::Pairing(request),
+                        channel: IncomingChannel::Pairing(channel),
+                    };
+                    if let Err(error) = self.incoming_tx.try_send(incoming) {
+                        if let IncomingChannel::Pairing(channel) = error.into_inner().channel {
+                            let _ = self
+                                .swarm
+                                .behaviour_mut()
+                                .pairing
+                                .send_response(channel, PairingResponse::Unavailable);
+                        }
+                    }
+                }
+                request_response::Message::Response {
+                    request_id,
+                    response,
+                } => {
+                    if let Some(reply) = self.pairing_pending.remove(&request_id) {
+                        let _ = reply.send(Ok(response));
+                    }
+                }
+            },
+            SwarmEvent::Behaviour(BehaviourEvent::Pairing(
+                request_response::Event::OutboundFailure { request_id, .. },
+            )) => {
+                if let Some(reply) = self.pairing_pending.remove(&request_id) {
+                    let _ = reply.send(Err(anyhow::anyhow!("automatic pairing failed; check the inviter's pairing window and connection")));
+                }
+            }
             SwarmEvent::Behaviour(BehaviourEvent::Rendezvous(event)) => {
                 self.discovery.event(&mut self.swarm, &self.store, event)?
             }
@@ -222,17 +336,19 @@ impl Actor {
                     }
                     let incoming = Incoming {
                         peer,
-                        request,
-                        channel,
+                        request: IncomingRequest::Transfer(request),
+                        channel: IncomingChannel::Transfer(channel),
                     };
                     if let Err(error) = self.incoming_tx.try_send(incoming) {
                         let incoming = error.into_inner();
-                        let _ = self.swarm.behaviour_mut().transfer.send_response(
-                            incoming.channel,
-                            PeerResponse::Error {
-                                message: "peer busy or shutting down; retry".into(),
-                            },
-                        );
+                        if let IncomingChannel::Transfer(channel) = incoming.channel {
+                            let _ = self.swarm.behaviour_mut().transfer.send_response(
+                                channel,
+                                PeerResponse::Error {
+                                    message: "peer busy or shutting down; retry".into(),
+                                },
+                            );
+                        }
                     }
                 }
                 request_response::Message::Response {

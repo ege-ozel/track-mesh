@@ -10,7 +10,7 @@ Read root `AGENTS.md`. The actor is the only swarm owner. Application callers us
 
 Preserve QUIC preference, TCP + Noise/Yamux fallback, relay-client/DCUtR support, and six-second retry/refresh behavior. Direct connections replace relayed ones; QUIC replaces direct TCP. Keep existing timeout/stream/window/connection limits unless explicitly tuning them.
 
-Paired peers and pinned infrastructure may connect; project request authorization is still required. Validate signed cards and key-derived PeerId. Filter rendezvous results through trust. Infrastructure identity alone grants no project-data permission. No public DHT, mDNS, swarms, or file upload to the mailbox.
+Paired peers and pinned infrastructure may connect; `src/gate.rs` adds a bounded, explicit 10-minute inbound enrollment window and `codec::PairingCodec` an isolated pairing channel. Unknown enrollment peers must not populate discovery, and ordinary transfer requests remain denied until core/user approval; project request authorization is still required. Validate signed cards and key-derived PeerId. Filter rendezvous results through trust. Infrastructure identity alone grants no project-data permission. No public DHT, mDNS, swarms, or file upload to the mailbox.
 
 The actor must not hash/scan large files or perform blocking disk work. Responders in `core/src/peer.rs` delegate those operations to blocking workers. Fatal actor exits resolve pending requests and report offline/error status.
 

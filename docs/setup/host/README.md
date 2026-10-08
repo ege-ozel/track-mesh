@@ -20,6 +20,8 @@ target\debug\trackmesh-desktop.exe
 
 Bilinen çalışan toolchain Rust 1.98.1 / Node 24.19'dur; ayrıntılar [DEVELOPMENT.md](../../DEVELOPMENT.md) ve [PHASE4.md](../../PHASE4.md). Bu build installer üretmez. İlk dependency indirmesi internet ister. Aynı profilde ikinci CLI/serve/plugin network owner başlatma.
 
+Sürüm değiştirirken eski uygulamanın gerçekten sonlandığını kontrol et. Pencereyi kapatmak, DAW oturumu/iş/bekleyen yayın nedeniyle uygulamayı arka planda bırakabilir; aynı profilin network sahibi hâlâ eski build olur. Receive/recovery çalışırken process'i zorla kapatma. İki PC'de de otomatik eşleştirme destekleyen yeni build çalışmadan bu akışa geçme.
+
 ## 2. Proje, yerel IP ve public IPv4
 
 - [ ] Küçük deneme projesini ayrı bir proje klasörüne kaydet. Yeni Ableton dosyası, bağladığın klasörün içinde olsun.
@@ -69,7 +71,7 @@ Bu alan adları kullanılan TP-Link/Türk Telekom ekranına aittir; başka firmw
 - [ ] **Allow the connection if it is secure** seçeneğini bu denemede kullanma: ayrıca Windows IPsec yapılandırması ister. TrackMesh'in şifrelemesi/peer doğrulaması farklıdır ve normal Allow ile çalışmaya devam eder. [Windows kuralı rehberi](https://learn.microsoft.com/en-us/windows/security/operating-system-security/network-security/windows-firewall/configure), [IPsec seçeneğinin açıklaması](https://techcommunity.microsoft.com/blog/coreinfrastructureandsecurityblog/securing-rdp-with-ipsec/259108).
 - [ ] TrackMesh'e dön; public IPv4/dış portu ve `/ip4/PUBLIC_IPV4/tcp/43101`, `/ip4/PUBLIC_IPV4/udp/43101/quic-v1` önizlemelerini kontrol et.
 - [ ] **Export invitation with public addresses** ile native dosya penceresinde yeni bir `.json` adına kaydet. Manuel alanları kullanmak için bu düğmeyi seç; **Export invitation with current addresses** bu public alanları kullanmaz.
-- [ ] B'ye özel kanaldan **iki dosya gönder:** `TrackMesh-PeerTrial-20261007-162413.zip` dosyasının tamamı ve export ettiğin özel davet `.json` dosyası. ZIP yerel build çıktısıdır; GitHub'a binary olarak yüklenmedi. Göndericide `.build/peer-packages` altında bulunur. Yeni build/paket varsa onun güncel dosyasını gönder; kaynak yönerge [peer/CLAUDE.md](../peer/CLAUDE.md) dosyasıdır.
+- [ ] B'ye özel kanaldan **iki dosya gönder:** güncel otomatik eşleştirme paketi `TrackMesh-PeerTrial-AutoPairing-20261008.zip` ve export ettiğin özel davet `.json` dosyası. ZIP yerel build çıktısıdır; GitHub'a binary olarak yüklenmedi. Göndericide `.build/peer-packages` altında bulunur. Önceki `20261007` paketi otomatik eşleştirmeyi içermez. Kaynak yönerge [peer/CLAUDE.md](../peer/CLAUDE.md) dosyasıdır; iki PC de yeni uygulamayı kullanmalı.
 
 Davet private capability/proje anahtarı içerir. Payload'ı chat, clipboard, log, repo veya agente verilen dosya içeriğine koyma. Public alanlar export başına geçerlidir; kalıcı network ayarı değildir. Public IP/dış port değişirse yeni daveti özel paylaş ve B'de aynı hedef klasörüne import et.
 
@@ -88,14 +90,14 @@ Aynı LAN'daysanız public IPv4/modem yönlendirmesini atlayıp firewall izninde
 
 [RFC 6598](https://www.rfc-editor.org/rfc/rfc6598) paylaşımlı adres alanını tanımlar. Her özel WAN adresi kesin CGNAT değildir; önde başka router olabilir. Modem menüsü kilitliyse ISP/yöneticiden izin iste; ISP NAT'ında erişilebilir public IPv4 veya hazırlanmış özel relay gerekir. Statik IP şart değildir. [Ortak sorun giderme tablosu](../README.md) ayrıntılı sırayı verir.
 
-Public alanlar **Save pairing reply again** düğmesine uygulanmaz (eski build: **Export my device card**). İlk denemeyi B'nin A'ya bağlanmasıyla yapın. Ters yönde bağımsız erişim için B kendi public-address davetini çıkarabilir; A mevcut proje klasörüne import eder. Startup `--external-address` seçeneği [PHASE4.md](../../PHASE4.md) içindedir. Listen port runtime'da değişmez; yeni portla açmak için mevcut owner'ın güvenli çıkışı gerekir.
+Public alanlar **Legacy file pairing → Save pairing reply** düğmesine uygulanmaz (eski build: **Export my device card**). İlk denemeyi B'nin A'ya bağlanmasıyla yapın. Ters yönde bağımsız erişim için B kendi public-address davetini çıkarabilir; A mevcut proje klasörüne import eder. Startup `--external-address` seçeneği [PHASE4.md](../../PHASE4.md) içindedir. Listen port runtime'da değişmez; yeni portla açmak için mevcut owner'ın güvenli çıkışı gerekir.
 
-## 6. Eşleştirme yanıtı gelince snapshot hazırla
+## 6. Otomatik cihaz isteğini onayla ve snapshot hazırla
 
-- [ ] B'nin eşleştirme yanıtı `.json` dosyasını al. B daveti kabul ederken aynı akışta kaydeder; mevcut imzalı cihaz kartı formatındadır. Eski cihaz kartları da kullanılabilir. Bu dosya davetten farklıdır; B'nin kamuya açık cihaz kimliğini taşır.
-- [ ] Mevcut proje kartında **Collaboration & connection details → Pair collaborator → Open pairing reply** ile import et. Yalnızca davet göndermek karşılıklı yetkilendirmeyi tamamlamaz.
+- [ ] Davet export'u 10 dakikalık eşleştirme penceresini açar. B daveti kabul edince istek şifreli bağlantıdan otomatik gelir; kart dosyası alman gerekmez. Süre bittiğinde **Pair collaborator → Open pairing window** açıp B'den Retry automatic pairing iste.
+- [ ] Mevcut proje kartında **Collaboration & connection details → Pair collaborator** isteği gösterir. B ile public Device/Identity değerlerini karşılaştırıp **Approve device** seç; sadece cihaz adına güvenme. Beklenmeyen isteği **Reject** yap. Onay öncesinde DB'ye yetki yazılmaz ve proje dosyası alınamaz.
 - [ ] Ableton test projesini kaydet; ilk denemede DAW'ı kapat. **Send Snapshot** yap; LOCAL SNAPSHOT tarihini/dosya sayısını kontrol et.
-- [ ] B'ye “Kartını import ettim, snapshot hazır, TrackMesh açık” bilgisini ilet.
+- [ ] B'nin uygulaması onayını 60 saniyeye kadar otomatik sorgular. Daha geç onayda B Retry automatic pairing ile sonucu alabilir. Snapshot hazırken TrackMesh açık kalsın.
 - [ ] B Check peer → Receive → tekrar Check peer yaparken TrackMesh'i açık tut. Dosya eklemek tek başına otomatik sync yapmaz; sonraki değişiklik için yeni Send Snapshot gerekir.
 - [ ] B'den tamamlanan snapshot/transfer ID ve fresh eşitlik sonucunu al. Kaynak bu sırada yeni snapshot oluşturursa eşitlik ayrıca değerlendirilir. DAW'da açılış/sample kontrolü ayrı bir manuel kontroldür.
 

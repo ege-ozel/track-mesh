@@ -104,6 +104,16 @@ enum Command {
         #[arg(long)]
         folder: PathBuf,
     },
+    /// Send invitation possession proof automatically; the inviter approves in Desktop.
+    RequestPairing {
+        project_id: Uuid,
+        #[arg(long)]
+        device_id: Uuid,
+        #[arg(long, default_value_t = 30)]
+        connect_timeout: u64,
+        #[command(flatten)]
+        network: NetworkArgs,
+    },
     Serve {
         #[command(flatten)]
         network: NetworkArgs,
@@ -244,6 +254,34 @@ async fn main() -> Result<()> {
         } => {
             engine.import_invite(read_json(invite_file)?, &folder)?;
             println!("Project joined; export this device's card for the inviter to pair");
+        }
+        Command::RequestPairing {
+            project_id,
+            device_id,
+            connect_timeout,
+            network,
+        } => {
+            ensure!(
+                (1..=60).contains(&connect_timeout),
+                "pairing connection timeout must be 1–60 seconds"
+            );
+            let peer = engine.paired_peer(project_id, device_id)?;
+            let runtime = PeerRuntime::start(engine.clone(), network.config())?;
+            let operation = async {
+                runtime.wait_for_peer(&peer.peer_id, Duration::from_secs(connect_timeout)).await?;
+                let addresses = runtime.network.status().addresses.into_iter()
+                    .filter(|a| !a.contains("/ip4/0.0.0.0/") && !a.contains("/ip6/::/"))
+                    .take(16).collect();
+                let response = engine.request_pairing(&runtime.network, project_id, device_id, addresses).await?;
+                match response {
+                    protocol::PairingResponse::Pending => output_json(&serde_json::json!({"pairing_state": "pending", "message": "Request delivered automatically. Wait for the inviter to verify and approve this device; no card file handoff is needed."}), None),
+                    protocol::PairingResponse::Approved => output_json(&serde_json::json!({"pairing_state": "approved", "message": "The inviter authorized this device; check and receive when their snapshot is ready."}), None),
+                    _ => anyhow::bail!("pairing unavailable; ask the inviter to open a pairing window in a current Desktop build and retry"),
+                }
+            }.await;
+            let shutdown = runtime.stop().await;
+            operation?;
+            shutdown?;
         }
         Command::Recover { project_id } => {
             engine.recover(project_id)?;

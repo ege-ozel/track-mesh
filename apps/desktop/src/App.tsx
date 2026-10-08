@@ -66,7 +66,7 @@ function jobStatus(job: DesktopStatus['jobs'][number], startedAt: number | undef
 }
 
 function JobNotice({ job, startedAt }: { job: DesktopStatus['jobs'][number]; startedAt: number | undefined }) {
-  const warning = job.error || job.outcome?.reply_saved === false;
+  const warning = job.error || job.outcome?.pairing_state === 'retry';
   return <div className={`job ${warning ? 'danger' : ''}`} role="status">
     {jobStatus(job, startedAt)}
     {typeof job.outcome?.path === 'string' && <p>Saved file: <code>{job.outcome.path}</code></p>}
@@ -126,17 +126,32 @@ function Card({ card, status, jobStartedAt, act }: { card: ProjectCard; status: 
       <button disabled={busy || !project.mailbox_url} onClick={() => request('refresh')}>Refresh metadata</button>
       <button disabled={busy || !project.mailbox_url || !card.pending_publications} onClick={() => request('publish')}>Retry publication</button></div>
     {job && <JobNotice job={job} startedAt={jobStartedAt[job.job_id]} />}
-    <details className="setup"><summary>Collaboration & connection details</summary>
-      <details className="pairing-setup"><summary>Pair collaborator</summary>
+    <details className="setup" open={status.pairing.project_id === project.project_id && status.pairing.requests.length > 0}><summary>Collaboration & connection details</summary>
+      <details className="pairing-setup" open={status.pairing.project_id === project.project_id}><summary>Pair collaborator</summary>
         <ol>
-          <li><strong>Send an invitation.</strong> Use current addresses on the same LAN, or public addresses in Connection setup below for separate Internet connections. Share the invitation privately.</li>
-          <li><strong>Your collaborator accepts it.</strong> Accept invitation imports the project and opens a save dialog for their pairing reply. They send that saved reply back to you.</li>
-          <li><strong>Open the reply for this project.</strong> This authorizes their device. Tell them pairing is complete, then Send Snapshot and keep TrackMesh open while they Check peer and Receive.</li>
+          <li><strong>Send an invitation.</strong> Use current addresses on the same LAN, or public addresses in Connection setup below. Export opens a 10-minute pairing window; keep TrackMesh online.</li>
+          <li><strong>Your collaborator accepts it.</strong> Their signed device identity and invitation proof arrive automatically over an encrypted connection. They do not send a card file back.</li>
+          <li><strong>Verify and approve their device here.</strong> Confirm the expected device identity with your collaborator. Approval grants project access. Then Send Snapshot and keep TrackMesh open while they Check peer and Receive.</li>
         </ol>
         <div className="actions"><button disabled={busy} onClick={() => request('export_invite')}>Export invitation with current addresses</button>
-          <button disabled={busy} onClick={() => request('pair')}>Open pairing reply</button>
-          <button className="text-button" disabled={busy} onClick={() => act({ kind: 'export_card' })}>Save pairing reply again</button></div>
-        <p>The reply contains your signed device identity; it also works with an existing device card. It does not grant access until the inviter opens it for the intended project. If you cancelled saving a reply, save it again here. Invitations contain a private project capability; their contents stay in the native backend.</p>
+          <button disabled={busy || status.pairing.project_id === project.project_id} onClick={() => act({ kind: 'open_pairing', project_id: project.project_id })}>Open pairing window</button>
+          <button disabled={busy || !peer} onClick={() => peer && act({ kind: 'request_pairing', project_id: project.project_id, device_id: peer.device.device_id })}>Retry automatic pairing</button></div>
+        {status.pairing.project_id === project.project_id && <div role="status">
+          <p>Waiting for pairing requests · {status.pairing.remaining_seconds}s left. One project window is open at a time; closing, expiry or restart removes unapproved requests.</p>
+          <button disabled={busy} onClick={() => act({ kind: 'close_pairing', project_id: project.project_id })}>Close pairing window</button>
+          {status.pairing.requests.map(candidate => <div className="notice" key={candidate.request_id}>
+            <p><strong>{candidate.name}</strong> requests access to {project.name}.</p>
+            <p>Device <code>{candidate.device_id}</code></p><p>Identity <code>{candidate.peer_id}</code></p>
+            <p>Invitation possession verified. A device name alone is not identity verification; approve only the expected collaborator.</p>
+            <div className="actions"><button disabled={busy} onClick={() => window.confirm(`Authorize device ${candidate.name} (${candidate.device_id}) for ${project.name}? Confirm its identity with your collaborator first.`) && act({ kind: 'approve_pairing', project_id: project.project_id, request_id: candidate.request_id })}>Approve device</button>
+              <button disabled={busy} onClick={() => act({ kind: 'reject_pairing', project_id: project.project_id, request_id: candidate.request_id })}>Reject</button></div>
+          </div>)}
+        </div>}
+        <p>Encryption protects message contents, not IP addresses or traffic timing. Invitation keys never leave the native backend. Unapproved devices cannot fetch project files.</p>
+        <p>Your device <code>{status.device?.device_id}</code> · Your identity <code>{status.device?.peer_id}</code>. Compare these public IDs with your collaborator before approval. The receiver waits up to 60s for approval after delivering the request; a later approval can be checked with Retry automatic pairing.</p>
+        <details><summary>Legacy file pairing</summary><p>For an older build, explicitly exchange signed device cards. This grants access only after the inviter imports the card for this project.</p>
+          <div className="actions"><button disabled={busy} onClick={() => request('pair')}>Open pairing reply</button>
+            <button disabled={busy} onClick={() => act({ kind: 'export_card' })}>Save pairing reply</button></div></details>
       </details>
       <div className="actions">
         <button className="text-button danger" disabled={busy || !peer} onClick={() => peer && window.confirm(`Remove ${peer.device.name}'s local access to this project? Infrastructure ACLs also need an operator update.`) && act({ kind: 'revoke', project_id: project.project_id, device_id: peer.device.device_id })}>Revoke selected peer</button></div>
@@ -216,8 +231,8 @@ export default function App() {
           <label>Permanent project UUID<div className="input-row"><input value={uuid} onChange={e => setUuid(e.target.value)} placeholder="Existing UUID, or create one" /><button onClick={() => setUuid(crypto.randomUUID())}>New UUID</button></div></label></>}
         <label>Local project folder<div className="input-row"><input value={folder} onChange={e => setFolder(e.target.value)} placeholder="D:\Projects\Track 07" /><button onClick={() => void browse()}>Browse…</button></div></label>
         {setup === 'link' && <><label>HTTPS mailbox (optional)<input value={mailbox} onChange={e => setMailbox(e.target.value)} placeholder="https://mailbox.example.com" /></label><label>Pinned relay address (optional)<input value={relay} onChange={e => setRelay(e.target.value)} placeholder="/dns4/relay.example.com/udp/4001/quic-v1/p2p/…" /></label></>}
-        {setup === 'join' && <p className="muted">Choose your local folder, then open the private invitation. TrackMesh accepts it and asks where to save a pairing reply. Send that reply privately to the inviter and wait for their confirmation. The invitation key stays in the native backend.</p>}
-        <div className="actions"><button className="primary" disabled={busy || !folder || (setup === 'link' && (!name || !uuid))} onClick={() => void saveSetup()}>{setup === 'join' ? 'Accept invitation & save reply…' : 'Link project'}</button><button onClick={() => setSetup(null)}>Cancel</button></div>
+        {setup === 'join' && <p className="muted">Choose your local folder, then open the private invitation. TrackMesh sends your pairing request automatically; keep the inviter online with their pairing window open. Wait for their approval before Check peer and Receive. The invitation key stays in the native backend.</p>}
+        <div className="actions"><button className="primary" disabled={busy || !folder || (setup === 'link' && (!name || !uuid))} onClick={() => void saveSetup()}>{setup === 'join' ? 'Accept invitation & connect…' : 'Link project'}</button><button onClick={() => setSetup(null)}>Cancel</button></div>
       </section>}
       <div className="project-list">{status?.page?.projects.map(card => <Card key={card.project.project_id} card={card} status={status} jobStartedAt={jobStartedAt} act={act} />)}</div>
       {status?.ready && !status.page?.projects.length && !setup && <div className="empty"><div className="empty-icon">↗</div><h2>Your first shared project</h2><p>Link a project folder or import a collaborator’s invitation.<br />Snapshots stay immutable; files stay on your PCs.</p></div>}

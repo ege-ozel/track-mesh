@@ -13,8 +13,8 @@ use std::{
 };
 use tauri::{AppHandle, Manager};
 use trackmesh_core::{
-    default_data_directory, peer::PeerRuntime, Engine, MailboxRuntime, PeerCheck, PluginRuntime,
-    SessionGrace, SummaryPage,
+    default_data_directory, peer::PeerRuntime, Engine, MailboxRuntime, PairingStatus, PeerCheck,
+    PluginRuntime, SessionGrace, SummaryPage,
 };
 use uuid::Uuid;
 
@@ -68,6 +68,24 @@ pub enum Action {
         external_port: Option<u16>,
     },
     ExportCard,
+    OpenPairing {
+        project_id: Uuid,
+    },
+    ClosePairing {
+        project_id: Uuid,
+    },
+    ApprovePairing {
+        project_id: Uuid,
+        request_id: Uuid,
+    },
+    RejectPairing {
+        project_id: Uuid,
+        request_id: Uuid,
+    },
+    RequestPairing {
+        project_id: Uuid,
+        device_id: Uuid,
+    },
     Send {
         project_id: Uuid,
     },
@@ -101,6 +119,11 @@ impl Action {
             | Self::Pair { project_id }
             | Self::Revoke { project_id, .. }
             | Self::ExportInvite { project_id, .. }
+            | Self::OpenPairing { project_id }
+            | Self::ClosePairing { project_id }
+            | Self::ApprovePairing { project_id, .. }
+            | Self::RejectPairing { project_id, .. }
+            | Self::RequestPairing { project_id, .. }
             | Self::Send { project_id }
             | Self::Publish { project_id }
             | Self::Refresh { project_id }
@@ -112,11 +135,16 @@ impl Action {
     fn label(&self) -> &'static str {
         match self {
             Self::Link { .. } => "Link folder",
-            Self::Join { .. } => "Accept invitation and save pairing reply",
+            Self::Join { .. } => "Accept invitation and request pairing",
             Self::Pair { .. } => "Complete pairing",
             Self::Revoke { .. } => "Revoke device",
             Self::ExportInvite { .. } => "Export invitation",
             Self::ExportCard => "Save pairing reply",
+            Self::OpenPairing { .. } => "Open pairing window",
+            Self::ClosePairing { .. } => "Close pairing window",
+            Self::ApprovePairing { .. } => "Approve pairing",
+            Self::RejectPairing { .. } => "Reject pairing",
+            Self::RequestPairing { .. } => "Request automatic pairing",
             Self::Send { .. } => "Send Snapshot",
             Self::Publish { .. } => "Publish metadata",
             Self::Refresh { .. } => "Refresh metadata",
@@ -128,7 +156,11 @@ impl Action {
     fn changes_setup(&self) -> bool {
         matches!(
             self,
-            Self::Link { .. } | Self::Join { .. } | Self::Pair { .. } | Self::Revoke { .. }
+            Self::Link { .. }
+                | Self::Join { .. }
+                | Self::Pair { .. }
+                | Self::Revoke { .. }
+                | Self::ApprovePairing { .. }
         )
     }
 }
@@ -161,6 +193,7 @@ pub struct CheckView {
 
 #[derive(Serialize)]
 pub struct DesktopStatus {
+    pub pairing: PairingStatus,
     pub listen_port: u16,
     pub configured_external_addresses: Vec<String>,
     pub ready: bool,
@@ -366,11 +399,14 @@ impl Desktop {
         let data_directory = engine
             .as_ref()
             .map(|engine| engine.directory.display().to_string());
-        let page = match engine {
-            Some(engine) => Some(
-                tauri::async_runtime::spawn_blocking(move || engine.summary_page(offset)).await??,
-            ),
-            None => None,
+        let (page, pairing) = match engine {
+            Some(engine) => {
+                tauri::async_runtime::spawn_blocking(move || -> Result<_> {
+                    Ok((Some(engine.summary_page(offset)?), engine.pairing_status()?))
+                })
+                .await??
+            }
+            None => (None, PairingStatus::default()),
         };
         let mut state = self.lock()?;
         let mut network = state.network.as_ref().map(Network::status);
@@ -440,6 +476,7 @@ impl Desktop {
                     .map(|_| "Metadata worker stopped; reopen the desktop to retry".to_owned())
             });
         Ok(DesktopStatus {
+            pairing,
             listen_port: self.options.port,
             configured_external_addresses: self.options.external_address.clone(),
             ready: state.ready,
@@ -517,6 +554,36 @@ impl Desktop {
         let reload = action.changes_setup();
         let allow_http = self.options.allow_loopback_http;
         let outcome = match action {
+            Action::Join { folder } => {
+                let disk = engine.clone();
+                let (project, device) =
+                    tauri::async_runtime::spawn_blocking(move || -> Result<_> {
+                        let invite: protocol::ProjectInvite = documents::read_document(&app)?;
+                        let project = invite.project_id;
+                        let device = invite.device.device_id;
+                        disk.import_invite(invite, &folder)?;
+                        Ok((project, device))
+                    })
+                    .await??;
+                let disk = engine.clone();
+                let namespaces =
+                    tauri::async_runtime::spawn_blocking(move || disk.namespaces()).await??;
+                network
+                    .reload(namespaces)
+                    .await
+                    .context("Invitation accepted, but network reload failed; reopen desktop")?;
+                // Import is committed even when the inviter is offline or their window is closed.
+                // Keep a retry action instead of asking the user to reimport the project.
+                self.automatic_pairing(&engine, &network, project, device, true)
+                    .await
+            }
+            Action::RequestPairing {
+                project_id,
+                device_id,
+            } => {
+                self.automatic_pairing(&engine, &network, project_id, device_id, false)
+                    .await
+            }
             Action::Send { project_id } => {
                 serde_json::to_value(engine.send_snapshot(project_id, allow_http).await?)?
             }
@@ -606,23 +673,22 @@ impl Desktop {
                             disk.link(project_id, &name, &folder, mailbox_url.as_deref(), relay_address.as_deref())?;
                             Ok(json!({"message": "Folder linked"}))
                         }
-                        Action::Join { folder } => {
-                            let invite: protocol::ProjectInvite = documents::read_document(&app)?;
-                            let project_id = invite.project_id;
-                            let reply = disk.device_card(addresses)?;
-                            disk.import_invite(invite, &folder)?;
-                            // Import is already committed. A cancelled/failed save must not hide
-                            // that fact or skip reloading the one network actor's trusted peers.
-                            match documents::write_document(&app, "trackmesh-pairing-reply.json", &reply) {
-                                Ok(path) => Ok(json!({
-                                    "message": "Invitation accepted. Send the saved pairing reply privately to the inviter, who opens it in this project's Pair collaborator panel. Wait for their confirmation before Check peer or Receive.",
-                                    "project_id": project_id, "reply_saved": true, "path": path
-                                })),
-                                Err(_) => Ok(json!({
-                                    "message": "Invitation accepted, but the pairing reply was not saved. Open this project's Pair collaborator panel and choose Save pairing reply again; send it privately to the inviter. Do not create or import the project again.",
-                                    "project_id": project_id, "reply_saved": false
-                                })),
-                            }
+                        Action::OpenPairing { project_id } => {
+                            disk.open_pairing_window(project_id)?;
+                            Ok(json!({"message": "Pairing window open for 10 minutes. Ask your collaborator to accept the invitation or retry automatic pairing. Verify the arriving device before approving."}))
+                        }
+                        Action::ClosePairing { project_id } => {
+                            ensure!(disk.pairing_status()?.project_id == Some(project_id), "No pairing window for this project");
+                            disk.close_pairing_window()?;
+                            Ok(json!({"message": "Pairing window closed; unapproved requests removed"}))
+                        }
+                        Action::ApprovePairing { project_id, request_id } => {
+                            disk.approve_pairing(project_id, request_id)?;
+                            Ok(json!({"message": "Device approved for this project. Create a snapshot and keep TrackMesh open while the collaborator checks and receives."}))
+                        }
+                        Action::RejectPairing { project_id, request_id } => {
+                            disk.reject_pairing(project_id, request_id)?;
+                            Ok(json!({"message": "Pairing request rejected; no project access was granted"}))
                         }
                         Action::Pair { project_id } => {
                             disk.pair(project_id, documents::read_document(&app)?)?;
@@ -647,7 +713,8 @@ impl Desktop {
                             }
                             let invite = disk.export_invite(project_id, addresses)?;
                             let path = documents::write_document(&app, "trackmesh-invite.json", &invite)?;
-                            Ok(json!({"message": "Private invitation saved", "path": path}))
+                            disk.open_pairing_window(project_id)?;
+                            Ok(json!({"message": "Private invitation saved. Automatic pairing window open for 10 minutes; share the invitation privately, then verify and approve your collaborator here.", "path": path}))
                         }
                         Action::ExportCard => {
                             let card = disk.device_card(addresses)?;
@@ -659,6 +726,11 @@ impl Desktop {
                 }).await??
             }
         };
+        let disk = engine.clone();
+        let pairing = tauri::async_runtime::spawn_blocking(move || disk.pairing_status()).await??;
+        network
+            .pairing_window(Duration::from_secs(pairing.remaining_seconds))
+            .await?;
         if reload {
             let disk = engine;
             let namespaces =
@@ -669,6 +741,38 @@ impl Desktop {
                 .context("Project setup saved, but network reload failed; reopen desktop")?;
         }
         Ok(outcome)
+    }
+
+    async fn automatic_pairing(
+        &self,
+        engine: &Arc<Engine>,
+        network: &Network,
+        project: Uuid,
+        device: Uuid,
+        imported: bool,
+    ) -> Value {
+        let result = async {
+            let disk = engine.clone();
+            let peer =
+                tauri::async_runtime::spawn_blocking(move || disk.paired_peer(project, device))
+                    .await??;
+            wait_for_peer(self, network, &peer.peer_id).await?;
+            let mut addresses = advertised_addresses(network);
+            addresses.extend(self.options.external_address.iter().cloned());
+            addresses.sort();
+            addresses.dedup();
+            addresses.truncate(16);
+            engine
+                .request_pairing(network, project, device, addresses)
+                .await
+        }
+        .await;
+        let (state, message) = match result {
+            Ok(protocol::PairingResponse::Pending) => ("pending", "Pairing request sent automatically. The inviter must verify and approve your device. No card file needs to be sent; wait for their confirmation before Check peer and Receive."),
+            Ok(protocol::PairingResponse::Approved) => ("approved", "The inviter has authorized this device. Check peer, then Receive when their snapshot is ready."),
+            _ => ("retry", "Automatic pairing could not complete. Your project remains imported. Ask the inviter to open a pairing window and keep TrackMesh online, then use Retry automatic pairing. Do not reimport or create a new UUID. Both devices need a build supporting automatic pairing."),
+        };
+        json!({"project_id": project, "invitation_imported": imported, "pairing_state": state, "message": message})
     }
 
     pub fn begin_close(self: &Arc<Self>, app: AppHandle) {

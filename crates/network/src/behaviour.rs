@@ -3,8 +3,8 @@ use crate::{codec, discovery::configure, identity::keypair, NetworkConfig};
 use anyhow::Result;
 use crypto::Identity;
 use libp2p::{
-    allow_block_list, dcutr, identify, noise, ping, relay, rendezvous, request_response,
-    swarm::NetworkBehaviour, tcp, yamux, StreamProtocol, SwarmBuilder,
+    dcutr, identify, noise, ping, relay, rendezvous, request_response, swarm::NetworkBehaviour,
+    tcp, yamux, StreamProtocol, SwarmBuilder,
 };
 use std::time::Duration;
 use storage::Store;
@@ -12,7 +12,7 @@ use storage::Store;
 pub(super) type PeerSwarm = libp2p::Swarm<Behaviour>;
 #[derive(NetworkBehaviour)]
 pub(super) struct Behaviour {
-    pub(super) allow: allow_block_list::Behaviour<allow_block_list::AllowedPeers>,
+    pub(super) allow: crate::gate::Gate,
     pub(super) limits: libp2p::connection_limits::Behaviour,
     pub(super) identify: identify::Behaviour,
     pub(super) ping: ping::Behaviour,
@@ -20,6 +20,7 @@ pub(super) struct Behaviour {
     pub(super) dcutr: dcutr::Behaviour,
     pub(super) rendezvous: rendezvous::client::Behaviour,
     pub(super) transfer: request_response::Behaviour<codec::TransferCodec>,
+    pub(super) pairing: request_response::Behaviour<codec::PairingCodec>,
 }
 pub(super) fn build_swarm(
     identity: &Identity,
@@ -65,6 +66,16 @@ pub(super) fn build_swarm(
             relay,
             dcutr: dcutr::Behaviour::new(id),
             rendezvous: rendezvous::client::Behaviour::new(key.clone()),
+            pairing: request_response::Behaviour::with_codec(
+                codec::PairingCodec,
+                [(
+                    StreamProtocol::new(protocol::PAIRING_PROTOCOL),
+                    request_response::ProtocolSupport::Full,
+                )],
+                request_response::Config::default()
+                    .with_request_timeout(Duration::from_secs(20))
+                    .with_max_concurrent_streams(8),
+            ),
             transfer: request_response::Behaviour::with_codec(
                 codec::TransferCodec,
                 [(

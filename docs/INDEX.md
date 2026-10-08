@@ -7,7 +7,8 @@ Choose the page for the current task; these pages are not a required reading seq
 | [Root README](../README.md) | Product status and quick build entry point |
 | [Two-PC setup entry point (Türkçe)](setup/README.md) | Shared trial order, responsibility handoff and firewall/router troubleshooting |
 | [Sender / host setup (Türkçe)](setup/host/README.md) | Source build/launch, project link, LAN/WAN addresses, TP-Link rules, Windows Firewall, invitation and snapshot |
-| [Receiving peer setup (Türkçe)](setup/peer/README.md) | Package launch, Desktop or CLI choice, invitation import, returned card and check/receive/check |
+| [Receiving peer setup (Türkçe)](setup/peer/README.md) | Package launch, Desktop or CLI choice, invitation import, automatic device request and check/receive/check |
+| [Automatic pairing security (Türkçe)](setup/PAIRING_SECURITY.md) | Enrollment challenge, explicit approval, transport/authorization separation, bounds and sniffing limits |
 | [Peer package CLAUDE.md (Türkçe)](setup/peer/CLAUDE.md) | Standalone distribution-package agent instructions; invitation payload stays outside agent context |
 | [Agent entry point](../AGENTS.md) | Repository rules and task routing |
 | [Code map](CODEMAP.md) | Exact file ownership, public entry points, and targeted searches |

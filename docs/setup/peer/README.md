@@ -17,34 +17,34 @@ Bu rehber arkadaşın/alıcı bilgisayar içindir. [Ortak sıra ve sorun giderme
 ### Desktop ile
 
 1. `trackmesh-desktop.exe` aç. Varsayılan profil `%LOCALAPPDATA%\TrackMesh` olur; bu profili, secrets/veritabanını A'ya gönderme.
-2. **Accept invitation** seç; boş hedef klasörünü seçip **Accept invitation & save reply…** ile A'nın özel davetini aç. Kendi başına New UUID/Link folder yapma; projeye davet üzerinden katıl.
-3. Daveti kabul edince aynı işlem ikinci native pencereyi açar: eşleştirme yanıtını yeni bir `.json` dosyasına kaydet. Yanıt mevcut imzalı cihaz kartı formatındadır; davetteki proje anahtarını taşımaz. Kaydettiğin yanıtı A'ya özel kanaldan geri gönder.
-4. A'nın mevcut projede **Pair collaborator → Open pairing reply** ile tamamlamasını ve **Send Snapshot** yapmasını bekle.
+2. **Accept invitation** seç; boş hedef klasörünü seçip **Accept invitation & connect…** ile A'nın özel davetini aç. Kendi başına New UUID/Link folder yapma; projeye davet üzerinden katıl.
+3. Uygulama cihaz kimliğini ve tek kullanımlık davet doğrulamasını A'ya otomatik gönderir. Kart dosyası export/gönderme adımı yoktur. A ile paneldeki public Device/Identity değerlerini karşılaştır.
+4. A mevcut projede **Pair collaborator → Approve device** yapar. Alıcı onayı 60 saniyeye kadar otomatik sorgular; ardından A'nın snapshot'ını bekle.
 
-Yanıt kaydını iptal ettiysen veya kayıt başarısız olduysa proje import edilmiş kalır; uyarıyı takip edip **Collaboration & connection details → Pair collaborator → Save pairing reply again** seç. Yeniden New UUID veya proje importu gerekmez. Eski build'lerde aynı işler **Import invitation → Export my device card**, A'da **Import collaborator card** adlarıyla ayrıdır; mevcut cihaz kartları yeni akışta da çalışır.
+A offline veya eşleştirme penceresi kapalıysa proje import edilmiş kalır. A Open pairing window açıp online kalsın; sen **Pair collaborator → Retry automatic pairing** seç. New UUID veya yeniden import gerekmez. İki tarafta yeni build gerekir. Eski cihazlarla manuel kart yolu **Legacy file pairing** altındadır; önceki ZIP bunu eski Import invitation/Export my device card/Import collaborator card etiketleriyle yapar.
 
 ### Claude ile terminalden
 
 1. Claude Code kurulu ve giriş yapılmışsa paket klasöründe terminal açıp `claude` çalıştır. MD bir executable değildir; agent talimatı olarak okunur.
-2. Şunu söyle: **“CLAUDE.md yönergesini uygula. Davet dosyamın yolunu ve boş hedef klasörümü sor; önce cihaz kartımı hazırlayalım.”**
-3. Agent [CLAUDE.md](CLAUDE.md) akışına göre native `join` ve `card --output` çalıştırır. CLI komutları değişmedi; bu iki komut aynı eşleştirme görevinin davet/yanıt adımlarıdır. Davet payload'ını okumaz; yalnızca dosya yolunu alır.
-4. Oluşan kartı A'ya özel gönder ve A'nın hazır bilgisini bekle.
+2. Şunu söyle: **“CLAUDE.md yönergesini uygula. Davet dosyamın yolunu ve boş hedef klasörümü sor; cihaz eşleştirme isteğini otomatik gönderelim.”**
+3. Agent [CLAUDE.md](CLAUDE.md) akışına göre native `join`, güvenli `status`, sonra yeni `request-pairing` çalıştırır. Mevcut CLI komutları korunur; yeni build gerekir. Davet payload'ını okumaz; yalnızca dosya yolunu alır.
+4. A cihaz kimliğini doğrulayıp UI'da onaylar; kart dosyası göndermezsin. Sonra snapshot'ını bekle.
 
 CLI yolu ayrı, kalıcı `%LOCALAPPDATA%\TrackMeshPeerTrial` profili kullanır. Aynı profilde Desktop/serve/plugin owner ile CLI check/receive aynı anda çalışmasın. Mevcut kimliği/profili sıfırlama. CLI sonrasında Desktop ile devam etmek istersen aynı profille açma komutu [CLAUDE.md](CLAUDE.md) sonunda bulunur; normal çift tıklama başka profili gösterebilir.
 
 ## 3. A hazır olduğunda al ve doğrula
 
-- [ ] A kartını import edip snapshot'ın hazır olduğunu bildirsin. Daveti import etmek tek başına karşılıklı yetkilendirmeyi tamamlamaz.
+- [ ] A cihaz isteğini onaylasın ve snapshot hazır olsun. Daveti import etmek tek başına karşılıklı yetkilendirmeyi tamamlamaz.
 - [ ] Desktop'ta doğru A peer'ını seçip **Check peer** yap. Bağlantı denemesi **30 saniyeye kadar** sürebilir; geri sayımı bekle. Offline/last-known bilgi dosyaların şu an indirilebilir olduğunu göstermez.
 - [ ] Kaynak snapshot mevcut ve Receive uygun olsun. DAW projesini kapat; Desktop'ta **I closed this project in the DAW before Receive or Recovery** kutusunu işaretle, **Receive** seç.
-- [ ] CLI kullanıyorsan “Gönderen kartımı import etti, snapshot hazır. DAW kapalı; seçtiğim hedef klasöre Receive yap” de. Agent önce check, sonra receive ve son check çalıştırır.
+- [ ] CLI kullanıyorsan “Gönderen cihazımı onayladı, snapshot hazır. DAW kapalı; seçtiğim hedef klasöre Receive yap” de. Agent önce check, sonra receive ve son check çalıştırır.
 - [ ] Apply bitmeden uygulamayı/process'i zorla kapatma. A online kalsın. Bağlantı kesilirse PAUSED session için aynı snapshot'tan Resume receive / `receive --snapshot-id` kullan.
 - [ ] Başarılı Receive ardından yeniden **Check peer** yap. Alınan dosyaları/snapshot ID'yi ve fresh eşitliği kontrol et: CLI `verified_equal: true`, Desktop güncel doğrulanmış **UP TO DATE**. A yeni snapshot oluşturmuşsa farklılık ayrıca değerlendirilir.
 - [ ] Dosyaları DAW'da açıp sample eksikliği/açılışı ayrıca kontrol et; transfer başarısı bu DAW kontrolünü tek başına kanıtlamaz.
 
 ## 4. Hata olursa
 
-Timeout'ta önce A açık mı, doğru proje/peer mı, kart iki yönde import edildi mi, davet güncel mi kontrol edin. Sonra A kendi firewall, hedef LAN IP ve modem TCP/UDP eşlemesini kontrol etsin. Bir seferde bir ayar değiştirin. Ayrıntılı [belirti → sonraki adım tablosu](../README.md) ortaktır.
+Timeout'ta önce A açık mı, doğru proje/peer mı, eşleştirme penceresi açık mı, cihaz isteği onaylandı mı, davet güncel mi kontrol edin. Sonra A kendi firewall, hedef LAN IP ve modem TCP/UDP eşlemesini kontrol etsin. Bir seferde bir ayar değiştirin. Ayrıntılı [belirti → sonraki adım tablosu](../README.md) ortaktır.
 
 Receive reddedilirse doğru peer/snapshot, DAW kapanışı, yerel değişiklik, divergence ve recovery durumuna bak. Verileri silerek veya otomatik merge ile aşma. Recovery gerekiyorsa DAW kapalıyken Recover locally / CLI recover kullan; journal, staging, backup ve veritabanını koru.
 

@@ -31,6 +31,7 @@ export interface CheckView { device_id: string; fresh: boolean; current_known: b
   verified_equal: boolean; connection: Connection | null; last_verified_at: string | null;
 } }
 export interface DesktopStatus {
+  pairing: { project_id: string | null; remaining_seconds: number; requests: { request_id: string; device_id: string; name: string; peer_id: string }[] };
   listen_port: number; configured_external_addresses: string[];
   ready: boolean; closing: boolean; error: string | null;
   device: { device_id: string; name: string; peer_id: string } | null;
@@ -43,6 +44,9 @@ export type Action =
   | { kind: 'link'; project_id: string; name: string; folder: string; mailbox_url: string | null; relay_address: string | null }
   | { kind: 'join'; folder: string }
   | { kind: 'export_card' }
+  | { kind: 'open_pairing' | 'close_pairing'; project_id: string }
+  | { kind: 'approve_pairing' | 'reject_pairing'; project_id: string; request_id: string }
+  | { kind: 'request_pairing'; project_id: string; device_id: string }
   | { kind: 'pair' | 'send' | 'publish' | 'refresh'; project_id: string }
   | { kind: 'export_invite'; project_id: string; public_ip?: string | null; external_port?: number | null }
   | { kind: 'revoke' | 'check'; project_id: string; device_id: string }

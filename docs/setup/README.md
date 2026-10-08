@@ -6,13 +6,13 @@ Henüz setup/MSI yok; Windows executable ile elle deneme yapıyoruz. Küçük bi
 
 | Rol | Okunacak belge | Yapılacak işler |
 | --- | --- | --- |
-| **Ana bilgisayar / A / gönderen** | [host/README.md](host/README.md) | Projeyi link et, adresleri belirle, modem/firewall hazırla, daveti gönder, peer kartını import et, snapshot oluştur |
-| **Peer / B / alıcı** | [peer/README.md](peer/README.md) | Paketi aç, daveti import et, kartını geri gönder, Check peer → Receive → son check yap |
-| **Peer tarafında terminal agentı** | [peer/CLAUDE.md](peer/CLAUDE.md) | Davet içeriğini okumadan native CLI ile join/card/check/receive |
+| **Ana bilgisayar / A / gönderen** | [host/README.md](host/README.md) | Projeyi link et, adresleri belirle, modem/firewall hazırla, daveti gönder, gelen cihaz isteğini doğrulayıp onayla, snapshot oluştur |
+| **Peer / B / alıcı** | [peer/README.md](peer/README.md) | Paketi aç, daveti import et, otomatik eşleştirme isteğini gönder, Check peer → Receive → son check yap |
+| **Peer tarafında terminal agentı** | [peer/CLAUDE.md](peer/CLAUDE.md) | Davet içeriğini okumadan native CLI ile join/request-pairing/check/receive |
 
 “Ana bilgisayar” ilk aktarımın kaynağıdır; merkezi sunucu veya kalıcı master rolü değildir. İlk bağlantıyı B, A'ya başlatır. B'nin normal dışarı bağlantısı varsa bu ilk Receive için kendi modeminde port açması gerekmez. Daha sonra B kaynak olacaksa onun erişilebilirliği ayrıca hazırlanıp doğrulanır.
 
-**Karşı tarafı beklerken:** A uygulamayı açık tutsun ve doğru davetin B'ye özel kanaldan ulaştığını kontrol etsin. B cihaz kartını geri göndersin. Kart geldikten sonra A import ve Send Snapshot yapar; B check/receive/check ile devam eder. Aynı klasörü yeniden link etmek veya yeni UUID oluşturmak gerekmez.
+**Karşı tarafı beklerken:** A uygulamayı açık tutsun ve doğru davetin B'ye özel kanaldan ulaştığını kontrol etsin. B daveti kabul edince cihaz isteği otomatik gelir. A kimliği kontrol edip **Approve device** ve Send Snapshot yapar; B check/receive/check ile devam eder. Aynı klasörü yeniden link etmek veya yeni UUID oluşturmak gerekmez.
 
 ## Hızlı deneme: sırayla yapacaklarımız
 
@@ -22,7 +22,7 @@ Henüz setup/MSI yok; Windows executable ile elle deneme yapıyoruz. Küçük bi
 2. **A yerel IP/portu not etsin.** **Collaboration & connection details → Connection setup** içinde örneğin `192.168.1.50:43101` görürsünüz. Bu IP modemde hedef olacak. Kendi IP'nizi kullanın.
 3. **A firewall iznini versin.** Gelen TCP `43101` ve UDP `43101` için izin kuralı oluşturun; kurallar aktif Windows ağ profilinde geçerli olsun. Uygulama bunu otomatik yapmaz.
 4. **A modemden port yönlendirsin.** TCP `43101 → PC_IP:43101` ve UDP `43101 → PC_IP:43101` kurallarını etkinleştirip kaydedin. Modemin WAN adresinin public IPv4 olup olmadığını kontrol edin. Aynı LAN'daysanız bu adımı atlayın.
-5. **Daveti ve karşı kartı değişin.** Ayrı internetlerde A, public IP + dış portu girip **Export invitation with public addresses** kullansın. Aynı LAN'da **Export invitation with current addresses** yeterli. B **Accept invitation & save reply…** ile daveti açıp aynı işlemde eşleştirme yanıtını kaydetsin ve A'ya göndersin. A mevcut projede **Pair collaborator → Open pairing reply** yapsın. Eski build/CLI cihaz kartları aynı yanıt olarak kabul edilir. Dosyaları özel kanaldan paylaşın.
+5. **Daveti gönderin ve eşleştirin.** Ayrı internetlerde A, public IP + dış portu girip **Export invitation with public addresses** kullansın. Aynı LAN'da **Export invitation with current addresses** yeterli. Export, A'da 10 dakikalık eşleştirme penceresini açar. B **Accept invitation & connect…** ile daveti kabul edince imzalı cihaz kimliği ve davet sahipliği kanıtı otomatik gönderilir. A **Pair collaborator → Approve device** ile beklenen kimliği doğrulayıp onaylasın. B kart dosyası göndermez; yalnızca ilk daveti özel paylaşın.
 6. **A → Send Snapshot.** Yerel snapshot oluşmasını bekleyin. Mailbox yoksa `PENDING` dosya aktarımının kesin başarısız olduğu anlamına gelmez.
 7. **B → Check peer → Receive.** Check peer için 30 saniyeye kadar bekleyin. Erişim sağlandıysa B DAW'ı kapatıp onay kutusunu işaretlesin ve Receive yapsın. İkiniz de uygulamayı açık tutun. Bitince dosyaları ve yeniden Check peer sonucunu kontrol edin.
 
@@ -48,7 +48,7 @@ Modem arızalarını ayırmak için [üreticinin port-forward sorun giderme rehb
 
 ## Tek eşleştirme akışı
 
-Desktop'ta daveti kabul etme ve yanıtı hazırlama aynı işlemde yapılır. Yanıt mevcut imzalı cihaz kartıdır; yeni protokol/belge formatı yoktur. Yanıtın özel dosya olarak geri gönderilmesi ve gönderenin doğru projede açması hâlâ gerekir; internetten otomatik pairing yoktur. Yanıt kaydı iptal edilirse proje importu korunur, **Save pairing reply again** ile tamamlanır. Önceden hazırlanmış `TrackMesh-PeerTrial-20261007-162413.zip` eski UI etiketlerini içerir; yeni akış için güncel Desktop build gerekir. CLI `join` ve `card --output` komutları değişmez.
+Yeni Desktop yanıtı şifreli peer bağlantısından otomatik gönderir; A'nın son onayı korunur. Alıcı, istek gönderildikten sonra onayı 60 saniyeye kadar sorgular. A offline/pencere kapalıysa import korunur; A **Open pairing window**, B **Retry automatic pairing** ile devam eder. Tek projede 10 dakikalık pencere vardır; süre bitince, kapanınca veya restart olunca onaysız istekler temizlenir. Bu süre davet/proje anahtarını iptal etmez. Eski invitation/card formatları ve transfer protokolü korunur; ayrı `/trackmesh/pairing/1` kanalı eklenir. İki tarafta da yeni build gerekir. Eski ZIP bu özelliği içermez. Eski cihazlarla manuel kart yolu **Legacy file pairing** altında bulunur; `join`/`card` komutları değişmez, CLI'ye `request-pairing` eklenir. [Güvenlik sınırları](PAIRING_SECURITY.md).
 
 ## Ortak çalışma kuralları
 

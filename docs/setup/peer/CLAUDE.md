@@ -7,14 +7,14 @@ Bu belge dağıtım paketinde `CLAUDE.md` adıyla bulunur. Paket bir installer d
 1. ZIP'i normal, yazılabilir bir klasöre çıkarın. ZIP'in içinden doğrudan çalıştırmayın.
 2. Gönderenden özel davet `.json` dosyasını ayrıca alın. Dosyayı Claude'a eklemeyin/içeriğini yapıştırmayın; yalnızca yerel dosya yolunu verin.
 3. Bu paket klasöründe PowerShell açın. Claude Code kurulu ve giriş yapılmışsa `claude` komutuyla başlatın. Proje dizinindeki `CLAUDE.md` başlangıçta talimat olarak okunur; MD bir executable değildir. [Claude Code belgesi](https://code.claude.com/docs/en/memory).
-4. Claude'a şunu söyleyin: **“CLAUDE.md yönergesine göre TrackMesh denemesini başlat. Davet dosyamın yolunu ve boş hedef klasörümü sor; önce kendi cihaz kartımı hazırlayalım. Gönderen kartımı import edip snapshot oluşturunca dosyaları alacağız.”**
-5. Claude kart dosyasını oluşturunca onu gönderene özel kanaldan iletin. Gönderen **Pair collaborator → Open pairing reply** (eski Desktop: **Import collaborator card**) ve **Send Snapshot** yapıp uygulamasını açık tutsun. Sonra Claude'a **“Gönderen kartımı import etti, snapshot hazır. DAW kapalı; seçtiğim hedef klasöre Receive yap.”** deyin.
+4. Claude'a şunu söyleyin: **“CLAUDE.md yönergesine göre TrackMesh denemesini başlat. Davet dosyamın yolunu ve boş hedef klasörümü sor; eşleştirme isteğini otomatik gönderelim. Gönderen cihazımı onaylayıp snapshot oluşturunca dosyaları alacağız.”**
+5. Gönderen cihaz isteğini **Pair collaborator → Approve device** ile onaylasın ve Send Snapshot yapıp uygulamasını açık tutsun. Kart dosyası göndermezsiniz. Sonra Claude'a **“Gönderen cihazımı onayladı, snapshot hazır. DAW kapalı; seçtiğim hedef klasöre Receive yap.”** deyin.
 
 Bağlantı başarılı olursa Receive proje dosyalarını seçilen klasöre indirir, doğrular ve yerleştirir. Paket tek başına projeye erişim vermez; davet, karşılıklı pairing, kaynak snapshot ve erişilebilir/online kaynak gerekir. Sürekli sync veya otomatik DAW açma yoktur.
 
 ## Birleşik eşleştirme akışı
 
-Yeni Desktop daveti kabul edince eşleştirme yanıtını aynı işlemde kaydettirir. Yanıt, mevcut imzalı cihaz kartı formatıdır; CLI'de aşağıdaki `join` ve `card --output` adımları aynı görevi tamamlar. Kartı/yanıtı A'ya özel gönderme ve A'nın doğru projede açması hâlâ gerekir; otomatik Internet enrollment yoktur. Eski cihaz kartları uyumludur. Bu repo yönergesindeki yeni UI etiketleri eski executable ZIP'te bulunmayabilir; paket build sürümünü kontrol et.
+Yeni Desktop daveti kabul edince cihaz isteğini şifreli bağlantıdan otomatik gönderir. CLI'de `join`, güvenli `status` ve yeni `request-pairing` aynı işi yapar. Gönderenin 10 dakikalık eşleştirme penceresi açık olmalı; son yetki için cihaz kimliğini doğrulayıp onaylaması gerekir. Alıcı onayı 60 saniyeye kadar sorgular; sonra retry yapılabilir. Davet/proje anahtarı ağdan veya agent context'inden geçmez. Her iki tarafta yeni build gerekir; önceki ZIP `request-pairing` içermez. Kullanıcı eski build ile kalmayı seçerse manuel `card --output`/Import collaborator card eski akışı kullanılabilir; otomatik başarı diye raporlama.
 
 ## Claude için görev ve sınırlar
 
@@ -24,7 +24,7 @@ Bu Windows kullanıcısına küçük bir test projesini terminalden aldır. Kull
 - `secrets`, device/project keys ve veritabanını okuma/paylaşma. Davet çıktısı üreten `invite` komutunu bu alma akışında kullanma. Kimlikleri güvenli `status` çıktısından öğren.
 - Bilgisayardaki mevcut proje/veri klasörlerini silme, sıfırlama veya otomatik conflict merge yapma. Hedefi kullanıcı seçsin; ilk deneme için boş klasör kullan. Hedef/data/paket klasörleri birbirinden ayrı olsun.
 - İlk denemede ayrı `%LOCALAPPDATA%\TrackMeshPeerTrial` veri profili kullan; profil zaten varsa kimliği koru. Komutlar Windows kullanıcısının kendi hesabında çalışsın; başka hesap altında DPAPI anahtarları açılamaz.
-- CLI `check`/`receive` çalışırken aynı profilde Desktop, `serve` veya plugin owner açma. Tek network runtime lease vardır. Önceden açık owner varsa onu zorla öldürme; güvenli kapanış/işlerin bitmesini bekle veya kullanıcıyla ayrı bir profil seç.
+- CLI `request-pairing`/`check`/`receive` çalışırken aynı profilde Desktop, `serve` veya plugin owner açma. Tek network runtime lease vardır. Önceden açık owner varsa onu zorla öldürme; güvenli kapanış/işlerin bitmesini bekle veya kullanıcıyla ayrı bir profil seç.
 - Receive öncesinde hedef klasör ve DAW'ın kapalı olduğu kullanıcı tarafından belirtilmiş olsun. Belirtildiyse aynı onayı tekrar sorma. Apply sırasında process'i zorla sonlandırma.
 - Firewall/router ayarlarını otomatik değiştirme, admin/UAC veya servis kurma. Gerekirse aşağıdaki rehberle kullanıcıyı yönlendir. Claude'un normal komut izinlerini atlatma.
 - Tamamlandı demek için Receive'in başarıyla bitmesini ve son fresh check sonucunu gör. Timeout/PENDING/last-known durumunu başarı sayma. Kalan engeli açıkça bildir.
@@ -42,20 +42,19 @@ $trialAgent = (Resolve-Path -LiteralPath '.\trackmesh-agent.exe').Path
 $trialData = Join-Path $env:LOCALAPPDATA 'TrackMeshPeerTrial'
 & $trialAgent --help
 & $trialAgent join --help
+& $trialAgent request-pairing --help
 & $trialAgent receive --help
 ```
 
 Kullanıcıdan `$trialInvite` (özel davetin tam yolu) ve `$trialFolder` (boş hedef klasörün tam yolu) için değer al. Klasör yoksa belirtilen yerde oluştur; varsa boş olduğunu dosya isimlerini/metadata'yı kontrol ederek doğrula. Dolu klasör seçilmişse ilk deneme için başka boş klasör iste; içerik silme. Sadece davet dosyasının varlığını kontrol et, içeriğini açma.
 
-### B. Daveti import et, kendi kartını gönder
+### B. Daveti native olarak import et
 
 ```powershell
 & $trialAgent --data-dir $trialData --device-name 'Peer trial PC' join --invite-file $trialInvite --folder $trialFolder
-$trialCard = Join-Path (Get-Location) ('peer-card-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.json')
-& $trialAgent --data-dir $trialData card --output $trialCard
 ```
 
-Kart için mevcut dosyayı ezmeyecek yeni bir dosya adı kullan. Kullanıcıya sadece oluşan kartın yolunu söyle ve bu dosyayı gönderene özel kanaldan iletmesini iste. Kartı gönderenin proje kartındaki **Pair collaborator → Open pairing reply** (eski Desktop: **Import collaborator card**) ile içe aktarmasını, ardından **Send Snapshot** yapıp uygulamasını açık tutmasını bekle. Bu dış adımlar tamamlanmadan otomatik Receive denemelerine girme.
+Eski join çıktısı manuel kart önerir; yeni akışta aşağıdaki request-pairing kullanılır. Kart dosyası üretmen/göndermen gerekmez. Proje zaten aynı hedefe import edilmişse kimliği koru; tekrar join veya New UUID yapma.
 
 ### C. Proje ve gönderen kimliğini güvenli status'tan seç
 
@@ -65,7 +64,17 @@ $trialStatus = & $trialAgent --data-dir $trialData status | ConvertFrom-Json
 
 `projects[].project.project_id` proje UUID'si, o projenin `trusted_peers[].device_id` alanı gönderenin cihaz UUID'sidir. Birden fazla proje/peer varsa adları/UUID'leri kullanıcıyla doğrula; ilk kaydı rastgele seçme. Uygun kayıtlardan `$trialProjectId` ve `$trialSenderId` değişkenlerini doldur. Davet dosyasından bu alanları okumak gerekmez.
 
-### D. Bağlantıyı dene, sonra Receive
+### D. Eşleştirme isteğini otomatik gönder
+
+Gönderen kendi Desktop'ında daveti export etmiş (pencereyi açar) veya **Pair collaborator → Open pairing window** seçmiş olsun. Uygulaması açık kalsın. Her komutun sonucunu kontrol et:
+
+```powershell
+& $trialAgent --data-dir $trialData request-pairing $trialProjectId --device-id $trialSenderId --connect-timeout 30
+```
+
+Native CLI imzalı kartı ve tek kullanımlık davet sahipliği kanıtını doğrudan gönderir; anahtar/proof çıktısını agent okumaz. Gönderen gelen Device/Identity değerlerini beklediği kişiyle doğrulayıp **Approve device** seçer. Alıcı bağlantı için 30 saniyeye, istek sonrası onay için 60 saniyeye kadar bekleyebilir. `pairing_state: approved` yetki verildiğini, `pending` yalnızca isteğin teslim edildiğini gösterir. Pending'i dosya teslimi veya onay olarak raporlama. Daha geç onayda aynı komutu tekrar çalıştır; kaynak snapshot'ını bekle. Offline/kapalı pencere/timeout'ta önce bu koşulları düzelt; profil veya projeyi sıfırlama. Eski executable komutu tanımıyorsa yeni paketi iste.
+
+### E. Bağlantıyı dene, sonra Receive
 
 ```powershell
 & $trialAgent --data-dir $trialData check $trialProjectId --device-id $trialSenderId --connect-timeout 30
@@ -85,7 +94,7 @@ Receive bitmeden diğer komutu başlatma. Başarıyı son check'in `verified_equ
 
 ## Bağlantı olmadıysa kısa kontrol sırası
 
-1. Gönderen online mı, karşı kartı import etti mi, snapshot oluşturdu mu? Davet güncel public IP/dış port içeriyor mu? İlk uzak bağlantıyı alıcı başlatsın.
+1. Gönderen online mı, eşleştirme penceresini açtı mı ve cihaz isteğini onayladı mı, snapshot oluşturdu mu? Davet güncel public IP/dış port içeriyor mu? İlk uzak bağlantıyı alıcı başlatsın.
 2. Gönderende Windows Firewall TCP ve UDP local portu (varsayılan 43101) aktif ağ profilinde izinli mi?
 3. Gönderen modeminde TCP ve UDP dış port → doğru PC LAN IP/local port eşlemesi etkin mi? Dış port 45000 seçilmişse iç port 43101 kalabilir; davette 45000 olmalı.
 4. Port-forward kapalıysa kuralı etkinleştirin. Menü kilitli/yetki yoksa ISP/ağ yöneticisinden izin isteyin. Port çakışıyorsa boş dış port seçip yeni davet çıkarın.
