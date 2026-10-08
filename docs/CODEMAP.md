@@ -20,7 +20,7 @@ Paths are relative to repository root. A crate's `src/lib.rs` lists its public A
 | Native VST3 view, IPC worker and bundled-owner launch | `plugins/vst3/src/view.cpp`, `bridge.cpp` | No audio-thread IPC or file/network work |
 | Windows desktop entry point, capability inventory, navigation | `apps/desktop/src-tauri/src/lib.rs`, `build.rs`, `capabilities/main.json` | Tauri adapter; local bundled React |
 | Desktop jobs, status freshness, explicit session shutdown | `apps/desktop/src-tauri/src/runtime.rs` | Core workflows and one leased `PeerRuntime` |
-| Native invitation/card files and folder dialogs | `apps/desktop/src-tauri/src/documents.rs` | Bounded private documents; payloads stay in Rust |
+| Native invitation/pairing reply files and folder dialogs | `apps/desktop/src-tauri/src/documents.rs` | Bounded private documents; payloads stay in Rust |
 | Main-window command boundary and typed frontend | `apps/desktop/src-tauri/src/commands.rs`, `apps/desktop/src/api.ts` | Narrow invoke API |
 | Desktop project controls and styling | `apps/desktop/src/App.tsx`, `src/styles.css` | Core-derived state, no filesystem watcher |
 | Start/stop peer runtime, answer disk requests, fetch signed ancestry | `crates/core/src/peer.rs` | Network actor and transfer serving |

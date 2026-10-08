@@ -22,7 +22,7 @@ Henüz setup/MSI yok; Windows executable ile elle deneme yapıyoruz. Küçük bi
 2. **A yerel IP/portu not etsin.** **Collaboration & connection details → Connection setup** içinde örneğin `192.168.1.50:43101` görürsünüz. Bu IP modemde hedef olacak. Kendi IP'nizi kullanın.
 3. **A firewall iznini versin.** Gelen TCP `43101` ve UDP `43101` için izin kuralı oluşturun; kurallar aktif Windows ağ profilinde geçerli olsun. Uygulama bunu otomatik yapmaz.
 4. **A modemden port yönlendirsin.** TCP `43101 → PC_IP:43101` ve UDP `43101 → PC_IP:43101` kurallarını etkinleştirip kaydedin. Modemin WAN adresinin public IPv4 olup olmadığını kontrol edin. Aynı LAN'daysanız bu adımı atlayın.
-5. **Daveti ve karşı kartı değişin.** Ayrı internetlerde A, public IP + dış portu girip **Export invitation with public addresses** kullansın. Aynı LAN'da **Export invitation with current addresses** yeterli. B daveti **Import invitation** ile açsın, kendi kartını **Export my device card** ile A'ya göndersin. A da **Import collaborator card** yapsın. Dosyaları özel kanaldan paylaşın.
+5. **Daveti ve karşı kartı değişin.** Ayrı internetlerde A, public IP + dış portu girip **Export invitation with public addresses** kullansın. Aynı LAN'da **Export invitation with current addresses** yeterli. B **Accept invitation & save reply…** ile daveti açıp aynı işlemde eşleştirme yanıtını kaydetsin ve A'ya göndersin. A mevcut projede **Pair collaborator → Open pairing reply** yapsın. Eski build/CLI cihaz kartları aynı yanıt olarak kabul edilir. Dosyaları özel kanaldan paylaşın.
 6. **A → Send Snapshot.** Yerel snapshot oluşmasını bekleyin. Mailbox yoksa `PENDING` dosya aktarımının kesin başarısız olduğu anlamına gelmez.
 7. **B → Check peer → Receive.** Check peer için 30 saniyeye kadar bekleyin. Erişim sağlandıysa B DAW'ı kapatıp onay kutusunu işaretlesin ve Receive yapsın. İkiniz de uygulamayı açık tutun. Bitince dosyaları ve yeniden Check peer sonucunu kontrol edin.
 
@@ -45,6 +45,10 @@ Tabloyu sırayla inceleyin; size uymayan satırı geçin. İnternete geçmeden a
 | **Check peer çalışıyor ama Receive pasif/reddediliyor** | Modem ayarını değiştirmeden A'da snapshot olduğunu, B'de doğru peer ve DAW-closed onayını, yerel değişiklik/divergence/recovery mesajlarını kontrol edin. |
 
 Modem arızalarını ayırmak için [üreticinin port-forward sorun giderme rehberi](https://www.tp-link.com/uk/support/faq/785/) de WAN IP, upstream NAT ve firewall kontrollerini anlatır; menü adları sizin modeminizde farklı olabilir. Ayrıntılar rolünüze ait rehberdedir. Henüz hazır relay'iniz yoksa bunu anında kullanılabilecek bir fallback gibi düşünmeyin; önce operatör kurulumu ve erişim izinleri gerekir.
+
+## Tek eşleştirme akışı
+
+Desktop'ta daveti kabul etme ve yanıtı hazırlama aynı işlemde yapılır. Yanıt mevcut imzalı cihaz kartıdır; yeni protokol/belge formatı yoktur. Yanıtın özel dosya olarak geri gönderilmesi ve gönderenin doğru projede açması hâlâ gerekir; internetten otomatik pairing yoktur. Yanıt kaydı iptal edilirse proje importu korunur, **Save pairing reply again** ile tamamlanır. Önceden hazırlanmış `TrackMesh-PeerTrial-20261007-162413.zip` eski UI etiketlerini içerir; yeni akış için güncel Desktop build gerekir. CLI `join` ve `card --output` komutları değişmez.
 
 ## Ortak çalışma kuralları
 

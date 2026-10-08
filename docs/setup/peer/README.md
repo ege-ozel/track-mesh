@@ -17,15 +17,17 @@ Bu rehber arkadaşın/alıcı bilgisayar içindir. [Ortak sıra ve sorun giderme
 ### Desktop ile
 
 1. `trackmesh-desktop.exe` aç. Varsayılan profil `%LOCALAPPDATA%\TrackMesh` olur; bu profili, secrets/veritabanını A'ya gönderme.
-2. **Import invitation** seç; boş hedef klasörünü seçip **Choose invitation…** ile A'nın özel davetini aç. Kendi başına New UUID/Link folder yapma; projeye davet üzerinden katıl.
-3. **Export my device card** ile yeni bir `.json` kart dosyası çıkar; A'ya özel kanaldan geri gönder. Davet ve cihaz kartı farklı belgelerdir.
-4. A'nın **Import collaborator card** ve **Send Snapshot** yapmasını, uygulamasını açık tutmasını bekle.
+2. **Accept invitation** seç; boş hedef klasörünü seçip **Accept invitation & save reply…** ile A'nın özel davetini aç. Kendi başına New UUID/Link folder yapma; projeye davet üzerinden katıl.
+3. Daveti kabul edince aynı işlem ikinci native pencereyi açar: eşleştirme yanıtını yeni bir `.json` dosyasına kaydet. Yanıt mevcut imzalı cihaz kartı formatındadır; davetteki proje anahtarını taşımaz. Kaydettiğin yanıtı A'ya özel kanaldan geri gönder.
+4. A'nın mevcut projede **Pair collaborator → Open pairing reply** ile tamamlamasını ve **Send Snapshot** yapmasını bekle.
+
+Yanıt kaydını iptal ettiysen veya kayıt başarısız olduysa proje import edilmiş kalır; uyarıyı takip edip **Collaboration & connection details → Pair collaborator → Save pairing reply again** seç. Yeniden New UUID veya proje importu gerekmez. Eski build'lerde aynı işler **Import invitation → Export my device card**, A'da **Import collaborator card** adlarıyla ayrıdır; mevcut cihaz kartları yeni akışta da çalışır.
 
 ### Claude ile terminalden
 
 1. Claude Code kurulu ve giriş yapılmışsa paket klasöründe terminal açıp `claude` çalıştır. MD bir executable değildir; agent talimatı olarak okunur.
 2. Şunu söyle: **“CLAUDE.md yönergesini uygula. Davet dosyamın yolunu ve boş hedef klasörümü sor; önce cihaz kartımı hazırlayalım.”**
-3. Agent [CLAUDE.md](CLAUDE.md) akışına göre native `join` ve `card --output` çalıştırır. Davet payload'ını okumaz; yalnızca dosya yolunu alır.
+3. Agent [CLAUDE.md](CLAUDE.md) akışına göre native `join` ve `card --output` çalıştırır. CLI komutları değişmedi; bu iki komut aynı eşleştirme görevinin davet/yanıt adımlarıdır. Davet payload'ını okumaz; yalnızca dosya yolunu alır.
 4. Oluşan kartı A'ya özel gönder ve A'nın hazır bilgisini bekle.
 
 CLI yolu ayrı, kalıcı `%LOCALAPPDATA%\TrackMeshPeerTrial` profili kullanır. Aynı profilde Desktop/serve/plugin owner ile CLI check/receive aynı anda çalışmasın. Mevcut kimliği/profili sıfırlama. CLI sonrasında Desktop ile devam etmek istersen aynı profille açma komutu [CLAUDE.md](CLAUDE.md) sonunda bulunur; normal çift tıklama başka profili gösterebilir.

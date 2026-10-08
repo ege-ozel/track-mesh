@@ -112,11 +112,11 @@ impl Action {
     fn label(&self) -> &'static str {
         match self {
             Self::Link { .. } => "Link folder",
-            Self::Join { .. } => "Import invitation",
-            Self::Pair { .. } => "Pair device",
+            Self::Join { .. } => "Accept invitation and save pairing reply",
+            Self::Pair { .. } => "Complete pairing",
             Self::Revoke { .. } => "Revoke device",
             Self::ExportInvite { .. } => "Export invitation",
-            Self::ExportCard => "Export device card",
+            Self::ExportCard => "Save pairing reply",
             Self::Send { .. } => "Send Snapshot",
             Self::Publish { .. } => "Publish metadata",
             Self::Refresh { .. } => "Refresh metadata",
@@ -607,13 +607,26 @@ impl Desktop {
                             Ok(json!({"message": "Folder linked"}))
                         }
                         Action::Join { folder } => {
-                            let invite = documents::read_document(&app)?;
+                            let invite: protocol::ProjectInvite = documents::read_document(&app)?;
+                            let project_id = invite.project_id;
+                            let reply = disk.device_card(addresses)?;
                             disk.import_invite(invite, &folder)?;
-                            Ok(json!({"message": "Invitation imported. Export this device card for the inviter to pair."}))
+                            // Import is already committed. A cancelled/failed save must not hide
+                            // that fact or skip reloading the one network actor's trusted peers.
+                            match documents::write_document(&app, "trackmesh-pairing-reply.json", &reply) {
+                                Ok(path) => Ok(json!({
+                                    "message": "Invitation accepted. Send the saved pairing reply privately to the inviter, who opens it in this project's Pair collaborator panel. Wait for their confirmation before Check peer or Receive.",
+                                    "project_id": project_id, "reply_saved": true, "path": path
+                                })),
+                                Err(_) => Ok(json!({
+                                    "message": "Invitation accepted, but the pairing reply was not saved. Open this project's Pair collaborator panel and choose Save pairing reply again; send it privately to the inviter. Do not create or import the project again.",
+                                    "project_id": project_id, "reply_saved": false
+                                })),
+                            }
                         }
                         Action::Pair { project_id } => {
                             disk.pair(project_id, documents::read_document(&app)?)?;
-                            Ok(json!({"message": "Device paired"}))
+                            Ok(json!({"message": "Pairing reply accepted. This device is authorized for the selected project. Tell your collaborator pairing is complete, create a snapshot, and keep TrackMesh open."}))
                         }
                         Action::Revoke { project_id, device_id } => {
                             disk.revoke(project_id, device_id)?;
@@ -638,8 +651,8 @@ impl Desktop {
                         }
                         Action::ExportCard => {
                             let card = disk.device_card(addresses)?;
-                            let path = documents::write_document(&app, "trackmesh-card.json", &card)?;
-                            Ok(json!({"message": "Device card saved", "path": path}))
+                            let path = documents::write_document(&app, "trackmesh-pairing-reply.json", &card)?;
+                            Ok(json!({"message": "Pairing reply saved. Send this file privately to the inviter to complete pairing.", "path": path}))
                         }
                         _ => anyhow::bail!("Unsupported document action"),
                     }
