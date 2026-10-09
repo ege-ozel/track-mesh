@@ -49,6 +49,7 @@ Desktop: Tauri 2, React, TypeScript, Rust. Core: Rust, Tokio, SQLite, BLAKE3, ru
 ## UI and lifetime
 
 - Minimal desktop project card: name, local snapshot/time, remote snapshot/author/time, peer availability, Send Snapshot, Receive, publication/transfer state, and divergence.
+- Current setup uses a private native invitation, automatic signed device request with capability proof, and explicit inviter approval. Local collaborator rows, selected-peer connection status, pending enrollment and fresh equality remain distinct. Initial addresses come from invitations; no public user directory, browser deployment, Supabase or offline enrollment queue is part of the current implementation. Operational IP-change/relay guidance lives in [setup/README.md](setup/README.md).
 - VST view is smaller: project, local/remote snapshot status, peer availability, controls. UI labels use `TRACKMESH`.
 - Plugin launches TrackMesh Agent when needed. The agent remains alive for any VST session, pending scan/hash/commit, pending publication, or active transfer. When all work finishes, a grace period precedes clean exit.
 - `SAVE_OBSERVED` followed by `SESSION_ENDING` must still finish local snapshot and metadata publication after the DAW closes. No permanent Windows background daemon initially.

@@ -22,8 +22,12 @@ Kart dosyası geri gönderilmez; cihaz kimliği ve davet sahipliği kanıtı şi
 
 ## Sniffing ve kalan riskler
 
+Eski manuel kart akışında transport yalnızca önceden tanınan cihazları/pinned altyapıyı kabul ediyordu. Yeni akış aktif pencerede sınırlı bilinmeyen inbound bağlantı kabul eder; saldırı yüzeyi ve kaynak tüketme/DoS riski artar. Süre/connection/frame/rate sınırları azaltıcı kontrollerdir; saldırı dayanıklılığı kanıtı değildir. Beklenen cihaz onaylandıktan sonra pencereyi kapatabilirsin; onaylı cihazın proje yetkisi sürer. Mevcut dosya yetkilendirmesi ve şifreleme korunur.
+
+Panel yalnızca geçerli proof üreten adayların public kimliğini gösterir. Aday satırı bağlantı kesilse de pencere kapanana kadar kalabilir; canlı erişim veya audit kaydı sayılmaz. Onaylı cihazların seçili bağlantı durumu ayrı Collaborator alanındadır. Daveti açmayan kişiler ve bütün yetkisiz/başarısız network denemeleri için kalıcı güvenlik geçmişi bulunmaz.
+
 Pasif ağ dinleme şifreli bağlantının uygulama içeriğini açık metin olarak vermez; IP/port, trafik boyutu ve zamanlama gizlenmez. [libp2p güvenli kanallar](https://libp2p.io/docs/secure-channels-overview/), [Noise](https://docs.libp2p.io/concepts/secure-comm/noise/) ve [QUIC/TLS RFC 9001](https://www.rfc-editor.org/info/rfc9001/) transport korumasını açıklar.
 
 Çalınmış davet, proje anahtarına sahip olma kanıtını üretebilir; bu yüzden son onayda beklenen cihazı doğrulamak gerekir. 10 dakikalık pencere davet/proje anahtarının ömrünü kısaltmaz ve eski daveti iptal etmez. Zararlı uç cihaz, yanlış kişiyi onaylama, yanlış/yerine konmuş davet paylaşımı ve pairing penceresi açıkken kaynak tüketme/DoS ayrı risklerdir. Bu sınırlar bir güvenlik denetimi veya gerçek internet saldırı doğrulaması değildir. Gerçek gözlem ve kalan doğrulama işleri yalnızca [IMPLEMENTATION.md](../IMPLEMENTATION.md) içinde kaydedilir.
 
-İki taraf yeni build kullanmalıdır. Eski invitation/card dosyaları uyumludur; eski uygulamayla manuel kart alışverişi **Legacy file pairing** altında kalır. Eski dağıtım ZIP'i otomatik protokol/CLI komutunu içermez. [Ortak akış](README.md), [gönderen](host/README.md), [alıcı](peer/README.md).
+İki taraf otomatik eşleştirme build'ini kullanmalıdır. Eski invitation/card dosyaları uyumludur; eski uygulamayla manuel kart alışverişi **Legacy file pairing** altında kalır. `20261007` dağıtım ZIP'i otomatik protokol/CLI komutunu içermez; `20261008` AutoPairing build'i içerir, `20261009` paketi aynı EXE'lerle güncel yönergeyi taşır. [Ortak akış](README.md), [gönderen](host/README.md), [alıcı](peer/README.md).

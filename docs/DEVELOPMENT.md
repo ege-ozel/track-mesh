@@ -38,7 +38,7 @@ Phase 5 VST3 builds separately through CMake/Ninja with the pinned official SDK.
 - Invitations contain a shared project key. Exchange them privately; never print them into logs or commit them.
 - Receive and recover require closing the DAW project. Preserve `.trackmesh-<project>-<transfer>` staging/backup data if recovery is pending.
 - Logs go to stderr; CLI JSON goes to stdout. For transfer details use `$env:RUST_LOG='trackmesh_transfer=info,trackmesh_network=info'`.
-- Follow [PHASE2.md](PHASE2.md) for pairing and commands. Do not install a permanent daemon or introduce file watchers while debugging.
+- Follow [current setup](setup/README.md) for automatic native invitation/request/approval and [PHASE2.md](PHASE2.md) for CLI commands and explicitly chosen legacy cards. CLI `serve` alone cannot open/approve enrollment windows. Safe `status` supplies public project/sender UUIDs; never read invitation payloads into agent context. Do not install a permanent daemon or introduce file watchers while debugging.
 - Follow [PHASE3.md](PHASE3.md) for mailbox ACLs, HTTPS, publication/refresh, and the separate private relay. Keep service and simulated-device data in separate directories.
 
 ## Local phase branches

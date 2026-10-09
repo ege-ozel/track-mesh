@@ -39,6 +39,7 @@ Use [docs/CODEMAP.md](docs/CODEMAP.md) to select files. Read the local `AGENTS.m
 - Do not change or delete user project folders, local databases, chunk stores, or recovery backups as cleanup.
 - Update the code map when moving modules. Update phase status only when the deliverable works; mark unverified integrations explicitly.
 - Keep setup instructions under `docs/setup/host` and `docs/setup/peer`, with shared order/troubleshooting in `docs/setup/README.md`. Root `CLAUDE.md` routes repository development; `docs/setup/peer/CLAUDE.md` is the standalone peer-package template. Keep package instructions usable without the repository and private invitations outside agent context.
+- Default setup uses native invitation import, automatic pairing request and explicit sender approval. Keep manual card exchange labeled as legacy; infrastructure public-card ACL provisioning still applies. Shared setup documents own invitation-based discovery, panel/availability limits, IP-change handling and bidirectional existing connections. Do not claim browser deployment, Supabase, offline pairing storage or automatic infrastructure ACL changes are implemented.
 - Use a separate local `codex/phase-N-description` branch for each phase. After validation, commit and merge locally into `master` with `--no-ff`, then push `master` normally. Keep phase branches local; do not force push.
 
 ## Checks and handoff

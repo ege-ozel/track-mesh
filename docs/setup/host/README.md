@@ -2,9 +2,11 @@
 
 Bu rehber ilk denemede kaynak olan bilgisayar içindir. [Ortak sıra ve sorun giderme](../README.md), [peer tarafının adımları](../peer/README.md). Kutuları kendi işlemlerini takip etmek için kullan; gerçek doğrulama kaydı [IMPLEMENTATION.md](../../IMPLEMENTATION.md) içindedir.
 
+Peer sen uygulamayı açınca kendiliğinden bildirim almaz. İlk seferde özel daveti import eder; davetten proje adını/UUID'sini, senin cihaz kimliğini ve bağlantı adreslerini öğrenip kendi `Collaborator` listesinde seni görür. Sonra sana bağlanır ve sen gelen cihaz isteğini onaylarsın. Yerelde adının görünmesi, online bağlantı ve dosyaların alınması ayrı durumlardır. [Keşif, panel, iki yön ve IP değişimi](../README.md) ortak rehberde açıklanır.
+
 ## 1. Uygulamayı hazırla
 
-Windows x64 Desktop executable'ını aç. Varsayılan veri profili `%LOCALAPPDATA%\TrackMesh` olur; proje klasörünü bundan ayrı tut. Hazır paket varsa Rust/Node kurulumu gerekmez. Desktop WebView2 ister. İlk denemede küçük bir proje kopyası kullan.
+Windows x64 Desktop executable'ını güncel paketten aç. 2026-10-09 yönerge paketi `TrackMesh-PeerTrial-AutoPairing-20261009.zip` olur; EXE'ler 2026-10-08 otomatik eşleştirme build'iyle aynıdır. Varsayılan veri profili `%LOCALAPPDATA%\TrackMesh` olur; proje klasörünü bundan ayrı tut. Hazır paket varsa Rust/Node kurulumu gerekmez. Desktop WebView2 ister. İlk denemede küçük bir proje kopyası kullan. Bu makinedeki `target/release/trackmesh-desktop.exe` eski build olarak kaldı; onu güncel paketle karıştırma.
 
 Kaynak koddan hazırlıyorsan x64 Visual Studio developer shell içinde:
 
@@ -71,7 +73,7 @@ Bu alan adları kullanılan TP-Link/Türk Telekom ekranına aittir; başka firmw
 - [ ] **Allow the connection if it is secure** seçeneğini bu denemede kullanma: ayrıca Windows IPsec yapılandırması ister. TrackMesh'in şifrelemesi/peer doğrulaması farklıdır ve normal Allow ile çalışmaya devam eder. [Windows kuralı rehberi](https://learn.microsoft.com/en-us/windows/security/operating-system-security/network-security/windows-firewall/configure), [IPsec seçeneğinin açıklaması](https://techcommunity.microsoft.com/blog/coreinfrastructureandsecurityblog/securing-rdp-with-ipsec/259108).
 - [ ] TrackMesh'e dön; public IPv4/dış portu ve `/ip4/PUBLIC_IPV4/tcp/43101`, `/ip4/PUBLIC_IPV4/udp/43101/quic-v1` önizlemelerini kontrol et.
 - [ ] **Export invitation with public addresses** ile native dosya penceresinde yeni bir `.json` adına kaydet. Manuel alanları kullanmak için bu düğmeyi seç; **Export invitation with current addresses** bu public alanları kullanmaz.
-- [ ] B'ye özel kanaldan **iki dosya gönder:** güncel otomatik eşleştirme paketi `TrackMesh-PeerTrial-AutoPairing-20261008.zip` ve export ettiğin özel davet `.json` dosyası. ZIP yerel build çıktısıdır; GitHub'a binary olarak yüklenmedi. Göndericide `.build/peer-packages` altında bulunur. Önceki `20261007` paketi otomatik eşleştirmeyi içermez. Kaynak yönerge [peer/CLAUDE.md](../peer/CLAUDE.md) dosyasıdır; iki PC de yeni uygulamayı kullanmalı.
+- [ ] B'ye özel kanaldan **iki dosya gönder:** güncel yönergeli `TrackMesh-PeerTrial-AutoPairing-20261009.zip` ve export ettiğin özel davet `.json` dosyası. ZIP yerel build çıktısıdır; GitHub'a binary olarak yüklenmedi. Göndericide `.build/peer-packages` altında bulunur. `20261008` AutoPairing paketi aynı uygulamayı, önceki yönergeyi içerir; `20261007` paketi otomatik eşleştirmeyi içermez. Kaynak yönerge [peer/CLAUDE.md](../peer/CLAUDE.md) dosyasıdır; iki PC de otomatik eşleştirme build'ini kullanmalı.
 
 Davet private capability/proje anahtarı içerir. Payload'ı chat, clipboard, log, repo veya agente verilen dosya içeriğine koyma. Public alanlar export başına geçerlidir; kalıcı network ayarı değildir. Public IP/dış port değişirse yeni daveti özel paylaş ve B'de aynı hedef klasörüne import et.
 
@@ -90,12 +92,13 @@ Aynı LAN'daysanız public IPv4/modem yönlendirmesini atlayıp firewall izninde
 
 [RFC 6598](https://www.rfc-editor.org/rfc/rfc6598) paylaşımlı adres alanını tanımlar. Her özel WAN adresi kesin CGNAT değildir; önde başka router olabilir. Modem menüsü kilitliyse ISP/yöneticiden izin iste; ISP NAT'ında erişilebilir public IPv4 veya hazırlanmış özel relay gerekir. Statik IP şart değildir. [Ortak sorun giderme tablosu](../README.md) ayrıntılı sırayı verir.
 
-Public alanlar **Legacy file pairing → Save pairing reply** düğmesine uygulanmaz (eski build: **Export my device card**). İlk denemeyi B'nin A'ya bağlanmasıyla yapın. Ters yönde bağımsız erişim için B kendi public-address davetini çıkarabilir; A mevcut proje klasörüne import eder. Startup `--external-address` seçeneği [PHASE4.md](../../PHASE4.md) içindedir. Listen port runtime'da değişmez; yeni portla açmak için mevcut owner'ın güvenli çıkışı gerekir.
+Public alanlar **Legacy file pairing → Save pairing reply** düğmesine uygulanmaz (eski build: **Export my device card**). İlk denemeyi B'nin A'ya bağlanmasıyla yapın. Kurulmuş bağlantı iki yönlüdür: B de snapshot oluşturup online kaldığında A aynı bağlantıdan Receive yapabilir; B'de ayrıca port açılması bu yolun önkoşulu değildir. Bağlantı yokken A'nın B'ye bağımsız ulaşması için B kendi erişilebilir public-address davetini çıkarabilir; A mevcut proje klasörüne import eder, ya da hazırlanmış relay yolu kullanılır. Startup `--external-address` seçeneği [PHASE4.md](../../PHASE4.md) içindedir. Listen port runtime'da değişmez; yeni portla açmak için mevcut owner'ın güvenli çıkışı gerekir.
 
 ## 6. Otomatik cihaz isteğini onayla ve snapshot hazırla
 
 - [ ] Davet export'u 10 dakikalık eşleştirme penceresini açar. B daveti kabul edince istek şifreli bağlantıdan otomatik gelir; kart dosyası alman gerekmez. Süre bittiğinde **Pair collaborator → Open pairing window** açıp B'den Retry automatic pairing iste.
 - [ ] Mevcut proje kartında **Collaboration & connection details → Pair collaborator** isteği gösterir. B ile public Device/Identity değerlerini karşılaştırıp **Approve device** seç; sadece cihaz adına güvenme. Beklenmeyen isteği **Reject** yap. Onay öncesinde DB'ye yetki yazılmaz ve proje dosyası alınamaz.
+- [ ] Onaydan sonra B `Collaborator` listesinde görünür. Onu seçip `DIRECT` / `RELAYED` / `OFFLINE` durumunu kontrol et. Bekleyen aday listesi canlı bağlantı geçmişi değildir; henüz daveti açmamış kişiyi veya her yetkisiz denemeyi göstermez. İstenen cihaz kaydolduktan sonra eşleştirme penceresini kapatabilirsin; onaylı cihazın yetkisi sürer.
 - [ ] Ableton test projesini kaydet; ilk denemede DAW'ı kapat. **Send Snapshot** yap; LOCAL SNAPSHOT tarihini/dosya sayısını kontrol et.
 - [ ] B'nin uygulaması onayını 60 saniyeye kadar otomatik sorgular. Daha geç onayda B Retry automatic pairing ile sonucu alabilir. Snapshot hazırken TrackMesh açık kalsın.
 - [ ] B Check peer → Receive → tekrar Check peer yaparken TrackMesh'i açık tut. Dosya eklemek tek başına otomatik sync yapmaz; sonraki değişiklik için yeni Send Snapshot gerekir.

@@ -6,7 +6,7 @@ Paths are relative to repository root. A crate's `src/lib.rs` lists its public A
 
 | Task | Primary owner | Related boundary |
 | --- | --- | --- |
-| Two-PC setup documentation and distribution-package agent instructions | `docs/setup/README.md`, `docs/setup/host/README.md`, `docs/setup/peer/README.md`, `docs/setup/peer/CLAUDE.md` | Root `AGENTS.md`/`CLAUDE.md` route repo work; `IMPLEMENTATION.md` owns validation history |
+| Two-PC setup, invitation-based discovery, panel/availability, IP changes and package agent instructions | `docs/setup/README.md`, `docs/setup/host/README.md`, `docs/setup/peer/README.md`, `docs/setup/peer/CLAUDE.md` | Root `AGENTS.md`/`CLAUDE.md` route repo work; `IMPLEMENTATION.md` owns validation history |
 | Link folder, pair device, import/export invitation | `crates/core/src/lib.rs` | Snapshot, crypto, and storage APIs |
 | Automatic pairing windows, capability challenge and explicit project approval | `crates/core/src/pairing.rs` | Native Desktop candidate controls and CLI `request-pairing`; no DB/schema change |
 | Pairing-only inbound gate and bounded RPC frames | `crates/network/src/gate.rs`, `codec.rs`, `actor.rs`, `handle.rs` | Same swarm; transfer authorization and trusted discovery unchanged |
@@ -23,7 +23,7 @@ Paths are relative to repository root. A crate's `src/lib.rs` lists its public A
 | Native VST3 view, IPC worker and bundled-owner launch | `plugins/vst3/src/view.cpp`, `bridge.cpp` | No audio-thread IPC or file/network work |
 | Windows desktop entry point, capability inventory, navigation | `apps/desktop/src-tauri/src/lib.rs`, `build.rs`, `capabilities/main.json` | Tauri adapter; local bundled React |
 | Desktop jobs, status freshness, explicit session shutdown | `apps/desktop/src-tauri/src/runtime.rs` | Core workflows and one leased `PeerRuntime` |
-| Native invitation/pairing reply files and folder dialogs | `apps/desktop/src-tauri/src/documents.rs` | Bounded private documents; payloads stay in Rust |
+| Native invitation/legacy card files and folder dialogs | `apps/desktop/src-tauri/src/documents.rs` | Automatic return uses pairing RPC; bounded private documents stay in Rust |
 | Main-window command boundary and typed frontend | `apps/desktop/src-tauri/src/commands.rs`, `apps/desktop/src/api.ts` | Narrow invoke API |
 | Desktop project controls and styling | `apps/desktop/src/App.tsx`, `src/styles.css` | Core-derived state, no filesystem watcher |
 | Start/stop peer runtime, answer disk requests, fetch signed ancestry | `crates/core/src/peer.rs` | Network actor and transfer serving |
@@ -73,6 +73,7 @@ serve:    PeerRuntime → transfer::serve → project authorization → head/man
 publish:  Engine::publish_metadata → persist envelope → MailboxClient POST → matching ACK → PUBLISHED
 refresh:  Engine::refresh_metadata → bounded page → trust/signature/AEAD → page + cursor transaction
 desktop:  typed Tauri command → bounded tracked job → Engine workflow → compact status page
+pairing:  native invite import → existing actor reload/connect → Engine request_pairing → proof-verified pending candidate → explicit approve_pairing → existing pair/trust reload
 send:     Engine::send_snapshot → blocking snapshot commit → publish_metadata → ACK or durable PENDING
 plugin:   VST3 worker → bounded per-user Named Pipe → PluginRuntime → Engine summary/send_snapshot
 save:     SAVE_OBSERVED → project debounce → snapshot_after_save → scan_after_save → commit → publish/ACK

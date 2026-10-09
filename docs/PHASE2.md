@@ -2,7 +2,25 @@
 
 The CLI implements mutual device pairing, authenticated direct QUIC, TCP with Noise/Yamux fallback, signed snapshot ancestry, missing-chunk transfer, durable resume state, verified file installation, and explicit recovery. Circuit relay, private rendezvous, and DCUtR client behaviors are connected to the network actor; [PHASE3.md](PHASE3.md) covers the separate infrastructure service.
 
-## Pair two devices
+## Current automatic pairing workflow
+
+Use the current build on both PCs. The sender opens Desktop, links the source folder and privately exports a native invitation with reachable LAN/public addresses. Export opens a ten-minute pairing window. The receiver's Desktop imports the invitation, automatically sends its signed identity and invitation-possession proof, and the sender compares public device identities before **Pair collaborator → Approve device**. No returned card file is needed. The complete router/firewall/import/approval instructions are in [setup/README.md](setup/README.md).
+
+For a receiver using the CLI against the sender's open Desktop:
+
+```powershell
+trackmesh-agent.exe join --invite-file invite.json --folder "D:\Projects\Track 07"
+trackmesh-agent.exe status
+trackmesh-agent.exe request-pairing <project-UUID> --device-id <A-device-UUID> --connect-timeout 30
+```
+
+Choose the project and sender UUID from safe `status` (`projects[].project.project_id` and that project's `trusted_peers[].device_id`); do not read invitation payloads into agent context. `join` imports the project and retains its existing manual-card output text; it does not itself start a network session. `request-pairing` contacts the inviter and polls approval for up to 60 seconds after request delivery. `approved` grants access; `pending` is not approval. Ask the sender to reopen the window when needed and retry without resetting the profile/project. A new invitation is required to update changed public addresses, not for an ordinary timeout.
+
+Only Desktop currently opens and approves automatic enrollment windows. CLI `serve` alone does not open a window or approve new candidates. Keep one network owner per data directory. Every CLI network command closes its session after completion; use Desktop or explicit `serve` to stay available. After authorization, create the source snapshot, then check/receive/check. Existing invitation/card formats are unchanged; [pairing security](setup/PAIRING_SECURITY.md) records the added channel and limits.
+
+## Legacy CLI-only file pairing
+
+The following original Phase 2 recipe remains available for explicitly chosen CLI-only/older-build operation. It is not the default automatic workflow, and there is no silent fallback to it. Infrastructure operator ACLs can still require public signed device cards as described in [PHASE3.md](PHASE3.md).
 
 Use an existing private channel to exchange the invitation and device card. Check the PeerId with your collaborator. The invitation contains the shared project key, so keep it private.
 
@@ -29,17 +47,17 @@ Send `b-card.json` back to PC A. PC A must explicitly authorize PC B:
 trackmesh-agent.exe pair 550e8400-e29b-41d4-a716-446655440000 --card-file b-card.json
 ```
 
-The signed card contains the device UUID, name, public key, PeerId, and optional addresses. The public key must derive the advertised PeerId. The local project accepts at most two other devices. Adding a third collaborator requires each participating PC to pair that collaborator's card.
+The signed card contains the device UUID, name, public key, PeerId, and optional addresses. The public key must derive the advertised PeerId. The local project accepts at most two other devices. A third device needs explicit per-project authorization on each participating PC, through its inviter's automatic approval window or explicitly chosen legacy card import; one inviter's approval does not update another PC's trust.
 
 ## Serve, receive, and compare
 
-On PC A:
+For the legacy CLI-only recipe, keep PC A serving. In the automatic workflow PC A's Desktop already owns the runtime; do not start a competing CLI server:
 
 ```powershell
 trackmesh-agent.exe serve --port 43101
 ```
 
-Close the DAW project on PC B before applying a received snapshot. Use PC A's `device_id` from `invite.json`:
+Close the DAW project on PC B before applying a received snapshot. Use PC A's `device_id` from safe CLI `status`, without opening the invitation payload:
 
 ```powershell
 trackmesh-agent.exe receive 550e8400-e29b-41d4-a716-446655440000 --device-id <A-device-UUID>
@@ -47,7 +65,7 @@ trackmesh-agent.exe check 550e8400-e29b-41d4-a716-446655440000 --device-id <A-de
 trackmesh-agent.exe status
 ```
 
-Both receiving and serving processes answer authenticated peer requests. `check` contacts the peer and reports lineage, verified equality, `DIRECT`/`RELAYED`, and transport. `status` reports local history and the last verification; it makes no assertion that an offline peer is currently up to date. Source unavailability produces an error after the connection timeout (`--connect-timeout`, default 30 seconds).
+Both receiving and serving processes answer authenticated peer requests. An established B → A connection carries traffic both ways after mutual project authorization. B does not need port forwarding to return traffic or serve over that existing connection; independent A → B dialing after disconnect needs B's own reachable address/relay path. Keep both runtimes active, a source snapshot ready and the receiving DAW closed; divergence and recovery rules still apply. `check` contacts the peer and reports lineage, verified equality, `DIRECT`/`RELAYED`, and transport. `status` reports local history and the last verification; it makes no assertion that an offline peer is currently up to date. Source unavailability produces an error after the connection timeout (`--connect-timeout`, default 30 seconds).
 
 QUIC addresses get a separate first attempt. Direct TCP is attempted after the QUIC handshake timeout, and relay circuits follow failed direct attempts. Local inbound firewall access must permit the chosen UDP/TCP port. There is no public DHT, multicast discovery, or swarm.
 
@@ -79,4 +97,4 @@ Snapshot creation leaves authored announcements `PENDING`; [Phase 3 publication]
 
 ## Validation
 
-Build and manual validation results are recorded in [implementation progress](IMPLEMENTATION.md). Cross-PC firewall behavior and Internet NAT traversal require two real PCs and the Phase 3 relay/rendezvous deployment.
+Build and manual validation results are recorded in [implementation progress](IMPLEMENTATION.md). Public-address direct trials need two real PCs and correct reachability/firewall configuration; relay/rendezvous trials additionally need the deployed Phase 3 infrastructure. Existing manual loopback evidence does not establish either Internet path.

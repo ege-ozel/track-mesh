@@ -14,7 +14,17 @@ Bağlantı başarılı olursa Receive proje dosyalarını seçilen klasöre indi
 
 ## Birleşik eşleştirme akışı
 
-Yeni Desktop daveti kabul edince cihaz isteğini şifreli bağlantıdan otomatik gönderir. CLI'de `join`, güvenli `status` ve yeni `request-pairing` aynı işi yapar. Gönderenin 10 dakikalık eşleştirme penceresi açık olmalı; son yetki için cihaz kimliğini doğrulayıp onaylaması gerekir. Alıcı onayı 60 saniyeye kadar sorgular; sonra retry yapılabilir. Davet/proje anahtarı ağdan veya agent context'inden geçmez. Her iki tarafta yeni build gerekir; önceki ZIP `request-pairing` içermez. Kullanıcı eski build ile kalmayı seçerse manuel `card --output`/Import collaborator card eski akışı kullanılabilir; otomatik başarı diye raporlama.
+Yeni Desktop daveti kabul edince cihaz isteğini şifreli bağlantıdan otomatik gönderir. CLI'de `join`, güvenli `status` ve yeni `request-pairing` aynı işi yapar. Gönderenin 10 dakikalık eşleştirme penceresi açık olmalı; son yetki için cihaz kimliğini doğrulayıp onaylaması gerekir. Alıcı onayı 60 saniyeye kadar sorgular; sonra retry yapılabilir. Proje anahtarı pairing mesajıyla gönderilmez ve agent context'ine girmez; ilk davet dosyası özel kanaldan paylaşılır ve yalnızca native import tarafından okunur. Her iki tarafta otomatik eşleştirme build'i gerekir; `20261007` paketi `request-pairing` içermez. `20261009` yönerge paketi, `20261008` AutoPairing paketinin aynı EXE'lerini içerir. Kullanıcı eski build ile kalmayı seçerse manuel `card --output`/Import collaborator card eski akışı kullanılabilir; otomatik başarı diye raporlama.
+
+## Göndereni nasıl buluruz; panel ne gösterir?
+
+Gönderenin uygulamayı açması bildirim/public kişi listesi oluşturmaz. Davetin native import'u proje adını/UUID'sini, gönderenin imzalı cihaz kimliğini/PeerId'sini ve adreslerini yerelde kaydeder. Desktop'ta `Collaborator` listesinde, CLI'de güvenli `status` içinde gönderen görünür. Native network komutu bu adreslere bağlanır. Kaydın görünmesi online bağlantı veya dosya teslimi değildir.
+
+Gönderende yalnızca geçerli davet proof'u üreten onaysız adaylar Pair collaborator altında Device/Identity ile görünür; canlı bağlantı göstergesi ve kalıcı giriş geçmişi değildir. Beklenen public kimlikleri karşılaştırıp Approve device seçilir. Onaydan sonra Desktop seçili cihaz için DIRECT / RELAYED / OFFLINE gösterir; fresh Check peer sonucu ayrı doğrulamadır. Daveti açmayan kişiler ve bütün başarısız/yetkisiz denemeler listelenmez.
+
+Yerel SQLite vardır; Supabase, browser deployment veya herkese açık adres rehberi bu paketin parçası değildir. Gönderenin güncel public IP/dış portu ve erişilebilirliği gerekir. Public IP/dış port değiştiyse gönderenden yeni adresli özel davet iste; aynı veri profili/proje/yerel hedefe native join ile adres güncelle. Bu, yalnızca bağlantı timeout olduğunda projeyi yeniden import etmeye izin veren genel bir adım değildir. Telefon hotspot'u/CGNAT'ta erişilebilir ağ veya operatörün hazırladığı private relay gerekir; database NAT engelini kaldırmaz.
+
+Onaylı bir cihaz her yeni bağlantıda eşleştirme penceresi istemez. CLI request-pairing/check/receive yalnızca komut boyunca online kalır; bitince runtime kapanır. Açık bağlantı iki yönlüdür. Alıcı daha sonra kaynak olacaksa aynı profille Desktop veya açık serve oturumu kullanır; alacak taraf DAW kapalıyken check/receive/check yapar, kaynak snapshot oluşturur. Aynı profilde iki network owner açma; divergence kontrollerini aşma. Offline kaynağın dosyaları mailbox'tan gelmez; mailbox snapshot duyurusu tutar ve offline pairing kuyruğu bu build'de yoktur.
 
 ## Claude için görev ve sınırlar
 
@@ -54,7 +64,7 @@ Kullanıcıdan `$trialInvite` (özel davetin tam yolu) ve `$trialFolder` (boş h
 & $trialAgent --data-dir $trialData --device-name 'Peer trial PC' join --invite-file $trialInvite --folder $trialFolder
 ```
 
-Eski join çıktısı manuel kart önerir; yeni akışta aşağıdaki request-pairing kullanılır. Kart dosyası üretmen/göndermen gerekmez. Proje zaten aynı hedefe import edilmişse kimliği koru; tekrar join veya New UUID yapma.
+Mevcut join çıktısı manuel kart önerir; yeni akışta aşağıdaki request-pairing kullanılır. Kart dosyası üretmen/göndermen gerekmez. Proje zaten aynı hedefe import edilmişse kimliği koru; sıradan retry için tekrar join veya New UUID yapma. Gönderenin adresi gerçekten değişmiş ve güncel davet alınmışsa aynı proje/hedefe native join ile adres güncellemesi yapılabilir.
 
 ### C. Proje ve gönderen kimliğini güvenli status'tan seç
 
