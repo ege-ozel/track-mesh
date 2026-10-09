@@ -6,6 +6,10 @@ Private Windows transfer of Ableton Live and FL Studio project folders between t
 
 For a first trial with a collaborator, follow the [two-PC setup entry point (Türkçe)](docs/setup/README.md): launch the executable, configure LAN/public IP and TCP/UDP forwarding, privately send an invitation, approve the automatic device request, and receive a snapshot. Choose the [sender/host guide](docs/setup/host/README.md) or the [receiving peer guide](docs/setup/peer/README.md). There is no installer yet; the app guides connection setup but does not configure the router or Windows Firewall automatically. [Pairing security](docs/setup/PAIRING_SECURITY.md) describes the bounded enrollment channel and explicit approval; legacy signed card files remain supported.
 
+The receiver finds the sender through the invitation's signed identity and connection addresses. Opening Desktop alone does not notify another user or publish a directory. Import shows the sender in the receiver's local Collaborator list; connection, sender approval, source snapshot and successful Receive are separate steps. Established connections carry traffic both ways; independent reverse dialing needs its own reachable path. Changed public IP/port requires a fresh address-bearing invitation in the current direct trial; hotspot/CGNAT can require prepared relay infrastructure. Local SQLite is already present; browser deployment, Supabase and offline pairing-request storage are not implemented.
+
+The local trial package with refreshed instructions is `.build/peer-packages/TrackMesh-PeerTrial-AutoPairing-20261009.zip`; it reuses the 2026-10-08 automatic-pairing executables. Send that ZIP plus a separately exported private invitation. Earlier packages remain unchanged; on this machine the default `target/release/trackmesh-desktop.exe` is an older build. Use the current package or build from current source.
+
 Build on Windows with Rust and the Visual Studio C++ build tools:
 
 ```powershell

@@ -10,9 +10,59 @@ Henüz setup/MSI yok; Windows executable ile elle deneme yapıyoruz. Küçük bi
 | **Peer / B / alıcı** | [peer/README.md](peer/README.md) | Paketi aç, daveti import et, otomatik eşleştirme isteğini gönder, Check peer → Receive → son check yap |
 | **Peer tarafında terminal agentı** | [peer/CLAUDE.md](peer/CLAUDE.md) | Davet içeriğini okumadan native CLI ile join/request-pairing/check/receive |
 
-“Ana bilgisayar” ilk aktarımın kaynağıdır; merkezi sunucu veya kalıcı master rolü değildir. İlk bağlantıyı B, A'ya başlatır. B'nin normal dışarı bağlantısı varsa bu ilk Receive için kendi modeminde port açması gerekmez. Daha sonra B kaynak olacaksa onun erişilebilirliği ayrıca hazırlanıp doğrulanır.
+“Ana bilgisayar” ilk aktarımın kaynağıdır; merkezi sunucu veya kalıcı master rolü değildir. İlk bağlantıyı B, A'ya başlatır. B'nin normal dışarı bağlantısı varsa bu ilk Receive için kendi modeminde port açması gerekmez. Kurulmuş bağlantı iki yönlü kullanılabilir; A'nın sonradan B'ye bağımsız yeni bağlantı başlatması için B'nin erişilebilirliği ayrıca hazırlanır.
 
 **Karşı tarafı beklerken:** A uygulamayı açık tutsun ve doğru davetin B'ye özel kanaldan ulaştığını kontrol etsin. B daveti kabul edince cihaz isteği otomatik gelir. A kimliği kontrol edip **Approve device** ve Send Snapshot yapar; B check/receive/check ile devam eder. Aynı klasörü yeniden link etmek veya yeni UUID oluşturmak gerekmez.
+
+## Peer benim bilgisayarımı ve projemi nasıl görecek?
+
+1. **A güncel Desktop'ı açar ve projeyi link eder.** Uygulamayı açmak B'ye otomatik bildirim göndermez; kullanıcıların listelendiği merkezi bir rehber yoktur.
+2. **A güncel adreslerle davet export eder ve dosyayı özel gönderir.** Davet proje UUID/adı, A'nın imzalı cihaz kimliği/PeerId'si ve bağlantı adreslerini içerir. Native uygulamanın okuyacağı özel proje capability'sini de taşır; B veya agent dosya içeriğini chat'e yapıştırmaz.
+3. **B daveti boş yerel hedefe import eder.** Kendi proje kartında aynı proje adını/UUID'sini ve `Collaborator` listesinde A'nın cihazını görür. Bu yerel kayıt, A'nın o anda online olduğu veya dosyaların indirildiği anlamına gelmez.
+4. **B'nin uygulaması davetteki adreslerden A'ya bağlanır.** Ayrı internetlerde yol public IP/dış port → modem → A'nın LAN IP/local portudur. A online ve eşleştirme penceresi açık olmalı. Bağlantı için 30 saniyeye kadar beklenebilir.
+5. **A gelen cihaz isteğini doğrular ve onaylar.** B kart dosyası geri göndermez. B'nin onay bekleme süresi 60 saniyeye kadardır; geç onayda Retry automatic pairing kullanılabilir.
+6. **A snapshot oluşturur; B Check peer → Receive → son check yapar.** Onay, bağlantı, snapshot hazır olması ve dosya teslimi ayrı durumlardır. Receive tamamlanmadan B'de proje dosyaları hazır sayılmaz.
+
+İlk davet import edildikten sonra aynı veri profili ve güncel bağlantı adresleri korunuyorsa tekrar New UUID/davet import gerekmez. İkiniz de online olduğunuzda B, bilinen A adreslerine yeniden bağlanmayı dener. Yeni eşleştirme penceresi yalnızca onaysız bir cihazı kaydetmek içindir; onaylanmış cihaz her açılışta tekrar onay istemez. B CLI kullanıyorsa `request-pairing`/`check`/`receive` yalnızca kendi komutu boyunca network session tutar; komut bitince kalıcı online kalmaz. Sürekli açık deneme için aynı profille Desktop veya açık `serve` oturumu kullanılır; aynı anda iki owner çalıştırılmaz.
+
+## Panelde hangi cihaz ve durum görünür?
+
+| Görünen bilgi | Anlamı |
+| --- | --- |
+| Pair collaborator altında isim, Device ve Identity ile istek | Davet sahipliği kanıtı doğrulanmış, onay bekleyen aday; dosya yetkisi yoktur. İsim yerine public kimliği arkadaşınla karşılaştır. |
+| Collaborator listesindeki cihaz | Yerelde kayıtlı/eşleştirilmiş cihaz. B import sonrası A'yı görür; A onay sonrası B'yi görür. |
+| Seçili cihazda `DIRECT` / `RELAYED` ve transport | Şu an kurulu peer bağlantısı. Dosya teslimi veya fresh eşitlik kanıtı değildir. |
+| `OFFLINE` / last-known | Şu an bağlantı yok; varsa geçmiş metadata gösterilir. Check peer en fazla 30 saniyelik bağlantı denemesi yapar. |
+| Fresh `UP TO DATE` / CLI `verified_equal: true` | Kontrol sırasında karşılaştırılan snapshot'ların güncel bağlantı üzerinden eşitliği doğrulanmıştır. |
+
+Onay bekleyen aday, bağlantısı kesilse de pencere kapanana kadar listede kalabilir; aday satırında canlı online göstergesi yoktur. Henüz daveti açmayan kişiyi, başarısız/yetkisiz bütün giriş denemelerini veya kalıcı bağlantı geçmişini gösteren bir panel yoktur. Eski native pencere açıksa yeni EXE'yi başlatmak eski owner'ı öne getirebilir; iki tarafta güncel build'in gerçekten çalıştığını kontrol edin.
+
+## Açık bağlantıda iki yöne dosya göndermek
+
+B → A bağlantısı kurulmuş ve iki cihaz aynı proje için yetkiliyse, aynı bağlantı üzerinden A → B ve B → A peer istekleri taşınabilir. B'nin mevcut bağlantıda kaynak olması için ayrıca modem portu açması önkoşul değildir. B değişikliğini kaydedip Send Snapshot yapar; A doğru B cihazını seçip DAW kapalıyken Check peer → Receive → son check yapar. Yerel değişiklik, ancestry/divergence ve recovery kontrolleri iki yönde de geçerlidir; aynı anda iki tarafın bağımsız değişikliklerini otomatik birleştirmeyin.
+
+Bağlantı kapanmışsa B, erişilebilir A'ya yeniden bağlanabilir. A'nın B'ye tek başına yeni inbound yol açması için B'nin public port yönlendirmesi veya hazırlanmış relay yolu gerekir. B'nin CLI komutu bittiyse o cihazın açık Desktop/serve session'ı olmadan kaynak online sayılmaz.
+
+## IP veya internet bağlantısı değişince
+
+- **Yalnızca A'nın LAN IP'si değişti:** modem hedefini yeni PC IP'sine yönelt; local port/firewall aynı kalsın. Public IP/dış port da değişmediyse bunlar için yeni davet gerekmez. LAN'dan bağlanan B'nin eski yerel adresi güncel değilse güncel adresli davet çıkar.
+- **A'nın public IP'si veya dış portu değişti:** erişilebilirliği yeniden hazırla, yeni adreslerle davet export et; B aynı profil/proje/hedef klasörüne native import ile adresleri güncellesin. Proje UUID'sini veya kimlik profilini sıfırlama. Yalnızca pairing timeout nedeniyle tekrar import yapılmaz; bu adım değişen adres içindir.
+- **A telefon hotspot'una veya başka router'a geçti:** eski modemdeki port yönlendirmesi yeni ağa uygulanmaz. CGNAT/private WAN nedeniyle yeni public IP bilinmesi de yeterli olmayabilir; erişilebilir ağ veya hazırlanmış özel relay gerekir.
+- **B alıcı olarak ağ değiştirdi:** A'nın güncel adreslerine yeni dışarı bağlantı deneyebilir. B'ye bağımsız gelen bağlantı gerektiğinde B'nin yeni ağ erişimi ayrıca değerlendirilir.
+
+## Browser deployment ve database sınırı
+
+TrackMesh Windows Desktop olarak çalışır; bu deneme için UI'ı tarayıcıya deploy etmek gerekmez. Yerel SQLite zaten proje, trust, snapshot ve transfer kayıtlarını tutar. İki bilgisayarın açık olması tek başına erişimi kanıtlamaz; güncel adres, doğru yönlendirme/firewall, onay ve hazır snapshot da gerekir.
+
+| Parça | Şu anki rol / sınır |
+| --- | --- |
+| Davet + direct bağlantı | Merkezi database olmadan ilk adresi/kimliği taşır; varsayılan denemede değişen public adres yeni davetle güncellenir. |
+| Private rendezvous | Yapılandırılmış, erişilebilir ve yetkilendirilmiş servis üzerinden trusted cihazlar adres keşfi yapabilir. Repo desteği vardır; public deployment ve ağ değişimi entegrasyonu doğrulanmamıştır. |
+| Private relay | Direct yol kurulamadığında şifreli trafiğe geçiş noktası sağlar; iki uç yine online olmalı. Database kaydı NAT engelini tek başına aşmaz. |
+| Mailbox + servis SQLite | Şifreli snapshot duyurularını tutar; proje dosyaları ve offline eşleştirme istekleri için storage değildir. |
+| Supabase / başka merkezi database | Şu an entegre değildir. Güvenli cihaz yetkilendirmesi ve kayıt güncelleme akışı ayrıca tasarlanır; DB seçmek kendiliğinden keşif veya relay kurmaz. |
+
+Altyapı işletimi [PHASE3.md](../PHASE3.md) içinde; varsayılan trial'da hazır servis olmadan relay/mailbox alanını doldurmayın. Yeni peer'ın altyapıya ilk erişim yetkisi de operatör tarafından hazırlanmalıdır; uygulamadaki onay servis ACL'lerini otomatik güncellemez.
 
 ## Hızlı deneme: sırayla yapacaklarımız
 
@@ -48,7 +98,7 @@ Modem arızalarını ayırmak için [üreticinin port-forward sorun giderme rehb
 
 ## Tek eşleştirme akışı
 
-Yeni Desktop yanıtı şifreli peer bağlantısından otomatik gönderir; A'nın son onayı korunur. Alıcı, istek gönderildikten sonra onayı 60 saniyeye kadar sorgular. A offline/pencere kapalıysa import korunur; A **Open pairing window**, B **Retry automatic pairing** ile devam eder. Tek projede 10 dakikalık pencere vardır; süre bitince, kapanınca veya restart olunca onaysız istekler temizlenir. Bu süre davet/proje anahtarını iptal etmez. Eski invitation/card formatları ve transfer protokolü korunur; ayrı `/trackmesh/pairing/1` kanalı eklenir. İki tarafta da yeni build gerekir. Eski ZIP bu özelliği içermez. Eski cihazlarla manuel kart yolu **Legacy file pairing** altında bulunur; `join`/`card` komutları değişmez, CLI'ye `request-pairing` eklenir. [Güvenlik sınırları](PAIRING_SECURITY.md).
+Yeni Desktop yanıtı şifreli peer bağlantısından otomatik gönderir; A'nın son onayı korunur. Alıcı, istek gönderildikten sonra onayı 60 saniyeye kadar sorgular. A offline/pencere kapalıysa import korunur; A **Open pairing window**, B **Retry automatic pairing** ile devam eder. Tek projede 10 dakikalık pencere vardır; süre bitince, kapanınca veya restart olunca onaysız istekler temizlenir. Bu süre davet/proje anahtarını iptal etmez. Eski invitation/card formatları ve transfer protokolü korunur; ayrı `/trackmesh/pairing/1` kanalı eklenir. İki tarafta da otomatik eşleştirme build'i gerekir: `20261007` ZIP'i bunu içermez, `20261008` AutoPairing paketi içerir, `20261009` paketi aynı EXE'lerle güncel yönergeyi taşır. Eski cihazlarla manuel kart yolu **Legacy file pairing** altında bulunur; `join`/`card` komutları değişmez, CLI'ye `request-pairing` eklenir. [Güvenlik sınırları](PAIRING_SECURITY.md).
 
 ## Ortak çalışma kuralları
 
@@ -59,7 +109,7 @@ Yeni Desktop yanıtı şifreli peer bağlantısından otomatik gönderir; A'nın
 - Mailbox yalnızca encrypted metadata/snapshot announcement tutar. `PUBLISHED` dosyaların B'ye ulaştığını göstermez. Mailbox yokken yerel snapshot hazırsa direct Receive denenebilir.
 - Özel relay direct bağlantı başarısız olursa peer bağlantısına geçiş noktası olabilir. Hazır servis, pinned PeerId ve izinler gerekir; bir alan doldurmak relay kurmaz. Kaynak yine online olmalıdır. Operatör rehberi: [PHASE3.md](../PHASE3.md).
 
-## 9. Sorun olursa ve denemeyi bitirirken
+## Sorun olursa ve denemeyi bitirirken
 
 | Belirti | İlk kontrol |
 | --- | --- |

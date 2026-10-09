@@ -2,6 +2,10 @@
 
 The agent publishes encrypted signed announcements to an Axum/SQLite mailbox. A separate libp2p process supplies allow-listed rendezvous and circuit relay. Neither service receives a project key. Project manifests and chunks remain on authorized collaborator PCs and travel through the existing peer transfer protocol.
 
+Current default pairing is the native invitation → automatic device request → explicit sender approval workflow in [setup/README.md](setup/README.md). Direct operation does not require this infrastructure. The Desktop UI is a local Windows application; deploying it as a browser site is not part of this service setup. Supabase is not integrated. Local client SQLite and the mailbox's separate SQLite serve different purposes; neither makes a private/CGNAT address reachable by itself.
+
+With prepared infrastructure, an online peer reconnects to the pinned stable service, renews rendezvous registration and establishes a relay reservation; trusted peers can discover it and try direct/circuit paths. Public deployment and actual IP/hotspot changes remain unverified. In the default direct trial, changed sender public IP/port is handled by a fresh native invitation imported into the same project/profile/folder. Mailbox stores encrypted snapshot announcements, not offline pairing requests or project files; source peers must still be online for Receive.
+
 ## Build
 
 Use the Windows developer shell described in [DEVELOPMENT.md](DEVELOPMENT.md):
@@ -14,7 +18,7 @@ The three executables are `target\debug\trackmesh-agent.exe`, `trackmesh-mailbox
 
 ## Authorize the devices
 
-First exchange invitations privately and pair devices as in [PHASE2.md](PHASE2.md). Invitations contain a project key; infrastructure operators receive **public signed device cards**, never invitations.
+First exchange invitations privately and pair devices with current [automatic setup](setup/README.md), or explicitly use [legacy CLI file pairing](PHASE2.md). Invitations contain a project key; infrastructure operators receive **public signed device cards**, never invitations. Desktop Approve device changes only that PC's project trust; it does not update service ACLs. A new receiver must already have an operator-provisioned infrastructure grant if its first pairing attempt depends on that relay. Automatic approval is not a replacement for the provisioning steps below.
 
 Export each device card with the agent's `card --output` command. On the infrastructure machine, create a mailbox ACL JSON array with one grant per project/device. For example, using cards already delivered privately:
 
