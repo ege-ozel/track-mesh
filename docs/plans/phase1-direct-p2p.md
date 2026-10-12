@@ -165,7 +165,7 @@ En az bir cihaz erişilebilirken **relay olmadan** doğrulanmış doğrudan tran
 
 ## 9. Codex yürütme protokolü (alt-ajan destekli)
 
-**Bu bölüm bir operatör istemidir; ilerleme kanıtı değildir.** Codex'in alt-ajan (sub-agent) desteği olup olmadığı bu planı yazarken doğrulanmadı `[V]`. Önce Codex'e sorulur; destek yoksa aynı iş sırayla, tek ajanla yürütülür. Model adları kullanıcının Codex hesabına bağlıdır; `gpt-6.1-sol` (`max`) ve `gpt-6-luna` (`medium`) yerine Codex model seçicisindeki gerçek adlar yazılır.
+**Bu bölüm bir operatör istemidir; ilerleme kanıtı değildir.** Codex'in alt-ajan (sub-agent) desteği olup olmadığı bu planı yazarken doğrulanmadı `[V]`. Önce Codex'e sorulur; destek yoksa aynı iş sırayla, tek ajanla yürütülür. Model adları kullanıcının Codex hesabına bağlıdır. Codex bildirdi (ajan başlatılmadan): `gpt-6.1-sol` (`max`) güçlü işler ve bağımsız inceleme, `gpt-6-luna` (`medium`) hafif uygulama için seçildi; `gpt-6-astra` kullanılmaz, `ultra` gerekmez. Model gücü sürüm numarasından kesin sıralanamadı; seçici açıklaması esas alınır.
 
 ### 9.1 Başlatma sorusu (önce bunu yapıştır)
 
