@@ -64,8 +64,8 @@ function ConnectionSetup({ status, projectId, busy, act }: { status: DesktopStat
     <p>Local listen port: <strong>{status.listen_port}</strong> (default 43101). This session keeps its listen port; a different local port requires reopening with that startup port after the current owner exits.</p>
     <p>Local IPv4 / destination port: {localIps.length ? localIps.map(localIp => <code key={localIp}>{localIp}:{status.listen_port} </code>) : 'Waiting for a local IPv4 listen address. Do not use 0.0.0.0 as the router destination.'}</p>
     <p>Select the IP on the network connected to your router. Reserve that PC address in the router DHCP settings.</p>
-    <div className="connection-inputs"><label>Public IPv4 (router WAN / ISP)<input value={ip} maxLength={15} disabled={busy} onChange={e => setIp(e.target.value)} placeholder="Enter public IPv4" /></label>
-      <label>External router port<input type="number" min={1} max={65535} value={port} disabled={busy} onChange={e => setPort(e.target.value)} /></label></div>
+    <div className="connection-inputs"><label className="field">Public IPv4 (router WAN / ISP)<input value={ip} maxLength={15} disabled={busy} onChange={e => setIp(e.target.value)} placeholder="Enter public IPv4" /></label>
+      <label className="field">External router port<input type="number" min={1} max={65535} value={port} disabled={busy} onChange={e => setPort(e.target.value)} /></label></div>
     {publicIp && !valid && <p className="error">Enter a public IPv4 and a port from 1 to 65535.</p>}
     <p>CGNAT / private ranges: 100.64.0.0/10, 10/8, 172.16/12 and 192.168/16 are not public IPs. If your router WAN is in these ranges, ask your ISP for a reachable public IPv4 or use a configured private relay. Entering an address does not verify reachability.</p>
     {valid && <div className="connection-addresses"><code>/ip4/{publicIp}/tcp/{port}</code><code>/ip4/{publicIp}/udp/{port}/quic-v1</code></div>}
@@ -97,10 +97,11 @@ function DefaultSupabaseSettings({ config, busy, act }: {
   }, [config?.url, config?.publishable_key]);
   return <details className="setup"><summary>Default Supabase service</summary>
     <p className="muted">Saved in this app's settings.json, outside project settings. Used for invite links and prefilled when selecting Supabase for a project.</p>
-    <label>Supabase Project URL<input autoComplete="off" spellCheck={false} value={url} disabled={busy} placeholder="https://your-project.supabase.co" onChange={event => setUrl(event.target.value)} /></label>
-    <label>Publishable key<input type="password" autoComplete="new-password" spellCheck={false} value={publishableKey} disabled={busy} onChange={event => setPublishableKey(event.target.value)} /></label>
+    <div className="field-stack"><label className="field">Supabase Project URL<input autoComplete="off" spellCheck={false} value={url} disabled={busy} placeholder="https://your-project.supabase.co" onChange={event => setUrl(event.target.value)} /></label>
+    <label className="field">Publishable key<input type="password" autoComplete="new-password" spellCheck={false} value={publishableKey} disabled={busy} onChange={event => setPublishableKey(event.target.value)} /></label>
     <div className="actions"><button disabled={busy || !url.trim() || !publishableKey.trim()} onClick={() => void act({ kind: 'set_default_supabase', url: url.trim(), publishable_key: publishableKey.trim() })}>Save default</button>
       <button disabled={busy || !config} onClick={() => void act({ kind: 'set_default_supabase', url: null, publishable_key: null })}>Clear</button></div>
+    </div>
   </details>;
 }
 
@@ -128,8 +129,8 @@ function ProjectBackendSettings({ projectId, config, defaultSupabase, state, bus
     </select></label>
     {backend === 'SELF_HOSTED_MAILBOX' && <p className="muted">Uses this project's existing mailbox URL without changing its behavior.</p>}
     {backend === 'SUPABASE' && <div className="backend-fields">
-      <label>Supabase Project URL<input autoComplete="off" spellCheck={false} value={url} disabled={busy} placeholder="https://your-project.supabase.co" onChange={event => setUrl(event.target.value)} /></label>
-      <label>Publishable key<input type="password" autoComplete="new-password" spellCheck={false} value={anonKey} disabled={busy} onChange={event => setAnonKey(event.target.value)} /></label>
+      <label className="field">Supabase Project URL<input autoComplete="off" spellCheck={false} value={url} disabled={busy} placeholder="https://your-project.supabase.co" onChange={event => setUrl(event.target.value)} /></label>
+      <label className="field">Publishable key<input type="password" autoComplete="new-password" spellCheck={false} value={anonKey} disabled={busy} onChange={event => setAnonKey(event.target.value)} /></label>
       <p className="muted">HTTPS `*.supabase.co` URLs only. This key selects the public API project; membership still requires device signing. Never enter a service role or secret key.</p>
     </div>}
     <div className="actions"><button disabled={busy || (backend === 'SUPABASE' && (!url.trim() || !anonKey.trim()))} onClick={async () => {
@@ -367,8 +368,8 @@ export default function App() {
       {(error || status?.error || status?.network?.error) && <div className="notice danger" role="alert">{error || status?.error || status?.network?.error}</div>}
       {status?.invite_pending && <div className="invite-overlay"><section className="invite-dialog" role="dialog" aria-modal="true" aria-labelledby="invite-title"><h2 id="invite-title">Accept invite link</h2>
         <p>The link stays in TrackMesh. {status.default_supabase ? 'Your default invite service is ready.' : 'Enter the Supabase service details to retrieve it.'} Choose a destination folder to continue.</p>
-        {!status.default_supabase && <><label>Supabase Project URL<input autoComplete="off" value={inviteServiceUrl} onChange={event => setInviteServiceUrl(event.target.value)} placeholder="https://your-project.supabase.co" /></label>
-        <label>Publishable key<input type="password" autoComplete="new-password" value={inviteServiceKey} onChange={event => setInviteServiceKey(event.target.value)} /></label></>}
+        {!status.default_supabase && <><label className="field">Supabase Project URL<input autoComplete="off" value={inviteServiceUrl} onChange={event => setInviteServiceUrl(event.target.value)} placeholder="https://your-project.supabase.co" /></label>
+        <label className="field">Publishable key<input type="password" autoComplete="new-password" value={inviteServiceKey} onChange={event => setInviteServiceKey(event.target.value)} /></label></>}
         <div className="actions"><button className="primary" disabled={busy || (!status.default_supabase && (!inviteServiceUrl.trim() || !inviteServiceKey.trim()))} onClick={() => void act({ kind: 'complete_invite_link', ...(!status.default_supabase ? { supabase_url: inviteServiceUrl.trim(), supabase_anon_key: inviteServiceKey.trim() } : {}) })}>Choose folder and accept</button></div>
       </section></div>}
       {status?.closing && <div className="notice">Work finished. TRACKMESH is shutting down safely.</div>}
@@ -377,16 +378,16 @@ export default function App() {
           <DeviceNameSettings name={status?.device?.name ?? ''} busy={busy} act={act} />
           <DefaultSupabaseSettings config={status?.default_supabase ?? null} busy={busy} act={act} />
           <p className="muted">Supabase publishable key is public project configuration. Never enter a secret key here.</p>
+          <section className="global-advanced"><h3>Advanced tools</h3><p className="muted">For older builds or custom network setups.</p><div className="actions"><button disabled={busy} onClick={() => { setScreen('projects'); setSetup('join'); setFolder(''); }}>Accept invitation file</button></div></section>
         </details></section> : <>
       <div className="section-heading"><div><h2>Projects</h2><span className="muted">Link a folder, invite a collaborator, then share or receive a version.</span></div><div className="actions">
         <button className="primary" disabled={busy} onClick={() => { setSetup('link'); setFolder(''); setUuid(crypto.randomUUID()); setName(''); setMailbox(''); setRelay(''); }}>+ Link folder</button></div></div>
-      <details className="global-advanced"><summary>Advanced tools</summary><p className="muted">For older builds or custom network setups.</p><div className="actions"><button disabled={busy} onClick={() => { setSetup('join'); setFolder(''); }}>Accept invitation file</button></div></details>
       {setup && <section className="setup-panel"><h2>{setup === 'join' ? 'Pair with an inviter' : 'Link a local project'}</h2>
-        {setup === 'link' && <><label>Project name<input value={name} maxLength={320} onChange={e => setName(e.target.value)} placeholder="Track 07" /></label>
+        {setup === 'link' && <><label className="field">Project name<input value={name} maxLength={320} onChange={e => setName(e.target.value)} placeholder="Track 07" /></label>
           </>}
-        <label>Local project folder<div className="input-row"><input value={folder} onChange={e => setFolder(e.target.value)} placeholder="D:\Projects\Track 07" /><button onClick={() => void browse()}>Browse…</button></div></label>
-        {setup === 'link' && <details className="form-advanced"><summary>Advanced project settings</summary><label>Permanent project UUID<div className="input-row"><input value={uuid} onChange={e => setUuid(e.target.value)} /><button onClick={() => setUuid(crypto.randomUUID())}>New UUID</button></div></label>
-          <label>HTTPS mailbox (optional)<input value={mailbox} onChange={e => setMailbox(e.target.value)} placeholder="https://mailbox.example.com" /></label><label>Pinned relay address (optional)<input value={relay} onChange={e => setRelay(e.target.value)} placeholder="/dns4/relay.example.com/udp/4001/quic-v1/p2p/…" /></label></details>}
+        <label className="field">Local project folder<div className="input-row"><input value={folder} onChange={e => setFolder(e.target.value)} placeholder="D:\Projects\Track 07" /><button onClick={() => void browse()}>Browse…</button></div></label>
+        {setup === 'link' && <details className="form-advanced"><summary>Advanced project settings</summary><div className="field-stack"><label className="field">Permanent project UUID<div className="input-row"><input value={uuid} onChange={e => setUuid(e.target.value)} /><button onClick={() => setUuid(crypto.randomUUID())}>New UUID</button></div></label>
+          <label className="field">HTTPS mailbox (optional)<input value={mailbox} onChange={e => setMailbox(e.target.value)} placeholder="https://mailbox.example.com" /></label><label className="field">Pinned relay address (optional)<input value={relay} onChange={e => setRelay(e.target.value)} placeholder="/dns4/relay.example.com/udp/4001/quic-v1/p2p/…" /></label></div></details>}
         {setup === 'join' && <p className="muted">Choose your local folder, then open the private invitation. TrackMesh sends your pairing request automatically; keep the inviter online with their pairing window open. Wait for their approval before Check peer and Receive. The invitation key stays in the native backend.</p>}
         <div className="actions"><button className="primary" disabled={busy || !folder || (setup === 'link' && (!name || !uuid))} onClick={() => void saveSetup()}>{setup === 'join' ? 'Accept invitation & connect…' : 'Link project'}</button><button onClick={() => setSetup(null)}>Cancel</button></div>
       </section>}
@@ -402,6 +403,6 @@ export default function App() {
 function DeviceNameSettings({ name, busy, act }: { name: string; busy: boolean; act: (action: Action) => Promise<void> }) {
   const [value, setValue] = useState(name);
   useEffect(() => setValue(name), [name]);
-  return <details className="settings-block"><summary>Device name</summary><label>Name shown to collaborators<input maxLength={80} value={value} disabled={busy} onChange={event => setValue(event.target.value)} /></label>
-    <button disabled={busy || !value.trim() || value.trim() === name} onClick={() => void act({ kind: 'set_device_name', name: value.trim() })}>Save device name</button></details>;
+  return <details className="settings-block"><summary>Device name</summary><div className="field-stack"><label className="field">Name shown to collaborators<input maxLength={80} value={value} disabled={busy} onChange={event => setValue(event.target.value)} /></label>
+    <button disabled={busy || !value.trim() || value.trim() === name} onClick={() => void act({ kind: 'set_device_name', name: value.trim() })}>Save device name</button></div></details>;
 }
