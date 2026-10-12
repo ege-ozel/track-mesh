@@ -30,6 +30,13 @@ export interface CheckView { device_id: string; fresh: boolean; current_known: b
   lineage: Lineage | null;
   verified_equal: boolean; connection: Connection | null; last_verified_at: string | null;
 } }
+export interface NetworkObservation {
+  source: string;
+  interfaces: { interface_index: number; name: string; ipv4: string[]; gateways: string[] }[];
+  default_gateways: { interface_index: number; address: string; source: string }[];
+  wan_visible_ip: { state: 'UNKNOWN'; source: string; value: string | null };
+  mappings: { method: 'UPNP_IGD' | 'PCP'; transport: 'TCP' | 'UDP'; state: 'NOT_ATTEMPTED' }[];
+}
 export interface DesktopStatus {
   pairing: { project_id: string | null; remaining_seconds: number; requests: { request_id: string; device_id: string; name: string; peer_id: string }[] };
   listen_port: number; configured_external_addresses: string[];
@@ -37,6 +44,7 @@ export interface DesktopStatus {
   device: { device_id: string; name: string; peer_id: string } | null;
   data_directory: string | null;
   network: { addresses: string[]; error: string | null; peers: Record<string, Connection> } | null;
+  network_observation: NetworkObservation;
   page: { projects: ProjectCard[]; offset: number; has_more: boolean } | null;
   jobs: Job[]; checks: CheckView[];
 }

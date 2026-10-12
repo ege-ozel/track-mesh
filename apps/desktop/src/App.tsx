@@ -33,7 +33,14 @@ function ConnectionSetup({ status, projectId, busy, act }: { status: DesktopStat
   const valid = publicIpv4(publicIp) && validPort;
   const addresses = status.network?.addresses ?? [];
   const localIps = localIpv4Addresses(status);
+  const observation = status.network_observation;
+  const gateways = observation.default_gateways;
   return <details className="connection-setup"><summary>Connection setup</summary>
+    <p><strong>Observation (read only)</strong></p>
+    <p>Observed local IPv4 interfaces: {observation.interfaces.length ? observation.interfaces.map(iface => <span key={iface.interface_index}>{iface.name || `Interface ${iface.interface_index}`} [{iface.ipv4.join(', ') || 'UNKNOWN'}]; </span>) : 'UNKNOWN'}</p>
+    <p>Observed default gateway(s): {gateways.length ? gateways.map(gateway => <span key={`${gateway.interface_index}-${gateway.address}`}>{gateway.address} (interface {gateway.interface_index}; {gateway.source}); </span>) : 'UNKNOWN'}</p>
+    <p>WAN IP = visible IP? {observation.wan_visible_ip.state} (source: {observation.wan_visible_ip.source})</p>
+    <p>Port mapping observation: {observation.mappings.map(mapping => `${mapping.method} ${mapping.transport}: ${mapping.state}`).join('; ')}</p>
     <p>Local listen port: <strong>{status.listen_port}</strong> (default 43101). This session keeps its listen port; a different local port requires reopening with that startup port after the current owner exits.</p>
     <p>Local IPv4 / destination port: {localIps.length ? localIps.map(localIp => <code key={localIp}>{localIp}:{status.listen_port} </code>) : 'Waiting for a local IPv4 listen address. Do not use 0.0.0.0 as the router destination.'}</p>
     <p>Select the IP on the network connected to your router. Reserve that PC address in the router DHCP settings.</p>

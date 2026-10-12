@@ -13,8 +13,8 @@ use std::{
 };
 use tauri::{AppHandle, Manager};
 use trackmesh_core::{
-    default_data_directory, peer::PeerRuntime, Engine, MailboxRuntime, PairingStatus, PeerCheck,
-    PluginRuntime, SessionGrace, SummaryPage,
+    default_data_directory, observe_network, peer::PeerRuntime, Engine, MailboxRuntime,
+    NetworkObservation, PairingStatus, PeerCheck, PluginRuntime, SessionGrace, SummaryPage,
 };
 use uuid::Uuid;
 
@@ -202,6 +202,7 @@ pub struct DesktopStatus {
     pub data_directory: Option<String>,
     pub error: Option<String>,
     pub network: Option<NetworkStatus>,
+    pub network_observation: NetworkObservation,
     pub page: Option<SummaryPage>,
     pub jobs: Vec<Job>,
     pub checks: Vec<CheckView>,
@@ -223,6 +224,7 @@ struct Session {
     device: Option<Device>,
     peer: Option<PeerRuntime>,
     network: Option<Network>,
+    network_observation: NetworkObservation,
     metadata: Option<MailboxRuntime>,
     plugin: Option<PluginRuntime>,
     tasks: Vec<tauri::async_runtime::JoinHandle<()>>,
@@ -360,7 +362,8 @@ impl Desktop {
         }
         let engine_for_network = engine.clone();
         let options = self.options.clone();
-        let peer = tauri::async_runtime::spawn_blocking(move || {
+        let (peer, network_observation) = tauri::async_runtime::spawn_blocking(move || {
+            let observation = observe_network();
             let config = NetworkConfig {
                 port: options.port,
                 external_addresses: options
@@ -370,12 +373,13 @@ impl Desktop {
                     .collect::<std::result::Result<_, _>>()?,
                 ..Default::default()
             };
-            PeerRuntime::start(engine_for_network, config)
+            Ok::<_, anyhow::Error>((PeerRuntime::start(engine_for_network, config)?, observation))
         })
         .await??;
         let metadata = MailboxRuntime::start(engine.clone(), self.options.allow_loopback_http);
         let mut state = self.lock()?;
         state.network = Some(peer.network.clone());
+        state.network_observation = network_observation;
         state.peer = Some(peer);
         state.metadata = Some(metadata);
         state.plugin = Some(PluginRuntime::start(
@@ -485,6 +489,7 @@ impl Desktop {
             data_directory,
             error: state.error.clone().or(runtime_error),
             network,
+            network_observation: state.network_observation.clone(),
             page,
             jobs: state.jobs.clone(),
             checks,
