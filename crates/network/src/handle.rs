@@ -2,10 +2,10 @@
 use crate::NetworkStatus;
 use anyhow::{ensure, Context, Result};
 use libp2p::{request_response, Multiaddr, PeerId};
-use protocol::{PairingRequest, PairingResponse, PeerRequest, PeerResponse};
+use protocol::{EndpointRecord, PairingRequest, PairingResponse, PeerRequest, PeerResponse};
 use std::{
     sync::{Arc, RwLock},
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tokio::sync::watch;
 use tokio::sync::{mpsc, oneshot};
@@ -16,6 +16,10 @@ pub struct Incoming {
 }
 #[derive(Clone)]
 pub enum IncomingRequest {
+    EndpointUpdate {
+        project_id: uuid::Uuid,
+        record: EndpointRecord,
+    },
     Transfer(PeerRequest),
     Pairing(PairingRequest),
 }
@@ -35,6 +39,8 @@ pub(super) enum Command {
     PairingWindow(Duration),
     Reload(Vec<(Multiaddr, String)>),
     SetExternalAddresses(Vec<Multiaddr>),
+    EndpointAddresses(oneshot::Sender<Vec<String>>),
+    LearnPeerAddresses(PeerId, Vec<Multiaddr>, u64, Instant),
     NetworkChanged,
     Shutdown,
 }
@@ -61,6 +67,50 @@ impl Network {
     pub async fn set_external_addresses(&self, addresses: Vec<Multiaddr>) -> Result<()> {
         self.command
             .send(Command::SetExternalAddresses(addresses))
+            .await
+            .context("network stopped")
+    }
+
+    /// Snapshot currently observed, mapped, and listening addresses suitable for endpoint records.
+    pub async fn endpoint_addresses(&self) -> Result<Vec<String>> {
+        let (tx, rx) = oneshot::channel();
+        self.command
+            .send(Command::EndpointAddresses(tx))
+            .await
+            .context("network stopped")?;
+        rx.await.context("network actor stopped")
+    }
+
+    /// Learn a validated peer endpoint until its record expiry; does not dial immediately.
+    pub async fn learn_peer_addresses(
+        &self,
+        peer: &str,
+        addresses: Vec<String>,
+        sequence: u64,
+        ttl: Duration,
+    ) -> Result<()> {
+        ensure!(
+            addresses.len() <= protocol::MAX_ENDPOINT_ADDRESSES,
+            "too many endpoint addresses"
+        );
+        let peer: PeerId = peer.parse()?;
+        let mut parsed = Vec::with_capacity(addresses.len());
+        for address in addresses {
+            protocol::validate_endpoint_address(&address)?;
+            let multiaddr: Multiaddr = address.parse()?;
+            ensure!(
+                multiaddr.to_string() == address,
+                "endpoint address is not canonical"
+            );
+            parsed.push(multiaddr);
+        }
+        parsed.sort_by_key(ToString::to_string);
+        parsed.dedup();
+        let expiry = Instant::now()
+            .checked_add(ttl)
+            .context("endpoint expiry is out of range")?;
+        self.command
+            .send(Command::LearnPeerAddresses(peer, parsed, sequence, expiry))
             .await
             .context("network stopped")
     }

@@ -8,7 +8,8 @@ mod mailbox;
 mod pairing;
 pub use endpoint::{
     validate_endpoint_address, EndpointRecord, EndpointSequence, ENDPOINT_DOMAIN,
-    MAX_ENDPOINT_ADDRESSES, MAX_ENDPOINT_RECORD_BYTES, MAX_ENDPOINT_TTL, PREFERRED_ENDPOINT_TTL,
+    MAX_ENDPOINT_ADDRESSES, MAX_ENDPOINT_RECORD_BYTES, MAX_ENDPOINT_REQUEST_BYTES,
+    MAX_ENDPOINT_TTL, PREFERRED_ENDPOINT_TTL,
 };
 pub use mailbox::{
     mailbox_scope, MailboxAuth, MAX_MAILBOX_AUTH_BYTES, MAX_MAILBOX_ENVELOPE_BYTES,
@@ -386,6 +387,10 @@ pub struct PluginStatus {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub enum PeerRequest {
+    EndpointUpdate {
+        project_id: Uuid,
+        record: EndpointRecord,
+    },
     Head {
         project_id: Uuid,
     },
@@ -407,6 +412,7 @@ pub enum PeerRequest {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub enum PeerResponse {
+    EndpointUpdated,
     Head { snapshot: Option<SignedSnapshot> },
     Manifest { snapshot: SignedSnapshot },
     Chunk { hash: String, data: Vec<u8> },
@@ -416,7 +422,8 @@ pub enum PeerResponse {
 
 pub fn request_project(request: &PeerRequest) -> Uuid {
     match request {
-        PeerRequest::Head { project_id }
+        PeerRequest::EndpointUpdate { project_id, .. }
+        | PeerRequest::Head { project_id }
         | PeerRequest::Manifest { project_id, .. }
         | PeerRequest::Chunk { project_id, .. }
         | PeerRequest::Verified { project_id, .. } => *project_id,

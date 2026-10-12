@@ -11,6 +11,7 @@ use std::{
 use storage::Store;
 use uuid::Uuid;
 mod connection;
+mod endpoints;
 mod firewall_observation;
 mod network_observation;
 mod settings;

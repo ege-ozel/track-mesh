@@ -64,6 +64,8 @@ pub(super) struct Discovery {
     direct_attempts: HashMap<PeerId, u32>,
     registered: HashMap<(PeerId, String), Instant>,
     learned: HashMap<PeerId, Vec<Multiaddr>>,
+    learned_endpoints: HashMap<PeerId, (Vec<Multiaddr>, u64, Instant)>,
+    learned_endpoint_sequences: HashMap<PeerId, u64>,
     relay_listeners: HashSet<Multiaddr>,
 }
 
@@ -83,6 +85,9 @@ impl Discovery {
         namespaces: &[(Multiaddr, String)],
         connections: &Connections,
     ) -> Result<()> {
+        let now = Instant::now();
+        self.learned_endpoints
+            .retain(|_, (_, _, expiry)| *expiry > now);
         for card in store.peers(None)? {
             let peer: PeerId = card.peer_id.parse()?;
             let direct = connections.values().any(|(p, r, _)| *p == peer && !r);
@@ -97,6 +102,12 @@ impl Discovery {
                 .iter()
                 .filter_map(|a| a.parse().ok())
                 .chain(self.learned.get(&peer).into_iter().flatten().cloned())
+                .chain(
+                    self.learned_endpoints
+                        .get(&peer)
+                        .into_iter()
+                        .flat_map(|(addresses, _, _)| addresses.iter().cloned()),
+                )
                 .filter(|a: &Multiaddr| !a.iter().any(|p| matches!(p, Protocol::P2pCircuit)))
                 .collect();
             addresses.sort_by_key(ToString::to_string);
@@ -159,6 +170,34 @@ impl Discovery {
                 .discover(Some(ns), None, Some(8), relay);
         }
         Ok(())
+    }
+
+    pub(super) fn learn_endpoint_addresses(
+        &mut self,
+        peer: PeerId,
+        addresses: Vec<Multiaddr>,
+        sequence: u64,
+        expiry: Instant,
+    ) {
+        if self
+            .learned_endpoint_sequences
+            .get(&peer)
+            .is_some_and(|current_sequence| *current_sequence > sequence)
+        {
+            return;
+        }
+        self.learned_endpoint_sequences.insert(peer, sequence);
+        if expiry <= Instant::now() {
+            self.learned_endpoints.remove(&peer);
+        } else if addresses.is_empty() {
+            self.learned_endpoints
+                .insert(peer, (Vec::new(), sequence, expiry));
+            self.direct_attempts.remove(&peer);
+        } else {
+            self.learned_endpoints
+                .insert(peer, (addresses, sequence, expiry));
+            self.direct_attempts.remove(&peer);
+        }
     }
 
     pub(super) fn disconnected(&mut self, peer: PeerId, namespaces: &[(Multiaddr, String)]) {

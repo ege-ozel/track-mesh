@@ -8,6 +8,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
 impl Store {
+    /// Return the current saved endpoint using this process's UTC clock.
+    pub fn current_peer_endpoint_state(
+        &self,
+        device_id: Uuid,
+    ) -> Result<Option<PeerEndpointState>> {
+        self.peer_endpoint_state(device_id, Utc::now())
+    }
+
     /// Atomically reserve a durable, monotonically increasing endpoint sequence.
     /// The wall clock supplies a high starting point after backup restore; a
     /// clock rollback falls back to the previous sequence plus one.

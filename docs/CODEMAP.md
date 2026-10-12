@@ -30,6 +30,7 @@ Paths are relative to repository root. A crate's `src/lib.rs` lists its public A
 | Main-window command boundary and typed frontend | `apps/desktop/src-tauri/src/commands.rs`, `apps/desktop/src/api.ts` | Narrow invoke API |
 | Desktop project controls and styling | `apps/desktop/src/App.tsx`, `src/styles.css` | Core-derived state, no filesystem watcher |
 | Start/stop peer runtime, answer disk requests, fetch signed ancestry | `crates/core/src/peer.rs` | Network actor and transfer serving |
+| Signed endpoint record acceptance and direct-peer publication | `crates/core/src/endpoints.rs` | Shared direct/mailbox validation, M5b storage, network actor learned candidates |
 | CLI arguments, JSON output, Ctrl+C | `crates/core/src/main.rs` | Core workflows; keep decisions out of this adapter |
 | Receive decisions, local lock, failure state | `crates/transfer/src/receiver.rs` | Verification, download, apply |
 | Chunk reuse, concurrency, retries, durable progress | `crates/transfer/src/download.rs` | Chunk store, network handle, storage transfers |
