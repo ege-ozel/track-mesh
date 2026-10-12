@@ -25,12 +25,21 @@ Değişmezler (her kilometre taşında): imzalı kimlik/sabit `PeerId`, proje ye
 | Settle | `scan_after_save`: ~2 sn sessizlik, 60 sn sınır, 3 deneme; watcher değil. | P5 çoğunlukla mevcut; yalnız doğrulama. |
 | Proje yetkisi | İstek yetkisi hem `command` hem gelen istekte `authorized` ile kontrol. | Yeni RPC'ler de proje/cihaz yetkisi ister. |
 
-## 3. Kütüphane kararı (M0 çıktısı; `[V]`)
+## 3. Kütüphane ve Windows API kararı (M0; 2026-10-12)
 
-- `libp2p-upnp` `[V]`: kullanıcı onayı olmadan kendiliğinden eşleme açıp dış adres ekler ve (hatırladığım kadarıyla) yalnız TCP kapsar → **kullanılmaz**; onay, UDP/QUIC, ayrı sonuç durumu ve "başkasının mapping'ine dokunma" kuralıyla çelişir.
-- UPnP IGD için ayrı bir istemci (aday: `igd-next`, tokio desteğiyle) `[V]`; PCP (RFC 6887) için ayrı istemci (aday: `crab_nat` veya küçük elle yazılmış UDP istemcisi) `[V]`. NAT-PMP (RFC 6886) bu aşamada **yalnız değerlendirme notu**; UPnP ve PCP ayrı `MappingMethod` değerleridir.
-- Seçim ölçütleri: Windows derlenir, tokio uyumlu, `unsafe`/ek C bağımlılığı yok, lisans MIT/Apache uyumlu, `Cargo.lock` kilitli (`--locked --offline` politikası). Bağımlılık yalnız `crates/network` içine eklenir ve yalnız M2'de.
-- Windows gateway/arayüz keşfi için kütüphane veya `GetAdaptersAddresses` kullanımı M0'da seçilir; PowerShell'e shell-out önerilmez.
+M0 web incelemesi crate metadata'sı, docs.rs belgeleri/kaynakları, upstream depoları ve Microsoft Learn birincil belgeleriyle yapıldı. Bu inceleme Windows hedef derlemesi veya router davranışı değildir.
+
+| Alan | Karar ve kanıt | Durum |
+| --- | --- | --- |
+| UPnP IGD | M2 adayı: [`igd-next`](https://crates.io/crates/igd-next), crates.io/docs.rs'teki `0.18.0`; [upstream README](https://github.com/dariusc93/rust-igd#feature-flags), [0.18.0 manifest](https://docs.rs/crate/igd-next/0.18.0/source/Cargo.toml.orig), [async Tokio API](https://docs.rs/igd-next/0.18.0/igd_next/aio/index.html). Upstream README, varsayılan senkron I/O'dan ayrı `aio_tokio` özelliğini (Tokio + Hyper) belgeliyor; manifest MIT lisansı ve optional Tokio bağımlılığını doğruluyor. Gateway API'si TCP/UDP protokol parametresi, sonlu lease, `PortInUse`, `OnlyPermanentLeasesSupported` ve kendi kaydını silme işlemlerini sunuyor. | Tokio/MIT/API doğrulandı. Windows hedef derlemesi **[V]**: bu M0'da MSVC hedef derlemesi veya resmi Windows CI kanıtı doğrulanmadı; M2'de bağımlılık eklenmeden önce kontrol edilmeli. Bakım sinyali: yayımlanmış `0.18.0` ve upstream commit/release geçmişi var; devamlı bakım/SLA garantisi yok. |
+| PCP | M3 adayı: [`crab_nat`](https://crates.io/crates/crab_nat), `0.8.1`; yalnız [`pcp` API'si](https://docs.rs/crab_nat/0.8.1/crab_nat/pcp/index.html) kullanılmalı. [Manifest](https://docs.rs/crate/crab_nat/0.8.1/source/Cargo.toml) MIT ve Tokio `^1.52.3` bağımlılığını gösteriyor; bu aralık repo kilidindeki Tokio `1.53.2` ile uyumlu, fakat yeni bağımlılık çözülmedi. [upstream README](https://github.com/ryco117/crab_nat#usage) async Tokio UDP kullanımını ve `pcp` ile `natpmp` modüllerini ayrı kullanmayı belgeliyor. `PortMapping::new` PCP başarısızsa NAT-PMP'ye geçer; o kolaylık API'si bu plan için kullanılmayacak. | Tokio/MIT/API doğrulandı. Windows hedef derlemesi **[V]**: bu incelemede resmi Windows CI/hedef sonucu yok; M3 öncesi kontrol edilmeli. Bakım sinyali: docs.rs sürüm geçmişinde `0.8.1` (2026-07-06), `0.8.0` (2026-07-05), `0.7.6` (2026-04-13) var; upstream özellik notları PCP `ANNOUNCE` ve seçeneklerinin desteklenmediğini açıkça listeliyor. Yakın yayımlar sürekli bakım garantisi değildir. |
+| `pcp-client`, `port-control-client` | Seçilmedi. [`pcp-client`](https://docs.rs/pcp-client/latest/pcp_client/) public mapping API'si UDP ile sınırlı; TCP+UDP gereksinimini karşılamıyor. [`port-control-client`](https://docs.rs/port-control-client/latest/port_control_client/) docs, gateway discovery desteğini Linux/macOS olarak sınırlar ve Windows için UPnP'yi belirtir. | Kapsam/Windows uygunluğuyla elendi; diğer bakım/lisans/Windows derleme iddiaları bu seçim için gerekli görülmedi. |
+| `libp2p-upnp` | Seçilmedi. [rust-libp2p](https://docs.rs/libp2p/latest/libp2p/upnp/tokio/index.html) bunu swarm `NetworkBehaviour` olarak sunuyor. TrackMesh'in kullanıcı onayı, TCP+UDP için ayrı kayıt sahipliği ve eşlemeden ayrı durum raporu gereksinimini karşılayıp karşılamadığı bu incelemede doğrulanmadı. Bu nedenle önceki "yalnız TCP" iddiası **[V]** olarak kaldırıldı; doğrulanmamış kapsam iddiası seçim gerekçesi değil. | Dışarıda bırakıldı; ayrı istemci seçildi. |
+| NAT-PMP | Uygulanmayacak. RFC 6886 kendisini RFC 6887 PCP tarafından superseded edilmiş ve PCP'yi uyumlu paket biçimi üzerine önemli geliştirmeler ekleyen standart-track protokol olarak tanımlar. M0 kapsamı mevcut UPnP IGD + ayrı PCP tanı durumlarıdır; üçüncü protokol eklemek aynı temel eşleme akışını tekrarlar ve M1–M4 kapsamını büyütür. `crab_nat` kullanılacaksa yalnız `pcp` modülü çağrılır; NAT-PMP otomatik fallback'i devre dışı kalır. | Kapsam kararı; router desteği hakkında iddia değildir. |
+| Arayüz ve gateway | Windows IP Helper [`GetAdaptersAddresses(AF_INET, GAA_FLAG_INCLUDE_GATEWAYS)`](https://learn.microsoft.com/en-us/windows/win32/api/iphlpapi/nf-iphlpapi-getadaptersaddresses) ile arayüz, IPv4 ve gateway adayları; [`GetIpForwardTable2(AF_INET)`](https://learn.microsoft.com/en-us/windows/win32/api/netioapi/nf-netioapi-getipforwardtable2) ile `0.0.0.0/0` varsayılan rota satırları. Birden fazla rota/arayıüz olabilir; ilk gateway'i varsayılan sayma. `GetAdaptersAddresses` senkron ve maliyetli olabileceğinden M1 çağrıları `spawn_blocking` içinde yapılmalı. | API seçildi; Rust binding/derleme ve çoklu arayüz davranışı **[V]**. [`IP_ADAPTER_ADDRESSES`](https://learn.microsoft.com/en-us/windows/win32/api/iptypes/ns-iptypes-ip_adapter_addresses_xp), [`MIB_IPFORWARD_ROW2`](https://learn.microsoft.com/en-us/windows/win32/api/netioapi/ns-netioapi-mib_ipforward_row2). |
+| Windows Firewall | Salt okunur durum için [`INetFwPolicy2`](https://learn.microsoft.com/en-us/windows/win32/api/netfw/nn-netfw-inetfwpolicy2): etkin profil bitmask'i, etkinlik, varsayılan eylem ve kural koleksiyonu; [`INetFwRule`](https://learn.microsoft.com/en-us/windows/win32/api/netfw/nn-netfw-inetfwrule) alanlarıyla TCP/UDP, yön, eylem, port, adres/arayüz kapsamını gözlemle. [`CoInitializeEx`](https://learn.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-coinitializeex) ve COM sorguları aynı blocking thread'de; kural oluşturma/değiştirme yok. [`INetFwProducts::get_Count`](https://learn.microsoft.com/en-us/windows/win32/api/netfw/nf-netfw-inetfwproducts-get_count) yalnız kayıtlı üçüncü taraf ürünleri sayar; sıfır başka paket filtreleri olmadığını kanıtlamaz. | API seçildi; COM projection/etkili politika yorumlama ve Windows doğrulaması **[V]**. Gerçek internet erişilebilirliği firewall tablosundan çıkarılmaz. |
+
+`GetAdaptersAddresses`, `GetIpForwardTable2` ve `INetFwPolicy2` için M1'de doğrudan Windows API kullanılacak; PowerShell'e shell-out yok. Crate Windows derlenebilirliği henüz teyitli değildir: dokümanlarda `cfg(windows)` dışlaması görülmemesi Windows derlemesinin kanıtı sayılmaz. `Cargo.toml`/`Cargo.lock` değişikliği yalnız ilgili uygulama kilometre taşında yapılır.
 
 ## 4. Ortak durum modeli
 
@@ -41,10 +50,11 @@ MappingState:  NOT_ATTEMPTED | UNSUPPORTED | DENIED | MAPPED | EXPIRED | FAILED 
 MappingMethod: UPNP_IGD | PCP                      (NAT-PMP: ayrı karar)
 Mapping { method, protocol(TCP|UDP), local_port, external_port, external_ip?, ip_source(GATEWAY|PEER_OBSERVED|MANUAL), lease_expires_at, gateway, state, detail }
 Reachability:  UNVERIFIED | VERIFIED_INBOUND(peer, transport, at) | OUTBOUND_ONLY | FAILED(reason)
-Firewall:      profile(PUBLIC|PRIVATE|DOMAIN|UNKNOWN), inbound_rule(PRESENT|ABSENT|UNKNOWN), third_party_product(bool)
+Firewall:      profiles[PUBLIC|PRIVATE|DOMAIN] (possibly multiple), inbound_rule(PRESENT|ABSENT|UNKNOWN), third_party_product(PRESENT|ABSENT|UNKNOWN)
 ```
 
 - `MAPPED` ≠ erişilebilir. `VERIFIED_INBOUND` **yalnızca** farklı ağdan gelen, kimliği doğrulanmış gerçek bir güvenilir-peer bağlantısıyla (Noise el sıkışması + `authorized`) kurulur; aksi `UNVERIFIED` kalır.
+- `INetFwPolicy2::CurrentProfileTypes` bitmask olduğundan etkin profiller tek değere indirgenmez. Üçüncü taraf ürün tespiti yalnız Windows Firewall ürün kaydını raporlar; yokluğu diğer filtreleme yazılımlarının yokluğunu kanıtlamaz, hata `UNKNOWN` olur.
 - Peer durum etiketleri (`CONNECTED/OFFLINE/REMOTE_AHEAD/UP_TO_DATE/DIVERGED/PORT_UNVERIFIED`) core'da türetilir; `TransferState`/`ApplyPhase` etiketleri çoğaltılmaz, yeni dize literalleri enum'dan gelir.
 
 ## 5. Kilometre taşları
@@ -124,7 +134,7 @@ Her başlık: **Amaç / Dosyalar / Görevler / Korunacaklar / Kontroller / Elle 
 ### M8 — Gerçek erişilebilirlik kanıtı ve Windows Firewall durumu
 
 - **Amaç:** `VERIFIED_INBOUND` yalnızca gerçek peer bağlantısıyla; firewall salt-okunur rapor.
-- **Görevler:** gelen, kimliği doğrulanmış, doğrudan (circuit olmayan) bağlantıda uzak adres özel/loopback değilse ve yerel yönde mapping/dinleme varsa `VERIFIED_INBOUND(peer, transport)`. Firewall: ağ profili (`Public/Private/Domain`) ve TrackMesh için gelen kural var/yok okuma `[V: API seçimi M0]`; üçüncü taraf güvenlik ürünü varsa kesin teşhis iddia edilmez. Kural ekleme yalnız açık kullanıcı onayı + yönetici izniyle ve **ayrı** komutla; güvenlik duvarı kapatılmaz; ilk sürümde yalnız yönerge metni de kabul edilebilir.
+- **Görevler:** gelen, kimliği doğrulanmış, doğrudan (circuit olmayan) bağlantıda uzak adres özel/loopback değilse ve yerel yönde mapping/dinleme varsa `VERIFIED_INBOUND(peer, transport)`. Firewall: §3'te seçilen `INetFwPolicy2` ile etkin profile bitmask'i ve TrackMesh için gelen TCP/UDP kuralı var/yok okuma; API binding/Windows davranışı **[V]**. Üçüncü taraf ürün kaydı mevcutsa bunu göster, ancak kesin teşhis iddia edilmez. Kural ekleme yalnız açık kullanıcı onayı + yönetici izniyle ve **ayrı** komutla; güvenlik duvarı kapatılmaz; ilk sürümde yalnız yönerge metni de kabul edilebilir.
 - **Risk:** Windows "Public" profilinde kural kapsamı uyuşmazlığı; hairpin/aynı LAN bağlantısı yanlış kanıt sayılmamalı (özel aralık dışlanır).
 
 ### M9 — DAW Save → snapshot (doğrulama, kod az)
@@ -158,8 +168,8 @@ En az bir cihaz erişilebilirken **relay olmadan** doğrulanmış doğrudan tran
 
 ## 8. Açık kararlar
 
-1. UPnP/PCP crate seçimi ve Windows API'leri (M0).
-2. Onay tercihinin saklanacağı yer; şema değişikliği gerekip gerekmediği (M2, M5).
+1. **Karar verildi (M0):** UPnP için `igd-next`; PCP için `crab_nat::pcp`; Windows ağ ve firewall API seçimleri §3'te. Her iki crate'in Windows hedef derlemesi **[V]** ve entegrasyon öncesi doğrulanmalı.
+2. **M2 onay tercihi:** kod incelemesinde mevcut kalıcı ayar deposu bulunmadı. Öneri: SQLite şemasını değiştirmeden TrackMesh yerel veri dizininde sürümlü bir settings dosyası; yer/atomik yazım/ACL davranışı M2'de kararlaştırılır. Mevcut DB değerleri değiştirilmez.
 3. Endpoint kaydının mailbox'ta ayrı `kind` mı yoksa ayrı uç mu olacağı (M5) — `services/mailbox/AGENTS.md` ile uyumlu.
 4. Sürekli kısa kod çözücü sunucu (M6) — Aşama 1'de uygulanmaz, yalnız tasarlanır.
 
