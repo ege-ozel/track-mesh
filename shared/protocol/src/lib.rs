@@ -3,8 +3,13 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
+mod endpoint;
 mod mailbox;
 mod pairing;
+pub use endpoint::{
+    validate_endpoint_address, EndpointRecord, EndpointSequence, ENDPOINT_DOMAIN,
+    MAX_ENDPOINT_ADDRESSES, MAX_ENDPOINT_RECORD_BYTES, MAX_ENDPOINT_TTL, PREFERRED_ENDPOINT_TTL,
+};
 pub use mailbox::{
     mailbox_scope, MailboxAuth, MAX_MAILBOX_AUTH_BYTES, MAX_MAILBOX_ENVELOPE_BYTES,
     MAX_MAILBOX_PAGE_BYTES, MAX_MAILBOX_PAGE_RECORDS,

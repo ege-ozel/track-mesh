@@ -1,6 +1,6 @@
 # Phase 1 M5 — İmzalı endpoint güncellemesi ve M6 davet tasarımı
 
-**Durum:** Yalnız tasarım. Bu belge M5/M6 uygulandığını veya güvenlik denetiminden geçtiğini göstermez. Kaynak kodu, Cargo manifest/lock, protokol veya veritabanı değiştirilmedi. Uygulama her onay kapısından sonra ayrı iş olarak yapılmalı.
+**Durum:** Tasarım belgesi; M5a protokol/kripto primitive'leri yerel olarak uygulanmıştır. M5b–M6 henüz uygulanmadı ve bu belge güvenlik denetimi yapıldığı anlamına gelmez. M5a değişikliği Cargo manifest/lock veya veritabanı şemasını değiştirmedi.
 
 ## 1. Özet karar önerisi
 
@@ -51,7 +51,7 @@ serde_json::to_vec((
 ))
 ```
 
-`signature` tuple'a dahil edilmez. Domain etiketi tip/sürüm ayırır; tuple sırası, timestamp biçimi, UUID/seq serileştirmesi ve hex imza biçimi protokol onayında kesinleştirilip golden byte örneğiyle sabitlenmeli. İmza var olan identity Ed25519 anahtarıyla üretilip doğrulanır (`crates/crypto/src/lib.rs:62-78,130-148`); yeni imza primitive'i veya dependency gerekmez.
+`signature` tuple'a dahil edilmez. M5a bu tuple sırasını ve JSON serialization'ı sabitledi; hex Ed25519 imza biçimi mevcut crypto helper'ını kullanır. M5a `EndpointRecord` tipi `shared/protocol/src/endpoint.rs` içindedir; `Identity::sign_endpoint` imzalar ve `crypto::verify_endpoint` doğrular. Golden byte fixture bu işte eklenmedi.
 
 Sıra önerisi: tek cihaz kimliği başına global, kalıcı, monotonik `u64`. Alıcı `seq > highest_seq` şartını uygular. Gönderen sayaç artırımı ve yeni imzalı kaydın saklanması atomik olmalı; restart aynı/azalan sırayı üretmemeli. SQLite'ın signed INTEGER sınırı nedeniyle tam `u64` saklanacaksa decimal canonical TEXT olarak okunup uygulama içinde `u64` karşılaştırması yapılmalı. DB restore/cihaz kimliği anahtarının sıfırlanması sayaç gerilemesi yaratabileceğinden ayrı reset/yeniden eşleştirme davranışı uygulama tasarımında kararlaştırılmalı; alıcıda monotonikliği gevşetmek güvenli geri dönüş değildir.
 
@@ -62,7 +62,7 @@ Sıra önerisi: tek cihaz kimliği başına global, kalıcı, monotonik `u64`. A
 3. İmzayı trusted device public key ile doğrula. Kaydın `device_id` değerinin beklenen cihaz kaydıyla ve `peer_id` değerinin aynı public key'den türetilen sabit libp2p PeerId ile eşleşmesini doğrula. Yeni `peer_id` için pairing/trust akışına dön; endpoint kaydı kimlik anahtarını değiştiremez.
 4. `seq` parse edilebilir ve cihaz için durable `highest_seq` değerinden büyük mü? Eşit sıra duplicate, düşük sıra replay'dir; ikisi de adres tablosunu değiştirmez. Aynı imzalı kayıt tekrar gelirse harmless duplicate sonucu verilebilir.
 5. Zamanı UTC olarak doğrula: `issued_at` gelecekteki küçük clock skew penceresinden (öneri 2 dakika) ileri olmasın; `expires_at > issued_at`, `now < expires_at` ve `expires_at - issued_at <= 15 dakika` olsun. Önerilen üretim TTL'i 10 dakika. Clock skew ve işletim sistemi saati güvenilirliği [V]; bilinmeyen/saat tutarsızlığında kaydı reddet ve yeni adresi kullanma.
-6. Her adresi canonical Multiaddr olarak parse et; duplicate/port 0/loopback/unspecified/multicast/broadcast/link-local ve DNS isimlerini reddet. Yalnız desteklenen IP+TCP veya IP+UDP/QUIC v1 biçimleri kabul edilsin. RFC1918 IPv4 ve IPv6 ULA adresleri aynı LAN'daki peer'a erişmek için geçerli dial adayıdır; bunları genel Internet adresi veya inbound kanıtı olarak sınıflandırma. CGNAT ve diğer özel amaçlı aralık politikası IANA kaydıyla uyumlu biçimde kesinleştirilmeli; bu tasarımda [V]. Adres doğrulaması dialing'i sınırlar ama taşıma `PeerId` doğrulamasının yerini tutmaz.
+6. Her adresi canonical Multiaddr olarak parse et; duplicate/port 0/loopback/unspecified/multicast/broadcast/link-local ve DNS isimlerini reddet. Yalnız desteklenen IP+TCP veya IP+UDP/QUIC v1 biçimleri kabul edilsin. M5a `validate_endpoint_address` bu biçimleri ve IANA'dan türetilen özel amaçlı aralık filtrelerini uygular; RFC1918 IPv4 ve IPv6 ULA geçerli yerel dial adayıdır. IPv6 scope ID kabul edilmez. Özel amaçlı aralıkların gelecekteki registry değişikliklerine göre güncellenmesi ve gerçek dial davranışı [V]. Adres doğrulaması dialing'i sınırlar ama taşıma `PeerId` doğrulamasının yerini tutmaz.
 7. Tüm kontrol başarıyla biterse endpoint state ve `highest_seq` tek SQLite transaction'ında kaydedilsin; sonra adresler yalnız mevcut network actor API'sine `learned` kaynağı olarak verilsin. Doğrulama başarısızsa kısmi adres güncellemesi olmasın. Süre dolunca endpoint dial adaylığından çıkarılsın; son geçerli kayda sessizce dönülmesin.
 
 Adresler project key ile şifreli mailbox kaydında cihazlar dışındaki gözlemcilerden gizlenebilir; doğrudan bağlantıdaki peer zaten bu adresleri görür. Alıcı/izleyici sayısını yalnız o cihazla önceden eşleşmiş proje peer'larıyla sınırla. Endpoint almak transfer yetkisi sağlamaz: her normal RPC `authorized` kontrolünü sürdürür.
@@ -134,7 +134,7 @@ Bu bölüm M6'nın mevcut `ProjectInvite` JSON/kimlik doğrulamasını değişti
 
 ## 8. M5/M6 kilometre taşları ve onay kapıları
 
-1. **M5a — protokol/API onayı:** signed `EndpointRecord`, signing bytes, bounds, time/seq scope, address allow-list ve duplicate davranışı sabitlensin. **Kullanıcı onayı şart:** yeni protocol type/signature label/wire data ve direct RPC shape.
+1. **M5a — protokol/API onayı:** `EndpointRecord`, `trackmesh-endpoint-v1` signing bytes, 16 KiB/16-address bounds, 10-minute preferred and 15-minute maximum TTL, two-minute future skew, address validation, and duplicate/equivocation behavior are implemented. No dependency, DB schema, mailbox or direct RPC change. Static checks are recorded in `docs/IMPLEMENTATION.md`; Clippy remains unverified because the tool could not access its configuration.
 2. **M5b — storage migration:** schema v3 additive tables, seq durability, expiry/rollback planı netleşsin. **Kullanıcı onayı şart:** migration, backup/restore ve eski binary uyumluluğu.
 3. **M5c — mevcut doğrudan bağlantı:** authenticated peer event ile imzalı endpoint alışverişi, network actor'a mevcut API dışında swarm owner eklememe. Static checks ve iki Windows peer elle doğrulaması.
 4. **M5d — mailbox ayrı türü:** yeni client/service route + paging, ciphertext-only persistence, retention ve ACL provisioning. **Kullanıcı onayı şart:** service API/deployment/storage değişikliği. Servis log/ciphertext bounds ve deletion elle doğrulanmalı.

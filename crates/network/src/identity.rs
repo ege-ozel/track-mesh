@@ -2,7 +2,7 @@
 use anyhow::{ensure, Result};
 use crypto::Identity;
 use libp2p::{identity, multiaddr::Protocol, Multiaddr};
-use protocol::DeviceCard;
+use protocol::{DeviceCard, EndpointRecord};
 pub fn keypair(identity: &Identity) -> Result<identity::Keypair> {
     Ok(identity::Keypair::ed25519_from_bytes(
         *identity.secret_bytes(),
@@ -35,4 +35,19 @@ pub fn validate_card(card: &DeviceCard) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Validates an endpoint update against the already trusted identity binding.
+/// Endpoint observations never create or replace trust.
+pub fn validate_endpoint_record(record: &EndpointRecord, trusted_card: &DeviceCard) -> Result<()> {
+    validate_card(trusted_card)?;
+    ensure!(
+        record.device_id == trusted_card.device_id,
+        "endpoint device id is not trusted"
+    );
+    ensure!(
+        record.peer_id == trusted_card.peer_id,
+        "endpoint PeerId is not trusted"
+    );
+    crypto::verify_endpoint_current(record, &trusted_card.public_key)
 }
