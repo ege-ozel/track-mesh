@@ -16,6 +16,7 @@ Choose the page for the current task; these pages are not a required reading seq
 | [Development](DEVELOPMENT.md) | Build/static checks, Windows prerequisites, local data, and change discipline |
 | [MVP contract](MVP.md) | Accepted scope and requirements for unfinished phases |
 | [Phase 1 direct P2P plan](plans/phase1-direct-p2p.md) | Planned UPnP/PCP mapping, reachability state, endpoint updates; plan only, not validation |
+| [Phase 1 M5/M6 endpoint and invitation design](plans/phase1-m5-endpoint-design.md) | Design only: signed endpoint updates, mailbox channel, schema migration and one-time invite-drop option |
 | [Implementation progress](IMPLEMENTATION.md) | Current phase status, historical manual evidence, and integration gaps |
 | [Phase 2 operation guide](PHASE2.md) | Current request-pairing workflow, explicit legacy card recipe, serve/check/receive/resume/recovery |
 | [Phase 3 infrastructure guide](PHASE3.md) | Encrypted publication/refresh, service ACLs, HTTPS, and private relay/rendezvous |
