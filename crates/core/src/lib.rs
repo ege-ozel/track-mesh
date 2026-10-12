@@ -66,11 +66,14 @@ impl Engine {
         let store = Arc::new(Store::open(&directory.join("trackmesh.db"))?);
         let chunks = ChunkStore::new(directory.join("chunks"))?;
         let settings = settings::SettingsState::load(&directory);
+        if let Some(device_name) = &settings.value.device_name {
+            identity.set_name(device_name)?;
+        }
         let upnp_mapping_enabled = settings.value.upnp_mapping_enabled();
         let peer_id = network::peer_id(&identity)?;
         store.add_device(
             identity.device_id,
-            &identity.name,
+            &identity.name(),
             &peer_id,
             &identity.public_key(),
         )?;
@@ -190,6 +193,16 @@ impl Engine {
             ::mailbox::validate_supabase_publishable_key(&config.publishable_key)?;
         }
         Ok(config)
+    }
+
+    pub fn set_device_name(&self, name: &str) -> Result<()> {
+        let normalized = name.trim().chars().take(80).collect::<String>();
+        ensure!(!normalized.is_empty(), "device name cannot be empty");
+        self.settings
+            .lock()
+            .map_err(|_| anyhow::anyhow!("settings lock poisoned"))?
+            .set_device_name(&self.directory, normalized.clone())?;
+        self.identity.set_name(&normalized)
     }
 
     pub fn set_default_supabase_config(&self, config: Option<SupabaseDefaultConfig>) -> Result<()> {

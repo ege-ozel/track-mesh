@@ -45,7 +45,7 @@ impl Engine {
         // Always pending until a matching mailbox ACK.
         self.store.commit_local(
             &signed,
-            &self.identity.name,
+            &self.identity.name(),
             parent.map(|s| s.manifest.snapshot_id),
             true,
         )?;

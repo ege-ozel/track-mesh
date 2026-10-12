@@ -144,9 +144,10 @@ function jobStatus(job: DesktopStatus['jobs'][number], startedAt: number | undef
   if (!job.running) {
     return job.error ? `${job.label}: ${job.error}`
       : job.outcome?.publication_error ? `Snapshot committed locally. Publication pending: ${String(job.outcome.publication_error)}`
-      : typeof job.outcome?.snapshot_id === 'string' ? `Snapshot ${short(String(job.outcome.snapshot_id))} committed locally; metadata publication was attempted. Project files are delivered only after an explicit Receive.`
+      : typeof job.outcome?.snapshot_id === 'string' ? 'Current version is ready. Your collaborator can get it from their app.'
       : job.outcome?.message ? String(job.outcome.message) : `${job.label} completed`;
   }
+  if (job.label === 'Send Snapshot') return 'Preparing current version…';
   if (job.label !== 'Check peer') return `${job.label}…`;
   const elapsed = startedAt ? Math.floor((Date.now() - startedAt) / 1000) : 0;
   const remaining = Math.max(0, CHECK_TIMEOUT_SECONDS - elapsed);
@@ -221,79 +222,80 @@ function Card({ card, status, jobStartedAt, act }: { card: ProjectCard; status: 
   const job = status.jobs.find(j => j.project_id === project.project_id);
   const busy = !status.ready || status.closing || status.jobs.some(j => j.running && (!j.project_id || j.project_id === project.project_id));
   const check = status.checks.find(c => c.result.project_id === project.project_id && c.device_id === peerId);
-  const fresh = !busy && (check?.fresh ?? false);
   const snapshotStatus = check?.fresh ? check.result.snapshot_status : null;
   const divergence = snapshotStatus === 'DIVERGED';
-  const verifiedForPeer = project.verified_peer_id === peer?.device.peer_id
-    && project.verified_snapshot_id === project.latest_local_snapshot;
   const transfer = card.transfer;
   const resumable = transfer?.state === 'PAUSED' && peerId === transfer.source_device_id;
   const receiving = transfer?.state === 'RECEIVING' || transfer?.state === 'APPLYING';
   const disabledReceive = busy || !peer || !online || !dawClosed || project.recovery_required || divergence;
-  const request = (kind: 'send' | 'publish' | 'refresh' | 'pair' | 'export_invite') => act({ kind, project_id: project.project_id });
+  const request = (kind: 'send' | 'publish' | 'refresh' | 'pair' | 'export_invite' | 'copy_invite_link') => act({ kind, project_id: project.project_id });
+  const candidates = status.pairing.project_id === project.project_id ? status.pairing.requests : [];
+  const inviteState = status.supabase_states[project.project_id] ?? 'NOT_CONFIGURED';
+  const inviteReady = status.project_backends[project.project_id]?.backend === 'SUPABASE' && ['CLAIMED', 'MEMBER'].includes(inviteState);
+  const projectStatus = online ? `Connected: ${peer?.device.name}` : peer ? 'Collaborator offline' : 'Waiting for a collaborator';
+  const backendMessage = inviteState === 'UNREACHABLE'
+    ? 'The invite service cannot be reached. Check its URL and network connection in Advanced settings.'
+    : inviteState === 'WAITING_FOR_GRANT'
+      ? 'The invite service is waiting for its owner to approve this project.'
+      : status.project_backends[project.project_id]?.backend === 'SUPABASE' && inviteState === 'UNKNOWN'
+        ? 'Connecting to the invite service. Try again in a moment.'
+      : !status.default_supabase
+        ? 'Set a default Supabase service in Settings to create invite links.'
+        : 'Configure Supabase for this project in Advanced settings before creating an invite link.';
   return <article className="project-card">
     <header className="card-title"><div><h2>{project.name}</h2><p title={project.root}>{project.root}</p></div>
-      <span className={`badge ${online ? 'online' : ''}`}>{peer ? status.peer_states[peer.device.peer_id] ?? 'UNKNOWN' : 'UNKNOWN'}</span></header>
-    <div className="card-meta"><span>PROJECT {short(project.project_id)}</span><span>{card.pending_publications ? `${card.pending_publications} publication pending` : 'No publication pending'}</span></div>
-    <div className="snapshots"><section><h3>LOCAL SNAPSHOT</h3><Snapshot value={card.local_snapshot} empty="Create your first snapshot with Send Snapshot." /></section>
-      <section><h3>KNOWN REMOTE METADATA</h3><Snapshot value={peer?.announcement ?? null} empty="Pair a collaborator, then refresh or check." />
-        {!online && peer?.announcement && <p className="offline-note">Source offline. Project files stay on collaborator PCs.</p>}
-        {peer && peer.history.length > 1 && <details className="remote-history"><summary>{peer.history.length} recent snapshots</summary>
-          <ol>{peer.history.map(snapshot => <li key={snapshot.snapshot_id}><code>{short(snapshot.snapshot_id)}</code><span>{time(snapshot.created_at)} · {bytes(snapshot.changed_bytes)} changed</span></li>)}</ol>
-        </details>}</section></div>
-    <div className="peer-line"><label>Collaborator <select value={peerId ?? ''} disabled={busy || !card.peers.length} onChange={e => { setSelected(e.target.value); setDawClosed(false); }}>
-      {!card.peers.length && <option value="">No paired devices</option>}{card.peers.map(p => <option key={p.device.device_id} value={p.device.device_id}>{p.device.name}</option>)}</select></label>
-      <span className="muted">{online ? connection?.transport.toUpperCase() : 'Last-known status · Check peer may take up to 30s'}</span>
-      <button className="text-button" disabled={busy || !peer} onClick={() => peer && act({ kind: 'check', project_id: project.project_id, device_id: peer.device.device_id })}>Check peer</button></div>
-    <div className={`verification ${divergence ? 'danger' : ''}`}>
-      {check && fresh && snapshotStatus === 'UP_TO_DATE' ? `UP TO DATE · peer ACK verified ${check.age_seconds}s ago`
-        : check && fresh && snapshotStatus && snapshotStatus !== 'UNKNOWN' ? `${snapshotStatus.replaceAll('_', ' ')} · checked ${check.age_seconds}s ago`
-        : `${verifiedForPeer ? `Last verified: ${time(project.last_verified_at)}` : 'No current verification for this collaborator'} · Check peer for a fresh comparison`}
-    </div>
-    <ConnectionAssistant card={card} status={status} peer={peer} check={check} busy={busy} act={act} />
-    {project.recovery_required && <div className="notice danger">Interrupted installation requires local recovery. Backups are retained.</div>}
-    {transfer && <div className="transfer"><div><span>Last transfer · {short(transfer.snapshot_id)} · {transfer.state.replaceAll('_', ' ')}</span><span>{bytes(transfer.completed_bytes)} / {bytes(transfer.total_bytes)}</span></div>
+      <span className={`badge ${online ? 'online' : ''}`}>{projectStatus}</span></header>
+    {candidates.length > 0 && <section className="approval-box"><h3>Approve collaborator</h3>{candidates.map(candidate => <div key={candidate.request_id}>
+      <p><strong>{candidate.name}</strong> · device {short(candidate.device_id)}</p>
+      <p className="muted">Confirm this is the collaborator you invited before granting project access.</p>
+      <div className="actions"><button className="primary" disabled={busy} onClick={() => window.confirm(`Approve ${candidate.name} (${short(candidate.device_id)}) for ${project.name}?`) && act({ kind: 'approve_pairing', project_id: project.project_id, request_id: candidate.request_id })}>Approve</button>
+        <button disabled={busy} onClick={() => act({ kind: 'reject_pairing', project_id: project.project_id, request_id: candidate.request_id })}>Reject</button></div></div>)}</section>}
+    {!peer && <section className="invite-flow"><button className="primary" disabled={busy || !inviteReady} onClick={() => request('copy_invite_link')}>Invite collaborator</button>
+      <p className="muted">The link is valid for 15 minutes and can be opened once.</p>{!inviteReady && <p className="error">{backendMessage}</p>}</section>}
+    {peer && <div className="peer-line"><label>Collaborator <select value={peerId ?? ''} disabled={busy || !card.peers.length} onChange={e => { setSelected(e.target.value); setDawClosed(false); }}>
+      {card.peers.map(p => <option key={p.device.device_id} value={p.device.device_id}>{p.device.name}</option>)}</select></label>
+      <button className="text-button danger" disabled={busy} onClick={() => window.confirm(`Remove ${peer.device.name}'s access to this project?`) && act({ kind: 'revoke', project_id: project.project_id, device_id: peer.device.device_id })}>Revoke</button>
+      <button className="text-button" disabled={busy} onClick={() => act({ kind: 'check', project_id: project.project_id, device_id: peer.device.device_id })}>Check connection</button></div>}
+    {status.supabase_states[project.project_id] === 'UNREACHABLE' && <p className="muted">Invite service is unreachable. Check its connection in Advanced.</p>}
+    {status.supabase_states[project.project_id] === 'WAITING_FOR_GRANT' && <p className="muted">Waiting for the invite service owner to approve this project.</p>}
+    {project.recovery_required && <div className="notice danger">Close the DAW and recover this project before receiving another version.</div>}
+    {peer && <section className="share-flow"><div><h3>Share current version</h3><p className="muted">Save a snapshot here. Your collaborator can then request it.</p>
+      <button className="primary" disabled={busy || project.recovery_required} onClick={() => request('send')}>Share current version</button></div>
+      <div><h3>Get collaborator’s version</h3><p className="muted">Receive copies the selected collaborator’s snapshot into this folder.</p>
+        <label className="confirmation"><input type="checkbox" checked={dawClosed} disabled={busy} onChange={e => setDawClosed(e.target.checked)} /> I closed this project in the DAW</label>
+        <button disabled={disabledReceive} onClick={() => act({ kind: 'receive', project_id: project.project_id, device_id: peer.device.device_id, snapshot_id: resumable ? transfer.snapshot_id : null, daw_closed: dawClosed })}>{resumable ? 'Resume receive' : 'Get collaborator’s version'}</button>
+        {!online && <p className="muted">Open TrackMesh on both PCs to receive files.</p>}</div></section>}
+    {transfer && <div className="transfer"><div><span>Transfer {transfer.state.replaceAll('_', ' ')}</span><span>{bytes(transfer.completed_bytes)} / {bytes(transfer.total_bytes)}</span></div>
       <progress max={Math.max(transfer.total_bytes, 1)} value={transfer.completed_bytes} />
       {transfer.error && <p className="error">{transfer.error}</p>}{receiving && <p className="muted">Verified chunks are saved durably. Installation finishes safely before exit.</p>}</div>}
-    <label className="confirmation"><input type="checkbox" checked={dawClosed} disabled={busy} onChange={e => setDawClosed(e.target.checked)} /> I closed this project in the DAW before Receive or Recovery.</label>
-    <div className="actions"><button className="primary" disabled={busy || project.recovery_required} onClick={() => request('send')}>↑ Send Snapshot</button>
-      <button disabled={disabledReceive} onClick={() => peer && act({ kind: 'receive', project_id: project.project_id, device_id: peer.device.device_id, snapshot_id: resumable ? transfer.snapshot_id : null, daw_closed: dawClosed })}>{resumable ? 'Resume receive' : '↓ Receive'}</button>
-      {project.recovery_required && <button disabled={busy || !dawClosed} onClick={() => act({ kind: 'recover', project_id: project.project_id, daw_closed: dawClosed })}>Recover locally</button>}
-      <button disabled={busy || !project.mailbox_url} onClick={() => request('refresh')}>Refresh metadata</button>
-      <button disabled={busy || !project.mailbox_url || !card.pending_publications} onClick={() => request('publish')}>Retry publication</button></div>
-    <p className="muted">Send Snapshot commits the local snapshot and publishes metadata. It does not deliver project files; use Receive on the other PC for an explicit file transfer.</p>
     {job && <JobNotice job={job} startedAt={jobStartedAt[job.job_id]} />}
-    <details className="setup" open={status.pairing.project_id === project.project_id && status.pairing.requests.length > 0}><summary>Collaboration & connection details</summary>
-      <details className="pairing-setup" open={status.pairing.project_id === project.project_id}><summary>Pair collaborator</summary>
+    <details className="setup advanced-card"><summary>Advanced</summary>
+      <div className="snapshots"><section><h3>LOCAL SNAPSHOT</h3><Snapshot value={card.local_snapshot} empty="No local snapshot yet." /></section>
+        <section><h3>KNOWN REMOTE METADATA</h3><Snapshot value={peer?.announcement ?? null} empty="No remote snapshot metadata yet." />{peer && peer.history.length > 1 && <details><summary>{peer.history.length} recent snapshots</summary><ol>{peer.history.map(snapshot => <li key={snapshot.snapshot_id}><code>{short(snapshot.snapshot_id)}</code> · {time(snapshot.created_at)}</li>)}</ol></details>}</section></div>
+      <div className={`verification ${divergence ? 'danger' : ''}`}>{check?.fresh ? `Current comparison: ${snapshotStatus?.replaceAll('_', ' ') ?? 'not available'}` : 'No current comparison for this collaborator'}</div>
+      <ConnectionAssistant card={card} status={status} peer={peer} check={check} busy={busy} act={act} />
+      {project.recovery_required && <button disabled={busy || !dawClosed} onClick={() => act({ kind: 'recover', project_id: project.project_id, daw_closed: dawClosed })}>Recover locally</button>}
+      <details className="pairing-setup"><summary>Collaboration & connection details</summary>
         <ol>
-          <li><strong>Send an invitation.</strong> Use current addresses on the same LAN, or public addresses in Connection setup below. Export opens a 10-minute pairing window; keep TrackMesh online.</li>
+          <li><strong>Send an invitation.</strong> Copy invite link for the standard flow, or use a private invitation file. Export opens a temporary pairing window.</li>
           <li><strong>Your collaborator accepts it.</strong> Their signed device identity and invitation proof arrive automatically over an encrypted connection. They do not send a card file back.</li>
-          <li><strong>Verify and approve their device here.</strong> Confirm the expected device identity with your collaborator. Approval grants project access. Then Send Snapshot and keep TrackMesh open while they Check peer and Receive.</li>
+          <li><strong>Verify and approve their device here.</strong> Confirm the expected device identity. Approval grants project access.</li>
         </ol>
         <div className="actions"><button disabled={busy} onClick={() => request('export_invite')}>Export invitation with current addresses</button>
           <button disabled={busy || status.pairing.project_id === project.project_id} onClick={() => act({ kind: 'open_pairing', project_id: project.project_id })}>Open pairing window</button>
           <button disabled={busy || !peer} onClick={() => peer && act({ kind: 'request_pairing', project_id: project.project_id, device_id: peer.device.device_id })}>Retry automatic pairing</button></div>
         {status.pairing.project_id === project.project_id && <div role="status">
-          <p>Waiting for pairing requests · {status.pairing.remaining_seconds}s left. One project window is open at a time; closing, expiry or restart removes unapproved requests.</p>
+          <p>Waiting for pairing requests. One project window is open at a time; closing, expiry or restart removes unapproved requests.</p>
           <button disabled={busy} onClick={() => act({ kind: 'close_pairing', project_id: project.project_id })}>Close pairing window</button>
-          {status.pairing.requests.map(candidate => <div className="notice" key={candidate.request_id}>
-            <p><strong>{candidate.name}</strong> requests access to {project.name}.</p>
-            <p>Device <code>{candidate.device_id}</code></p><p>Identity <code>{candidate.peer_id}</code></p>
-            <p>Invitation possession verified. A device name alone is not identity verification; approve only the expected collaborator.</p>
-            <div className="actions"><button disabled={busy} onClick={() => window.confirm(`Authorize device ${candidate.name} (${candidate.device_id}) for ${project.name}? Confirm its identity with your collaborator first.`) && act({ kind: 'approve_pairing', project_id: project.project_id, request_id: candidate.request_id })}>Approve device</button>
-              <button disabled={busy} onClick={() => act({ kind: 'reject_pairing', project_id: project.project_id, request_id: candidate.request_id })}>Reject</button></div>
-          </div>)}
         </div>}
-        <p>Encryption protects message contents, not IP addresses or traffic timing. Invitation keys never leave the native backend. Unapproved devices cannot fetch project files.</p>
-        <p>Your device <code>{status.device?.device_id}</code> · Your identity <code>{status.device?.peer_id}</code>. Compare these public IDs with your collaborator before approval. The receiver waits up to 60s for approval after delivering the request; a later approval can be checked with Retry automatic pairing.</p>
+        <p>Encryption protects message contents, not IP addresses or traffic timing. Invitation keys stay in the native backend. Unapproved devices cannot fetch project files.</p>
+        <p>UUID <code>{project.project_id}</code></p><p>Mailbox <code>{project.mailbox_url ?? 'Not configured'}</code></p><p>Relay <code>{project.relay_address ?? 'Not configured'}</code></p>
+        <p>Mailbox stores encrypted metadata and snapshot announcements only. A configured private relay provides a peer connection path when direct connection fails; files still transfer directly from an online collaborator.</p>
+        {peer && <p>Device ID <code>{peer.device.device_id}</code> · Identity <code>{peer.device.peer_id}</code></p>}
         <details><summary>Legacy file pairing</summary><p>For an older build, explicitly exchange signed device cards. This grants access only after the inviter imports the card for this project.</p>
           <div className="actions"><button disabled={busy} onClick={() => request('pair')}>Open pairing reply</button>
             <button disabled={busy} onClick={() => act({ kind: 'export_card' })}>Save pairing reply</button></div></details>
       </details>
-      <div className="actions">
-        <button className="text-button danger" disabled={busy || !peer} onClick={() => peer && window.confirm(`Remove ${peer.device.name}'s local access to this project? Infrastructure ACLs also need an operator update.`) && act({ kind: 'revoke', project_id: project.project_id, device_id: peer.device.device_id })}>Revoke selected peer</button></div>
-      <p>UUID <code>{project.project_id}</code></p><p>Mailbox <code>{project.mailbox_url ?? 'Not configured'}</code></p><p>Relay <code>{project.relay_address ?? 'Not configured'}</code></p>
-      <p>Mailbox stores encrypted metadata / snapshot announcements only. It does not carry project files. A configured private relay provides a peer connection path when direct connection fails; file transfer still requires the collaborator online.</p>
       <ProjectBackendSettings projectId={project.project_id} config={status.project_backends[project.project_id]} defaultSupabase={status.default_supabase} state={status.supabase_states[project.project_id] ?? 'NOT_CONFIGURED'} busy={busy} act={act} />
       <ConnectionSetup status={status} projectId={project.project_id} busy={busy} act={act} />
     </details>
@@ -305,6 +307,7 @@ export default function App() {
   const [error, setError] = useState('');
   const [offset, setOffset] = useState(0);
   const [setup, setSetup] = useState<'link' | 'join' | null>(null);
+  const [screen, setScreen] = useState<'projects' | 'settings'>('projects');
   const [folder, setFolder] = useState('');
   const [name, setName] = useState('');
   const [uuid, setUuid] = useState('');
@@ -358,26 +361,32 @@ export default function App() {
     else await act({ kind: 'link', project_id: uuid.trim(), name: name.trim(), folder, mailbox_url: mailbox.trim() || null, relay_address: relay.trim() || null });
     setSetup(null);
   };
-  return <div className="app-shell"><aside className="rail"><div className="brand-mark">TM</div><div className="rail-label">PROJECTS</div><div className="rail-bottom">PRIVATE<br />BY DESIGN</div></aside>
+  return <div className="app-shell"><aside className="rail"><div className="brand-mark">TM</div><button className={screen === 'projects' ? 'rail-nav active' : 'rail-nav'} onClick={() => setScreen('projects')}>PROJECTS</button><button className={screen === 'settings' ? 'rail-nav active' : 'rail-nav'} onClick={() => setScreen('settings')}>SETTINGS</button><div className="rail-bottom">PRIVATE<br />BY DESIGN</div></aside>
     <main><header className="topbar"><div><div className="eyebrow">YOUR STUDIO, CONNECTED</div><h1>TRACKMESH</h1><p>Immutable snapshots. Trusted collaborators.</p></div>
       <div className="device"><span className={`status-dot ${status?.ready ? 'active' : ''}`} />{status?.device?.name ?? 'Starting device…'}<small>{short(status?.device?.device_id)}</small></div></header>
       {(error || status?.error || status?.network?.error) && <div className="notice danger" role="alert">{error || status?.error || status?.network?.error}</div>}
-      <DefaultSupabaseSettings config={status?.default_supabase ?? null} busy={busy} act={act} />
-      {status?.invite_pending && <section className="setup-panel"><h2>Accept invite link</h2>
-        <p>The link and its decryption key stay in the native app. {status.default_supabase ? 'Your default Supabase service will retrieve the invite.' : 'Set a default Supabase service below, or enter one now; it will be saved globally.'} Choose a destination folder to continue.</p>
+      {status?.invite_pending && <div className="invite-overlay"><section className="invite-dialog" role="dialog" aria-modal="true" aria-labelledby="invite-title"><h2 id="invite-title">Accept invite link</h2>
+        <p>The link stays in TrackMesh. {status.default_supabase ? 'Your default invite service is ready.' : 'Enter the Supabase service details to retrieve it.'} Choose a destination folder to continue.</p>
         {!status.default_supabase && <><label>Supabase Project URL<input autoComplete="off" value={inviteServiceUrl} onChange={event => setInviteServiceUrl(event.target.value)} placeholder="https://your-project.supabase.co" /></label>
         <label>Publishable key<input type="password" autoComplete="new-password" value={inviteServiceKey} onChange={event => setInviteServiceKey(event.target.value)} /></label></>}
         <div className="actions"><button className="primary" disabled={busy || (!status.default_supabase && (!inviteServiceUrl.trim() || !inviteServiceKey.trim()))} onClick={() => void act({ kind: 'complete_invite_link', ...(!status.default_supabase ? { supabase_url: inviteServiceUrl.trim(), supabase_anon_key: inviteServiceKey.trim() } : {}) })}>Choose folder and accept</button></div>
-      </section>}
+      </section></div>}
       {status?.closing && <div className="notice">Work finished. TRACKMESH is shutting down safely.</div>}
-      <div className="section-heading"><div><h2>Projects</h2><span className="muted">Project files travel between collaborator PCs.</span></div><div className="actions">
-        <button disabled={busy} onClick={() => { setSetup('join'); setFolder(''); }}>Accept invitation</button>
-        <button className="primary" disabled={busy} onClick={() => { setSetup('link'); setFolder(''); setUuid(''); setName(''); }}>+ Link folder</button></div></div>
+      {screen === 'settings' ? <section className="settings-screen"><div className="section-heading"><div><h2>Settings</h2><span className="muted">Device identity and optional connection services.</span></div></div>
+        <details className="setup"><summary>Advanced</summary>
+          <DeviceNameSettings name={status?.device?.name ?? ''} busy={busy} act={act} />
+          <DefaultSupabaseSettings config={status?.default_supabase ?? null} busy={busy} act={act} />
+          <p className="muted">Supabase publishable key is public project configuration. Never enter a secret key here.</p>
+        </details></section> : <>
+      <div className="section-heading"><div><h2>Projects</h2><span className="muted">Link a folder, invite a collaborator, then share or receive a version.</span></div><div className="actions">
+        <button className="primary" disabled={busy} onClick={() => { setSetup('link'); setFolder(''); setUuid(crypto.randomUUID()); setName(''); setMailbox(''); setRelay(''); }}>+ Link folder</button></div></div>
+      <details className="global-advanced"><summary>Advanced tools</summary><p className="muted">For older builds or custom network setups.</p><div className="actions"><button disabled={busy} onClick={() => { setSetup('join'); setFolder(''); }}>Accept invitation file</button></div></details>
       {setup && <section className="setup-panel"><h2>{setup === 'join' ? 'Pair with an inviter' : 'Link a local project'}</h2>
         {setup === 'link' && <><label>Project name<input value={name} maxLength={320} onChange={e => setName(e.target.value)} placeholder="Track 07" /></label>
-          <label>Permanent project UUID<div className="input-row"><input value={uuid} onChange={e => setUuid(e.target.value)} placeholder="Existing UUID, or create one" /><button onClick={() => setUuid(crypto.randomUUID())}>New UUID</button></div></label></>}
+          </>}
         <label>Local project folder<div className="input-row"><input value={folder} onChange={e => setFolder(e.target.value)} placeholder="D:\Projects\Track 07" /><button onClick={() => void browse()}>Browse…</button></div></label>
-        {setup === 'link' && <><label>HTTPS mailbox (optional)<input value={mailbox} onChange={e => setMailbox(e.target.value)} placeholder="https://mailbox.example.com" /></label><label>Pinned relay address (optional)<input value={relay} onChange={e => setRelay(e.target.value)} placeholder="/dns4/relay.example.com/udp/4001/quic-v1/p2p/…" /></label></>}
+        {setup === 'link' && <details className="form-advanced"><summary>Advanced project settings</summary><label>Permanent project UUID<div className="input-row"><input value={uuid} onChange={e => setUuid(e.target.value)} /><button onClick={() => setUuid(crypto.randomUUID())}>New UUID</button></div></label>
+          <label>HTTPS mailbox (optional)<input value={mailbox} onChange={e => setMailbox(e.target.value)} placeholder="https://mailbox.example.com" /></label><label>Pinned relay address (optional)<input value={relay} onChange={e => setRelay(e.target.value)} placeholder="/dns4/relay.example.com/udp/4001/quic-v1/p2p/…" /></label></details>}
         {setup === 'join' && <p className="muted">Choose your local folder, then open the private invitation. TrackMesh sends your pairing request automatically; keep the inviter online with their pairing window open. Wait for their approval before Check peer and Receive. The invitation key stays in the native backend.</p>}
         <div className="actions"><button className="primary" disabled={busy || !folder || (setup === 'link' && (!name || !uuid))} onClick={() => void saveSetup()}>{setup === 'join' ? 'Accept invitation & connect…' : 'Link project'}</button><button onClick={() => setSetup(null)}>Cancel</button></div>
       </section>}
@@ -385,6 +394,14 @@ export default function App() {
       {status?.ready && !status.page?.projects.length && !setup && <div className="empty"><div className="empty-icon">↗</div><h2>Your first shared project</h2><p>Link a project folder or import a collaborator’s invitation.<br />Snapshots stay immutable; files stay on your PCs.</p></div>}
       <div className="pagination"><button disabled={!offset || busy} onClick={() => setOffset(Math.max(0, offset - 32))}>Previous</button><span className="muted">Page {offset / 32 + 1}</span><button disabled={!status?.page?.has_more || busy} onClick={() => setOffset(offset + 32)}>Next</button></div>
       {status?.jobs.filter(j => !j.project_id).map(job => <JobNotice key={job.job_id} job={job} startedAt={jobStartedAt[job.job_id]} />)}
+      </>}
       <footer><div><span className="muted">Data directory</span><code>{status?.data_directory ?? 'Opening protected local storage…'}</code></div><div className="actions"><button title="Close the window. Active DAW sessions, transfers and pending publication keep TRACKMESH running; it exits 60 seconds after work finishes. Reopen desktop to return." disabled={status?.closing} onClick={() => void closeApp().catch(err => setError(String(err)))}>Close safely</button></div></footer>
     </main></div>;
+}
+
+function DeviceNameSettings({ name, busy, act }: { name: string; busy: boolean; act: (action: Action) => Promise<void> }) {
+  const [value, setValue] = useState(name);
+  useEffect(() => setValue(name), [name]);
+  return <details className="settings-block"><summary>Device name</summary><label>Name shown to collaborators<input maxLength={80} value={value} disabled={busy} onChange={event => setValue(event.target.value)} /></label>
+    <button disabled={busy || !value.trim() || value.trim() === name} onClick={() => void act({ kind: 'set_device_name', name: value.trim() })}>Save device name</button></details>;
 }
