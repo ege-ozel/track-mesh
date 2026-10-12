@@ -144,6 +144,7 @@ Her başlık: **Amaç / Dosyalar / Görevler / Korunacaklar / Kontroller / Elle 
 ### M9 — DAW Save → snapshot (doğrulama, kod az)
 
 - `SAVE_OBSERVED` dışında izleme yok; `scan_after_save` korunur. Yalnız: aynı içerik için gereksiz snapshot üretilmediğini (`snapshots.rs` unchanged-content reuse) ve yayın yeniden denemesini **incele ve belgele**; boşluk bulunursa ayrı küçük iş.
+- **M9 review sonucu (2026-10-12):** Kod incelemesinde aynı manifest dosyaları için parent snapshot'ın yeniden kullanıldığı, başarısız metadata publish'in PENDING kaldığı ve uzun ömürlü mailbox session'larında 30 saniyelik interval tick'lerinde yeniden denendiği doğrulandı (ağ işlemleri bir turu uzatabilir); sunucu aynı snapshot ID + aynı envelope için idempotent ACK döndürür. Eşit snapshot sırasında daha önceki PENDING kaydın yayını aynı gönderimde denenebilir. SAVE_OBSERVED dışı watcher yok. Kanıt ve sınırlar [IMPLEMENTATION.md](../IMPLEMENTATION.md) içindeki M9 review kaydındadır; runtime/DAW doğrulaması yapılmadı, boşluk bulunmadı.
 
 ### M10 — İki cihazla manuel kabul (kod yok)
 
