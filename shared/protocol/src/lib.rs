@@ -256,7 +256,42 @@ pub struct ProjectInvite {
     pub project_key: String,
     pub mailbox_url: Option<String>,
     pub relay_address: Option<String>,
+    #[serde(default)]
+    pub backend: Option<InviteBackendConfig>,
     pub device: DeviceCard,
+    #[serde(default)]
+    pub signature: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InviteBackendConfig {
+    pub backend: InviteBackend,
+    pub supabase_url: String,
+    pub supabase_anon_key: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum InviteBackend {
+    Supabase,
+}
+
+impl ProjectInvite {
+    pub fn signing_bytes(&self) -> anyhow::Result<Vec<u8>> {
+        Ok(serde_json::to_vec(&(
+            "trackmesh-project-invite-v1",
+            self.version,
+            self.project_id,
+            &self.project_name,
+            &self.project_key,
+            &self.mailbox_url,
+            &self.relay_address,
+            &self.backend,
+            self.device.signing_bytes()?,
+            &self.device.signature,
+        ))?)
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

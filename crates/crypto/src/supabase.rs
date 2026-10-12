@@ -36,6 +36,7 @@ impl super::Identity {
                     | "member-revoke"
                     | "endpoint-publish"
                     | "endpoint-list"
+                    | "invite-create"
             ),
             "invalid Supabase request scope"
         );

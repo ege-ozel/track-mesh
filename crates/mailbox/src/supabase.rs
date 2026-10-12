@@ -9,7 +9,33 @@ use std::time::Duration;
 use uuid::Uuid;
 
 const MAX_REQUEST_BYTES: usize = 64 * 1024;
+const MAX_INVITE_REQUEST_BYTES: usize = 70 * 1024;
 const MAX_RESPONSE_BYTES: usize = 8 * 64 * 1024 + 4096;
+const MAX_INVITE_RESPONSE_BYTES: usize = 64 * 1024 + 1024;
+
+pub fn validate_supabase_publishable_key(key: &str) -> Result<()> {
+    ensure!(
+        key.starts_with("sb_publishable_")
+            && (key.len() - "sb_publishable_".len()) >= 16
+            && key.len() <= 256
+            && key
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-'),
+        if key.starts_with("sb_secret_") {
+            "secret key istemciye girilmez"
+        } else {
+            "invalid Supabase publishable key"
+        }
+    );
+    Ok(())
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SupabaseInviteDrop {
+    pub ciphertext: String,
+    pub expires_at: String,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SupabaseError {
@@ -29,12 +55,7 @@ impl SupabaseClient {
         protocol::require_protocol(protocol::PROTOCOL_VERSION)?;
         ensure!(!project.is_nil(), "Supabase route cannot be nil");
         super::validate_supabase_project_url(project_url)?;
-        ensure!(
-            !anon_key.is_empty()
-                && anon_key.len() <= 2048
-                && !anon_key.chars().any(char::is_control),
-            "invalid Supabase publishable key"
-        );
+        super::validate_supabase_publishable_key(anon_key)?;
         let project_url = Url::parse(project_url)?;
         let client = Client::builder()
             .redirect(redirect::Policy::none())
@@ -61,6 +82,78 @@ impl SupabaseClient {
             )
             .await?;
         Ok(response.accepted)
+    }
+
+    pub async fn create_invite_drop(
+        &self,
+        identity: &Identity,
+        id: &str,
+        expires_at: &str,
+        ciphertext: &str,
+    ) -> std::result::Result<bool, SupabaseError> {
+        let response: SupabaseAccepted = self
+            .post(
+                identity,
+                "invite-create",
+                &serde_json::json!({"id": id, "expires_at": expires_at, "ciphertext": ciphertext}),
+                4096,
+            )
+            .await?;
+        Ok(response.accepted)
+    }
+
+    pub async fn consume_invite_drop(
+        project_url: &str,
+        anon_key: &str,
+        id: &str,
+    ) -> std::result::Result<SupabaseInviteDrop, SupabaseError> {
+        let endpoint = async {
+            super::validate_supabase_project_url(project_url)
+                .map_err(|_| SupabaseError::Rejected)?;
+            if super::validate_supabase_publishable_key(anon_key).is_err() {
+                return Err(SupabaseError::Rejected);
+            }
+            if id.len() != 43
+                || !id
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+            {
+                return Err(SupabaseError::Rejected);
+            }
+            let project_url = Url::parse(project_url).map_err(|_| SupabaseError::Rejected)?;
+            let client = Client::builder()
+                .redirect(redirect::Policy::none())
+                .no_proxy()
+                .connect_timeout(Duration::from_secs(5))
+                .timeout(Duration::from_secs(20))
+                .user_agent("TrackMesh/1")
+                .build()
+                .map_err(|_| SupabaseError::Unavailable)?;
+            let mut endpoint = project_url;
+            endpoint.set_path("/functions/v1/invite-consume");
+            let response = client
+                .post(endpoint)
+                .header("apikey", anon_key)
+                .header("content-type", "application/json")
+                .body(
+                    serde_json::to_vec(&serde_json::json!({"id": id}))
+                        .map_err(|_| SupabaseError::Unavailable)?,
+                )
+                .send()
+                .await
+                .map_err(|_| SupabaseError::Unavailable)?;
+            if response.status() == StatusCode::BAD_REQUEST {
+                return Err(SupabaseError::Rejected);
+            }
+            if !response.status().is_success() {
+                return Err(SupabaseError::Unavailable);
+            }
+            bounded_json(response, MAX_INVITE_RESPONSE_BYTES)
+                .await
+                .map_err(|_| SupabaseError::Unavailable)
+        }
+        .await;
+        endpoint
     }
 
     pub async fn grant(
@@ -162,7 +255,12 @@ impl SupabaseClient {
         response_limit: usize,
     ) -> std::result::Result<T, SupabaseError> {
         let body = serde_json::to_vec(body_value).map_err(|_| SupabaseError::Unavailable)?;
-        if body.len() > MAX_REQUEST_BYTES {
+        let body_limit = if operation == "invite-create" {
+            MAX_INVITE_REQUEST_BYTES
+        } else {
+            MAX_REQUEST_BYTES
+        };
+        if body.len() > body_limit {
             return Err(SupabaseError::Rejected);
         }
         let auth = identity
@@ -179,7 +277,6 @@ impl SupabaseClient {
             .client
             .post(endpoint)
             .header("apikey", &self.anon_key)
-            .header("authorization", format!("Bearer {}", self.anon_key))
             .header("x-trackmesh-auth", auth)
             .header("content-type", "application/json")
             .body(body)

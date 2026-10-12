@@ -19,3 +19,9 @@ verify_jwt = false
 
 [functions.endpoint-list]
 verify_jwt = false
+
+[functions.invite-create]
+verify_jwt = false
+
+[functions.invite-consume]
+verify_jwt = false

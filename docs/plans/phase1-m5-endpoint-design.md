@@ -1,6 +1,6 @@
 # Phase 1 M5 — İmzalı endpoint güncellemesi ve M6 davet tasarımı
 
-**Durum (2026-10-12):** M5a protokol/kripto primitive'leri, M5b additive storage schema v3, M5c doğrudan endpoint RPC alışverişi uygulanmıştır. M5d mailbox kanalı ve M6 açık kalmıştır. Bu belge güvenlik denetimi veya Windows çalışma doğrulaması yapıldığı anlamına gelmez.
+**Durum (2026-10-12):** M5a protocol/crypto primitives, M5b additive storage schema v3, M5c direct endpoint RPC, M5d Supabase mailbox, and M6 one-read encrypted invite links are implemented locally. Migration/function deployment, cryptographic runtime interoperability, clipboard/URI OS behavior, and Windows two-peer validation remain unverified. See [IMPLEMENTATION.md](../IMPLEMENTATION.md) for checks actually run.
 
 ## 1. Özet karar önerisi
 
@@ -99,6 +99,8 @@ Endpoint mailbox route ayrı yetkilendirme/body validation yapmalı, yazarın `d
 Migration v0/v1/v2 sırasını korur; v2'den v3'e iki endpoint tablosu ve `user_version=3` tek transaction'da commit edilir; hata DDL ile version artışını birlikte geri alır. v3 DB eski v2 binary tarafından açılmaz. İlk yeni binary çalıştırılmadan önce uygulama kapatılarak `%LOCALAPPDATA%\TrackMesh` klasörünün yedeği alınmalı; rollback için uygulama kapalıyken yedek geri yüklenmelidir. M5b mevcut tablolardaki verileri güncellemez/yeniden yorumlamaz; v0/v1 için mevcut snapshot chunk backfill adımı aynen korunur.
 
 ## 6. M6 adayı — tek kullanımlık, şifreli davet bırakma (tasarım)
+
+**Durum güncellemesi (2026-10-12):** Ürün sahibinin #30 onayıyla M6 yerel olarak uygulandı. `docs/plans/phase1-supabase-backend.md` §4 içindeki migration, signed create / unsigned one-read consume, global/ID limits, URL lookup and deployment details are authoritative. The original proposal below is retained as design history; its not-yet-approved statements are superseded for the M6 implementation. Live deployment and Windows two-PC validation remain `[V]`.
 
 Bu bölüm M6'nın mevcut `ProjectInvite` JSON/kimlik doğrulamasını değiştirmez ve uygulanmış akış değildir. Şu anki davet dosyası native import ile açılır; ProjectInvite proje anahtarını taşır ve pairing transport sahiplik kanıtı + açık inviter onayı gerektirir (`docs/setup/PAIRING_SECURITY.md:1-18`). Davet payload'ı hiçbir zaman React/LLM/agent loglarına veya telemetry'ye gitmemeli.
 

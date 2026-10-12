@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { chooseFolder, closeApp, getStatus, setUpnpMapping, submitAction } from './api';
-import type { Action, CheckView, DesktopStatus, ProjectBackend, ProjectBackendConfig, ProjectCard, SnapshotInfo } from './api';
+import type { Action, CheckView, DesktopStatus, ProjectBackend, ProjectBackendConfig, ProjectCard, SnapshotInfo, SupabaseDefaultConfig } from './api';
 
 const short = (id: string | null | undefined) => id ? id.slice(0, 8) : '—';
 const time = (value: string | null | undefined) => value ? new Date(value).toLocaleString() : 'Never';
@@ -71,7 +71,9 @@ function ConnectionSetup({ status, projectId, busy, act }: { status: DesktopStat
     {valid && <div className="connection-addresses"><code>/ip4/{publicIp}/tcp/{port}</code><code>/ip4/{publicIp}/udp/{port}/quic-v1</code></div>}
     <p>Router port forwarding: TCP {validPort ? port : 'PORT'} → this PC, local port {status.listen_port}; UDP {validPort ? port : 'PORT'} → this PC, local port {status.listen_port}. In Windows Firewall, allow TrackMesh inbound TCP {status.listen_port} and UDP {status.listen_port} on the active network profile. No firewall or router rules are changed automatically.</p>
     <p>Keep TrackMesh open, configure forwarding and firewall, then export. The generated public endpoints are included in this invitation only; these fields are not saved or advertised by the running swarm. Re-export and privately exchange a new invitation if the public IP changes.</p>
-    <button disabled={busy || !valid} onClick={() => act({ kind: 'export_invite', project_id: projectId, public_ip: publicIp, external_port: Number(port) })}>Export invitation with public addresses</button>
+    <button disabled={busy || !valid} onClick={() => act({ kind: 'export_invite', project_id: projectId, public_ip: publicIp, external_port: Number(port) })}>Save invitation file with public addresses</button>
+    <button disabled={busy || status.project_backends[projectId]?.backend !== 'SUPABASE' || !['CLAIMED', 'MEMBER'].includes(status.supabase_states[projectId] ?? '')} onClick={() => act({ kind: 'copy_invite_link', project_id: projectId })}>Copy invite link</button>
+    <p>Invite links expire after 15 minutes and can be opened once. The Windows clipboard is marked to exclude history and cloud sync, then cleared after 60 seconds if the link is still there. Share it privately. Invitation files remain available.</p>
     <details><summary>Current advertised / listen addresses</summary>{addresses.map(address => <code className="connection-address" key={address}>{address}</code>)}
       {status.configured_external_addresses.map(address => <code className="connection-address" key={`external-${address}`}>{address} (startup external address)</code>)}</details>
   </details>;
@@ -84,14 +86,39 @@ function Snapshot({ value, empty }: { value: SnapshotInfo | null; empty: string 
     : <p className="muted">{empty}</p>;
 }
 
-function ProjectBackendSettings({ projectId, config, state, busy, act }: {
+function DefaultSupabaseSettings({ config, busy, act }: {
+  config: SupabaseDefaultConfig | null; busy: boolean; act: (action: Action) => Promise<void>;
+}) {
+  const [url, setUrl] = useState(config?.url ?? '');
+  const [publishableKey, setPublishableKey] = useState(config?.publishable_key ?? '');
+  useEffect(() => {
+    setUrl(config?.url ?? '');
+    setPublishableKey(config?.publishable_key ?? '');
+  }, [config?.url, config?.publishable_key]);
+  return <details className="setup"><summary>Default Supabase service</summary>
+    <p className="muted">Saved in this app's settings.json, outside project settings. Used for invite links and prefilled when selecting Supabase for a project.</p>
+    <label>Supabase Project URL<input autoComplete="off" spellCheck={false} value={url} disabled={busy} placeholder="https://your-project.supabase.co" onChange={event => setUrl(event.target.value)} /></label>
+    <label>Publishable key<input type="password" autoComplete="new-password" spellCheck={false} value={publishableKey} disabled={busy} onChange={event => setPublishableKey(event.target.value)} /></label>
+    <div className="actions"><button disabled={busy || !url.trim() || !publishableKey.trim()} onClick={() => void act({ kind: 'set_default_supabase', url: url.trim(), publishable_key: publishableKey.trim() })}>Save default</button>
+      <button disabled={busy || !config} onClick={() => void act({ kind: 'set_default_supabase', url: null, publishable_key: null })}>Clear</button></div>
+  </details>;
+}
+
+function ProjectBackendSettings({ projectId, config, defaultSupabase, state, busy, act }: {
   projectId: string; config: ProjectBackendConfig | undefined; busy: boolean;
+  defaultSupabase: SupabaseDefaultConfig | null;
   state: DesktopStatus['supabase_states'][string];
   act: (action: Action) => Promise<void>;
 }) {
   const [backend, setBackend] = useState<ProjectBackend>(config?.backend ?? 'NONE');
-  const [url, setUrl] = useState(config?.supabase_url ?? '');
-  const [anonKey, setAnonKey] = useState(config?.supabase_anon_key ?? '');
+  const [url, setUrl] = useState((config?.backend === 'SUPABASE' ? config.supabase_url : null) ?? defaultSupabase?.url ?? '');
+  const [anonKey, setAnonKey] = useState((config?.backend === 'SUPABASE' ? config.supabase_anon_key : null) ?? defaultSupabase?.publishable_key ?? '');
+  useEffect(() => {
+    if (config?.backend !== 'SUPABASE') {
+      setUrl(defaultSupabase?.url ?? '');
+      setAnonKey(defaultSupabase?.publishable_key ?? '');
+    }
+  }, [config?.backend, config?.supabase_url, config?.supabase_anon_key, defaultSupabase?.url, defaultSupabase?.publishable_key]);
   return <section className="backend-settings">
     <h3>ENDPOINT BACKEND</h3>
     <label>Backend<select value={backend} disabled={busy} onChange={event => setBackend(event.target.value as ProjectBackend)}>
@@ -102,7 +129,7 @@ function ProjectBackendSettings({ projectId, config, state, busy, act }: {
     {backend === 'SELF_HOSTED_MAILBOX' && <p className="muted">Uses this project's existing mailbox URL without changing its behavior.</p>}
     {backend === 'SUPABASE' && <div className="backend-fields">
       <label>Supabase Project URL<input autoComplete="off" spellCheck={false} value={url} disabled={busy} placeholder="https://your-project.supabase.co" onChange={event => setUrl(event.target.value)} /></label>
-      <label>Publishable / anon key<input type="password" autoComplete="new-password" spellCheck={false} value={anonKey} disabled={busy} onChange={event => setAnonKey(event.target.value)} /></label>
+      <label>Publishable key<input type="password" autoComplete="new-password" spellCheck={false} value={anonKey} disabled={busy} onChange={event => setAnonKey(event.target.value)} /></label>
       <p className="muted">HTTPS `*.supabase.co` URLs only. This key selects the public API project; membership still requires device signing. Never enter a service role or secret key.</p>
     </div>}
     <div className="actions"><button disabled={busy || (backend === 'SUPABASE' && (!url.trim() || !anonKey.trim()))} onClick={async () => {
@@ -267,7 +294,7 @@ function Card({ card, status, jobStartedAt, act }: { card: ProjectCard; status: 
         <button className="text-button danger" disabled={busy || !peer} onClick={() => peer && window.confirm(`Remove ${peer.device.name}'s local access to this project? Infrastructure ACLs also need an operator update.`) && act({ kind: 'revoke', project_id: project.project_id, device_id: peer.device.device_id })}>Revoke selected peer</button></div>
       <p>UUID <code>{project.project_id}</code></p><p>Mailbox <code>{project.mailbox_url ?? 'Not configured'}</code></p><p>Relay <code>{project.relay_address ?? 'Not configured'}</code></p>
       <p>Mailbox stores encrypted metadata / snapshot announcements only. It does not carry project files. A configured private relay provides a peer connection path when direct connection fails; file transfer still requires the collaborator online.</p>
-      <ProjectBackendSettings projectId={project.project_id} config={status.project_backends[project.project_id]} state={status.supabase_states[project.project_id] ?? 'NOT_CONFIGURED'} busy={busy} act={act} />
+      <ProjectBackendSettings projectId={project.project_id} config={status.project_backends[project.project_id]} defaultSupabase={status.default_supabase} state={status.supabase_states[project.project_id] ?? 'NOT_CONFIGURED'} busy={busy} act={act} />
       <ConnectionSetup status={status} projectId={project.project_id} busy={busy} act={act} />
     </details>
   </article>;
@@ -283,6 +310,8 @@ export default function App() {
   const [uuid, setUuid] = useState('');
   const [mailbox, setMailbox] = useState('');
   const [relay, setRelay] = useState('');
+  const [inviteServiceUrl, setInviteServiceUrl] = useState('');
+  const [inviteServiceKey, setInviteServiceKey] = useState('');
   const [jobStartedAt, setJobStartedAt] = useState<Record<string, number>>({});
   const polling = useRef(false);
   const mounted = useRef(true);
@@ -333,6 +362,13 @@ export default function App() {
     <main><header className="topbar"><div><div className="eyebrow">YOUR STUDIO, CONNECTED</div><h1>TRACKMESH</h1><p>Immutable snapshots. Trusted collaborators.</p></div>
       <div className="device"><span className={`status-dot ${status?.ready ? 'active' : ''}`} />{status?.device?.name ?? 'Starting device…'}<small>{short(status?.device?.device_id)}</small></div></header>
       {(error || status?.error || status?.network?.error) && <div className="notice danger" role="alert">{error || status?.error || status?.network?.error}</div>}
+      <DefaultSupabaseSettings config={status?.default_supabase ?? null} busy={busy} act={act} />
+      {status?.invite_pending && <section className="setup-panel"><h2>Accept invite link</h2>
+        <p>The link and its decryption key stay in the native app. {status.default_supabase ? 'Your default Supabase service will retrieve the invite.' : 'Set a default Supabase service below, or enter one now; it will be saved globally.'} Choose a destination folder to continue.</p>
+        {!status.default_supabase && <><label>Supabase Project URL<input autoComplete="off" value={inviteServiceUrl} onChange={event => setInviteServiceUrl(event.target.value)} placeholder="https://your-project.supabase.co" /></label>
+        <label>Publishable key<input type="password" autoComplete="new-password" value={inviteServiceKey} onChange={event => setInviteServiceKey(event.target.value)} /></label></>}
+        <div className="actions"><button className="primary" disabled={busy || (!status.default_supabase && (!inviteServiceUrl.trim() || !inviteServiceKey.trim()))} onClick={() => void act({ kind: 'complete_invite_link', ...(!status.default_supabase ? { supabase_url: inviteServiceUrl.trim(), supabase_anon_key: inviteServiceKey.trim() } : {}) })}>Choose folder and accept</button></div>
+      </section>}
       {status?.closing && <div className="notice">Work finished. TRACKMESH is shutting down safely.</div>}
       <div className="section-heading"><div><h2>Projects</h2><span className="muted">Project files travel between collaborator PCs.</span></div><div className="actions">
         <button disabled={busy} onClick={() => { setSetup('join'); setFolder(''); }}>Accept invitation</button>

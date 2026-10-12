@@ -8,6 +8,7 @@ use std::{
 };
 use tauri::AppHandle;
 use tauri_plugin_dialog::DialogExt;
+use zeroize::Zeroizing;
 
 pub fn read_document<T: DeserializeOwned>(app: &AppHandle) -> Result<T> {
     let path = app
@@ -17,7 +18,7 @@ pub fn read_document<T: DeserializeOwned>(app: &AppHandle) -> Result<T> {
         .blocking_pick_file()
         .context("File selection cancelled")?
         .into_path()?;
-    let mut data = Vec::new();
+    let mut data = Zeroizing::new(Vec::new());
     std::fs::File::open(path)?
         .take(64 * 1024 + 1)
         .read_to_end(&mut data)?;

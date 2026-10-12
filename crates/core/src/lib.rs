@@ -1,4 +1,4 @@
-use anyhow::{ensure, Result};
+use anyhow::{ensure, Context, Result};
 use crypto::Identity;
 use snapshot::ChunkStore;
 use std::{
@@ -24,7 +24,9 @@ mod mailbox;
 pub use connection::public_ipv4_addresses;
 pub mod peer;
 pub use mailbox::{MailboxRuntime, PublicationStatus, RefreshStatus};
-pub use settings::{PendingGrant, ProjectBackend, ProjectBackendConfig, SupabaseProjectState};
+pub use settings::{
+    PendingGrant, ProjectBackend, ProjectBackendConfig, SupabaseDefaultConfig, SupabaseProjectState,
+};
 pub use supabase::SupabaseRuntime;
 mod workflows;
 pub use workflows::{
@@ -142,10 +144,7 @@ impl Engine {
                 let url = config.supabase_url.as_deref().unwrap_or_default();
                 let key = config.supabase_anon_key.as_deref().unwrap_or_default();
                 ::mailbox::validate_supabase_project_url(url)?;
-                ensure!(
-                    !key.is_empty() && key.len() <= 2048 && !key.chars().any(char::is_control),
-                    "invalid Supabase publishable key"
-                );
+                ::mailbox::validate_supabase_publishable_key(key)?;
             }
             ProjectBackend::None | ProjectBackend::SelfHostedMailbox => ensure!(
                 config.supabase_url.is_none() && config.supabase_anon_key.is_none(),
@@ -176,6 +175,32 @@ impl Engine {
             }
         }
         Ok(())
+    }
+
+    pub fn default_supabase_config(&self) -> Result<Option<SupabaseDefaultConfig>> {
+        let config = self
+            .settings
+            .lock()
+            .map_err(|_| anyhow::anyhow!("settings lock poisoned"))?
+            .value
+            .default_supabase
+            .clone();
+        if let Some(config) = &config {
+            ::mailbox::validate_supabase_project_url(&config.url)?;
+            ::mailbox::validate_supabase_publishable_key(&config.publishable_key)?;
+        }
+        Ok(config)
+    }
+
+    pub fn set_default_supabase_config(&self, config: Option<SupabaseDefaultConfig>) -> Result<()> {
+        if let Some(config) = &config {
+            ::mailbox::validate_supabase_project_url(&config.url)?;
+            ::mailbox::validate_supabase_publishable_key(&config.publishable_key)?;
+        }
+        self.settings
+            .lock()
+            .map_err(|_| anyhow::anyhow!("settings lock poisoned"))?
+            .set_default_supabase(&self.directory, config)
     }
 
     pub(crate) fn queue_supabase_grant(
@@ -295,31 +320,89 @@ impl Engine {
         use base64::Engine as _;
         let p = self.store.project(project)?;
         let key = crypto::project_key(&self.directory.join("secrets/projects"), project, None)?;
-        Ok(protocol::ProjectInvite {
+        let backend = self.project_backend_config(project)?;
+        let backend = match backend.backend {
+            ProjectBackend::Supabase => Some(protocol::InviteBackendConfig {
+                backend: protocol::InviteBackend::Supabase,
+                supabase_url: backend
+                    .supabase_url
+                    .context("Supabase URL is unavailable")?,
+                supabase_anon_key: backend
+                    .supabase_anon_key
+                    .context("Supabase publishable key is unavailable")?,
+            }),
+            ProjectBackend::None | ProjectBackend::SelfHostedMailbox => None,
+        };
+        let mut invite = protocol::ProjectInvite {
             version: protocol::PROTOCOL_VERSION,
             project_id: project,
             project_name: p.name,
             project_key: base64::engine::general_purpose::STANDARD.encode(*key),
             mailbox_url: p.mailbox_url,
             relay_address: p.relay_address,
+            backend,
             device: self.device_card(addresses)?,
-        })
-    }
-    pub fn import_invite(&self, invite: protocol::ProjectInvite, folder: &Path) -> Result<()> {
-        use base64::Engine as _;
-        protocol::require_protocol(invite.version)?;
-        network::validate_card(&invite.device)?;
-        if let Some(url) = &invite.mailbox_url {
-            ::mailbox::validate_mailbox_url(url)?;
+            signature: None,
+        };
+        if let Err(error) = self.identity.sign_project_invite(&mut invite) {
+            crypto::zeroize_project_invite(&mut invite);
+            return Err(error);
         }
-        ensure!(
-            invite.device.device_id != self.identity.device_id,
-            "invitation is from this device"
-        );
+        Ok(invite)
+    }
+    pub fn import_invite(&self, mut invite: protocol::ProjectInvite, folder: &Path) -> Result<()> {
+        use base64::Engine as _;
+        let validation = (|| -> Result<()> {
+            protocol::require_protocol(invite.version)?;
+            network::validate_card(&invite.device)?;
+            ensure!(!invite.project_id.is_nil(), "invalid invitation project");
+            if invite.signature.is_some() || invite.backend.is_some() {
+                crypto::verify_project_invite(&invite)?;
+            }
+            if let Some(url) = &invite.mailbox_url {
+                ::mailbox::validate_mailbox_url(url)?;
+            }
+            if let Some(info) = &invite.backend {
+                match info.backend {
+                    protocol::InviteBackend::Supabase => {
+                        ::mailbox::validate_supabase_project_url(&info.supabase_url)?;
+                        ::mailbox::validate_supabase_publishable_key(&info.supabase_anon_key)?;
+                    }
+                }
+            }
+            ensure!(
+                invite.device.device_id != self.identity.device_id,
+                "invitation is from this device"
+            );
+            Ok(())
+        })();
+        if let Err(error) = validation {
+            crypto::zeroize_project_invite(&mut invite);
+            return Err(error);
+        }
+        let encoded_key = zeroize::Zeroizing::new(std::mem::take(&mut invite.project_key));
+        let invite_anon_key = invite
+            .backend
+            .as_mut()
+            .map(|info| zeroize::Zeroizing::new(std::mem::take(&mut info.supabase_anon_key)));
         let key: [u8; 32] = base64::engine::general_purpose::STANDARD
-            .decode(&invite.project_key)?
+            .decode(&*encoded_key)?
             .try_into()
             .map_err(|_| anyhow::anyhow!("invalid project key"))?;
+        let key = zeroize::Zeroizing::new(key);
+        let backend = match &invite.backend {
+            Some(info) => Some(ProjectBackendConfig {
+                backend: ProjectBackend::Supabase,
+                supabase_url: Some(info.supabase_url.clone()),
+                supabase_anon_key: Some(
+                    invite_anon_key
+                        .as_ref()
+                        .context("invalid Supabase publishable key")?
+                        .to_string(),
+                ),
+            }),
+            None => None,
+        };
         crypto::project_key(
             &self.directory.join("secrets/projects"),
             invite.project_id,
@@ -332,7 +415,10 @@ impl Engine {
             invite.mailbox_url.as_deref(),
             invite.relay_address.as_deref(),
         )?;
-        self.pair(invite.project_id, invite.device)
+        if let Some(backend) = backend {
+            self.set_project_backend_config(invite.project_id, backend)?;
+        }
+        self.pair(invite.project_id, invite.device.clone())
     }
 }
 

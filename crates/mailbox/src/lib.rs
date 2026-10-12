@@ -2,4 +2,4 @@
 mod http;
 pub use http::{validate_mailbox_url, validate_supabase_project_url, MailboxClient};
 mod supabase;
-pub use supabase::{SupabaseClient, SupabaseError};
+pub use supabase::{validate_supabase_publishable_key, SupabaseClient, SupabaseError};
