@@ -47,7 +47,8 @@ pub struct SupabaseRuntime {
 impl SupabaseRuntime {
     pub fn start(engine: Arc<Engine>, network: Network) -> Self {
         let (stop, mut stopped) = tokio::sync::oneshot::channel();
-        let task = tokio::spawn(async move {
+        let monitor_engine = engine.clone();
+        let worker: JoinHandle<Result<()>> = tokio::spawn(async move {
             let mut sessions = HashMap::<Uuid, ProjectSession>::new();
             let mut interval = tokio::time::interval(Duration::from_secs(5));
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -244,14 +245,51 @@ impl SupabaseRuntime {
                 }
             }
         });
+        let task = tokio::spawn(async move {
+            let worker_panicked = match worker.await {
+                Ok(Ok(())) => return Ok(()),
+                Ok(Err(_)) => false,
+                Err(error) => error.is_panic(),
+            };
+            let engine = monitor_engine.clone();
+            if let Ok(Ok(projects)) =
+                tokio::task::spawn_blocking(move || engine.store.projects()).await
+            {
+                for project in projects {
+                    if matches!(monitor_engine.project_backend_config(project.project_id), Ok(config) if config.backend == ProjectBackend::Supabase)
+                    {
+                        let _ = monitor_engine.set_supabase_project_state(
+                            project.project_id,
+                            SupabaseProjectState::Unreachable,
+                        );
+                    }
+                }
+            }
+            tracing::error!(
+                panicked = worker_panicked,
+                "Supabase background task stopped unexpectedly"
+            );
+            Ok(())
+        });
         Self { stop, task }
+    }
+
+    pub fn is_finished(&self) -> bool {
+        self.task.is_finished()
     }
 
     pub async fn stop(self) -> Result<()> {
         let _ = self.stop.send(());
-        tokio::time::timeout(Duration::from_secs(30), self.task)
-            .await
-            .context("Supabase runtime did not stop")??
+        let mut task = self.task;
+        match tokio::time::timeout(Duration::from_secs(20), &mut task).await {
+            Ok(result) => result.context("Supabase runtime task failed")??,
+            Err(_) => {
+                task.abort();
+                let _ = tokio::time::timeout(Duration::from_secs(1), &mut task).await;
+                anyhow::bail!("Supabase runtime did not stop within 20 seconds");
+            }
+        }
+        Ok(())
     }
 }
 

@@ -1,4 +1,4 @@
-use crate::Engine;
+use crate::{Engine, SupabaseRuntime};
 use anyhow::{ensure, Context, Result};
 use network::{Network, NetworkConfig};
 use network::{PortMappingRuntime, UpnpTarget};
@@ -233,6 +233,10 @@ impl PeerRuntime {
     }
     pub fn is_finished(&self) -> bool {
         self.actor.is_finished()
+            || self
+                .supabase
+                .as_ref()
+                .is_some_and(SupabaseRuntime::is_finished)
     }
     pub fn network_observation(&self) -> crate::NetworkObservation {
         self.observation
@@ -296,11 +300,36 @@ impl PeerRuntime {
                 let _ = tokio::time::timeout(Duration::from_secs(1), &mut task).await;
             }
         }
-        self.network.shutdown().await;
-        let actor = self.actor.await.context("network actor panicked")?;
-        self.responder.await.context("peer responder panicked")??;
+        if tokio::time::timeout(Duration::from_secs(5), self.network.shutdown())
+            .await
+            .is_err()
+        {
+            tracing::error!("Network shutdown request timed out");
+        }
+        let mut actor = self.actor;
+        let actor_result = match tokio::time::timeout(Duration::from_secs(15), &mut actor).await {
+            Ok(result) => Some(result.context("network actor panicked")?),
+            Err(_) => {
+                actor.abort();
+                let _ = tokio::time::timeout(Duration::from_secs(1), &mut actor).await;
+                None
+            }
+        };
+        let mut responder = self.responder;
+        match tokio::time::timeout(Duration::from_secs(20), &mut responder).await {
+            Ok(result) => result.context("peer responder panicked")??,
+            Err(_) => {
+                responder.abort();
+                let _ = tokio::time::timeout(Duration::from_secs(1), &mut responder).await;
+                anyhow::bail!("Peer responder did not stop within 20 seconds");
+            }
+        }
         supabase_result?;
-        actor
+        if let Some(actor) = actor_result {
+            actor
+        } else {
+            anyhow::bail!("Network actor did not stop within 15 seconds")
+        }
     }
 }
 
@@ -472,7 +501,7 @@ impl Engine {
     }
     fn remember_author_manifest(&self, snapshot: &SignedSnapshot) -> Result<()> {
         let name = if snapshot.manifest.author_device_id == self.identity.device_id {
-            self.identity.name.clone()
+            self.identity.name()
         } else {
             self.store
                 .peers(Some(snapshot.manifest.project_id))?

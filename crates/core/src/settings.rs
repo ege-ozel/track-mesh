@@ -80,6 +80,8 @@ pub(super) struct Settings {
     pub pending_grants: Vec<PendingGrant>,
     #[serde(default = "compiled_default_supabase")]
     pub default_supabase: Option<SupabaseDefaultConfig>,
+    #[serde(default)]
+    pub device_name: Option<String>,
 }
 
 impl Default for Settings {
@@ -91,6 +93,7 @@ impl Default for Settings {
             actor_sequences: HashMap::new(),
             pending_grants: Vec::new(),
             default_supabase: compiled_default_supabase(),
+            device_name: None,
         }
     }
 }
@@ -172,6 +175,12 @@ impl SettingsState {
     ) -> Result<()> {
         let mut candidate = self.value.clone();
         candidate.default_supabase = config;
+        self.commit(directory, candidate)
+    }
+
+    pub fn set_device_name(&mut self, directory: &Path, name: String) -> Result<()> {
+        let mut candidate = self.value.clone();
+        candidate.device_name = Some(name);
         self.commit(directory, candidate)
     }
 

@@ -1,5 +1,14 @@
 # Ana bilgisayar: projeyi gönderen A
 
+## Güncel Desktop akışı
+
+1. **+ Link folder** seçip proje adını ve klasörünü girin. UUID kendiliğinden oluşturulur; UUID, mailbox ve relay alanları yalnızca **Advanced project settings** içindedir.
+2. Proje kartında **Invite collaborator** seçin. Link 15 dakika geçerlidir ve bir kez açılabilir. Bu düğme kullanılamıyorsa kartta gösterilen Supabase ayar nedenini **Settings → Advanced** bölümünden giderin.
+3. Alıcı linki açınca **Accept invite link** penceresi öne gelir. Eşleştirme isteği kartın üstünde cihaz adı ve kısa ID ile görünür; beklediğiniz cihazsa **Approve**, değilse **Reject** seçin.
+4. **Share current version** yerel snapshot'ı hazırlar. Bu işlem dosyaları göndermez. Alıcı kendi uygulamasında **Get collaborator’s version** ile dosyaları ister; Receive öncesi DAW projesi kapalı olmalıdır.
+
+Dosya daveti ve ağ kurulumu hâlâ **Advanced** içindedir. Aşağıdaki eski ekran adları önceki Desktop sürümlerini anlatır.
+
 Bu rehber ilk denemede kaynak olan bilgisayar içindir. [Ortak sıra ve sorun giderme](../README.md), [peer tarafının adımları](../peer/README.md). Kutuları kendi işlemlerini takip etmek için kullan; gerçek doğrulama kaydı [IMPLEMENTATION.md](../../IMPLEMENTATION.md) içindedir.
 
 Peer sen uygulamayı açınca kendiliğinden bildirim almaz. İlk seferde özel daveti import eder; davetten proje adını/UUID'sini, senin cihaz kimliğini ve bağlantı adreslerini öğrenip kendi `Collaborator` listesinde seni görür. Sonra sana bağlanır ve sen gelen cihaz isteğini onaylarsın. Yerelde adının görünmesi, online bağlantı ve dosyaların alınması ayrı durumlardır. [Keşif, panel, iki yön ve IP değişimi](../README.md) ortak rehberde açıklanır.

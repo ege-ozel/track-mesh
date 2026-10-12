@@ -230,6 +230,15 @@ impl MailboxRuntime {
 
     pub async fn stop(self) -> Result<()> {
         let _ = self.stop.send(());
-        self.task.await?
+        let mut task = self.task;
+        match tokio::time::timeout(Duration::from_secs(20), &mut task).await {
+            Ok(result) => result??,
+            Err(_) => {
+                task.abort();
+                let _ = tokio::time::timeout(Duration::from_secs(1), &mut task).await;
+                anyhow::bail!("Mailbox runtime did not stop within 20 seconds");
+            }
+        }
+        Ok(())
     }
 }

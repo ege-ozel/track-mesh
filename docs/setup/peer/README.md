@@ -1,5 +1,13 @@
 # Peer bilgisayarı: dosyaları alan B
 
+## Güncel Desktop akışı
+
+1. Size gelen `trackmesh://invite/...` bağlantısını Windows'ta açın. **Accept invite link** üstte açılan pencerede görünür; gerekirse Project URL ve publishable key girin, ardından klasörü seçip kabul edin.
+2. Gönderenin cihaz isteğini onaylamasını bekleyin. Onaylı işbirlikçi proje kartında görünür; bağlantı ve snapshot durumunu **Advanced** içindeki ayrıntılardan inceleyebilirsiniz.
+3. Gönderen **Share current version** ile snapshot hazırladıktan sonra DAW projesini kapatın, onay kutusunu işaretleyin ve **Get collaborator’s version** seçin. Dosyalar yalnızca bu açık Receive adımında aktarılır.
+
+Dosya davetiyle katılma ve eski eşleştirme yolu **Advanced** altındadır. Aşağıdaki eski düğme adları önceki Desktop sürümlerini anlatır.
+
 Bu rehber arkadaşın/alıcı bilgisayar içindir. [Ortak sıra ve sorun giderme](../README.md), [ana bilgisayarın adımları](../host/README.md).
 
 İlk bağlantıyı **sen, A'ya doğru başlatırsın**. A erişilebilir olmalı; normal dışarı bağlantın varsa bu ilk Receive için kendi modeminde port-forward açman gerekmez. Kurumsal politika/güvenlik yazılımı dışarı bağlantıyı engelliyorsa ayrıca çözülmelidir. Kurulmuş bağlantıda iki yöne dosya istenebilir; A'nın sana bağımsız yeni bağlantı açması gerektiğinde kendi erişilebilirliğin ayrıca hazırlanır.

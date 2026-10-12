@@ -66,6 +66,9 @@ pub enum Action {
         url: Option<String>,
         publishable_key: Option<String>,
     },
+    SetDeviceName {
+        name: String,
+    },
     Join {
         folder: PathBuf,
     },
@@ -138,6 +141,7 @@ impl Action {
             Self::Join { .. }
             | Self::CompleteInviteLink { .. }
             | Self::SetDefaultSupabase { .. }
+            | Self::SetDeviceName { .. }
             | Self::ExportCard => None,
             Self::Link { project_id, .. }
             | Self::SetProjectBackend { project_id, .. }
@@ -163,6 +167,7 @@ impl Action {
             Self::Link { .. } => "Link folder",
             Self::SetProjectBackend { .. } => "Save project backend",
             Self::SetDefaultSupabase { .. } => "Save default Supabase settings",
+            Self::SetDeviceName { .. } => "Save device name",
             Self::Join { .. } => "Accept invitation and request pairing",
             Self::CompleteInviteLink { .. } => "Accept invite link",
             Self::Pair { .. } => "Complete pairing",
@@ -388,12 +393,17 @@ impl Desktop {
                 .data_dir
                 .map(Ok)
                 .unwrap_or_else(default_data_directory)?;
-            Ok(Arc::new(Engine::open(directory, &options.device_name)?))
+            let device_name = if options.device_name == "My studio PC" {
+                std::env::var("COMPUTERNAME").unwrap_or(options.device_name)
+            } else {
+                options.device_name
+            };
+            Ok(Arc::new(Engine::open(directory, &device_name)?))
         })
         .await??;
         let device = Device {
             device_id: engine.identity.device_id,
-            name: engine.identity.name.clone(),
+            name: engine.identity.name(),
             peer_id: network::peer_id(&engine.identity)?,
         };
         {
@@ -577,13 +587,19 @@ impl Desktop {
             })
             .unwrap_or_default();
         let port_status = network.as_ref().map(port_observation_status);
+        let device = state.device.clone().map(|mut device| {
+            if let Some(engine) = &state.engine {
+                device.name = engine.identity.name();
+            }
+            device
+        });
         Ok(DesktopStatus {
             pairing,
             listen_port: self.options.port,
             configured_external_addresses: self.options.external_address.clone(),
             ready: state.ready,
             closing: state.closing,
-            device: state.device.clone(),
+            device,
             data_directory,
             error: state.error.clone().or(runtime_error),
             network,
@@ -948,7 +964,17 @@ impl Desktop {
                         Action::Link { project_id, name, folder, mailbox_url, relay_address } => {
                             ensure!(!project_id.is_nil(), "Project UUID cannot be nil");
                             if let Some(relay) = &relay_address { let _: network::NetworkConfig = NetworkConfig { rendezvous: vec![(relay.parse()?, String::new())], ..Default::default() }; }
+                            let is_existing = disk.store.projects()?.iter().any(|project| project.project_id == project_id);
                             disk.link(project_id, &name, &folder, mailbox_url.as_deref(), relay_address.as_deref())?;
+                            if !is_existing {
+                                if let Some(default) = disk.default_supabase_config()? {
+                                    disk.set_project_backend_config(project_id, ProjectBackendConfig {
+                                        backend: ProjectBackend::Supabase,
+                                        supabase_url: Some(default.url),
+                                        supabase_anon_key: Some(default.publishable_key),
+                                    })?;
+                                }
+                            }
                             Ok(json!({"message": "Folder linked"}))
                         }
                         Action::SetProjectBackend { project_id, backend, supabase_url, supabase_anon_key } => {
@@ -963,6 +989,10 @@ impl Desktop {
                             };
                             disk.set_default_supabase_config(config)?;
                             Ok(json!({"message": "Default Supabase settings saved"}))
+                        }
+                        Action::SetDeviceName { name } => {
+                            disk.set_device_name(&name)?;
+                            Ok(json!({"message": "Device name saved"}))
                         }
                         Action::OpenPairing { project_id } => {
                             disk.open_pairing_window(project_id)?;

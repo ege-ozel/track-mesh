@@ -75,6 +75,7 @@ export type Action =
   | { kind: 'link'; project_id: string; name: string; folder: string; mailbox_url: string | null; relay_address: string | null }
   | { kind: 'set_project_backend'; project_id: string; backend: ProjectBackend; supabase_url: string | null; supabase_anon_key: string | null }
   | { kind: 'set_default_supabase'; url: string | null; publishable_key: string | null }
+  | { kind: 'set_device_name'; name: string }
   | { kind: 'join'; folder: string }
   | { kind: 'complete_invite_link'; supabase_url?: string; supabase_anon_key?: string }
   | { kind: 'export_card' }

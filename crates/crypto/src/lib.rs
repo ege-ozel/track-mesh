@@ -31,7 +31,7 @@ pub use supabase::{endpoint_record_expires_at, unwrap_endpoint_record, wrap_endp
 
 pub struct Identity {
     pub device_id: Uuid,
-    pub name: String,
+    name: std::sync::RwLock<String>,
     signing_key: SigningKey,
 }
 #[derive(Serialize, Deserialize)]
@@ -72,9 +72,24 @@ impl Identity {
         data.secret.zeroize();
         Ok(Self {
             device_id: data.device_id,
-            name: data.name,
+            name: std::sync::RwLock::new(data.name),
             signing_key,
         })
+    }
+    pub fn name(&self) -> String {
+        self.name
+            .read()
+            .map(|name| name.clone())
+            .unwrap_or_default()
+    }
+    pub fn set_name(&self, name: &str) -> Result<()> {
+        let name = name.trim().chars().take(80).collect::<String>();
+        ensure!(!name.is_empty(), "device name cannot be empty");
+        *self
+            .name
+            .write()
+            .map_err(|_| anyhow::anyhow!("identity name lock poisoned"))? = name;
+        Ok(())
     }
     pub fn secret_bytes(&self) -> Zeroizing<[u8; 32]> {
         Zeroizing::new(self.signing_key.to_bytes())
@@ -89,7 +104,7 @@ impl Identity {
         let mut card = DeviceCard {
             version: PROTOCOL_VERSION,
             device_id: self.device_id,
-            name: self.name.clone(),
+            name: self.name(),
             peer_id,
             public_key: self.public_key(),
             addresses,
@@ -146,7 +161,7 @@ impl Identity {
             total_size: m.total_size,
             changed_bytes: m.changed_bytes,
             file_count: m.files.len() as u32,
-            author_name: self.name.clone(),
+            author_name: self.name(),
             description: "Saved project snapshot".into(),
         };
         let mut nonce = [0u8; 24];
