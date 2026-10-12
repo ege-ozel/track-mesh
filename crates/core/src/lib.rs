@@ -3,12 +3,16 @@ use crypto::Identity;
 use snapshot::ChunkStore;
 use std::{
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
 };
 use storage::Store;
 use uuid::Uuid;
 mod connection;
 mod network_observation;
+mod settings;
 pub use network_observation::{observe_network, NetworkObservation};
 mod pairing;
 pub use pairing::{PairingCandidate, PairingStatus, PAIRING_WINDOW};
@@ -39,6 +43,7 @@ pub struct Engine {
     pub identity: Arc<Identity>,
     metadata_jobs: Mutex<std::collections::HashMap<Uuid, Arc<tokio::sync::Mutex<()>>>>,
     pairing: Mutex<pairing::PairingState>,
+    upnp_mapping_enabled: AtomicBool,
 }
 impl Engine {
     pub fn open(directory: PathBuf, name: &str) -> Result<Self> {
@@ -47,6 +52,7 @@ impl Engine {
         let identity = Arc::new(Identity::load_or_create(&directory.join("secrets"), name)?);
         let store = Arc::new(Store::open(&directory.join("trackmesh.db"))?);
         let chunks = ChunkStore::new(directory.join("chunks"))?;
+        let upnp_mapping_enabled = settings::load_upnp_mapping(&directory);
         let peer_id = network::peer_id(&identity)?;
         store.add_device(
             identity.device_id,
@@ -61,6 +67,7 @@ impl Engine {
             identity,
             metadata_jobs: Mutex::new(std::collections::HashMap::new()),
             pairing: Mutex::new(pairing::PairingState::default()),
+            upnp_mapping_enabled: AtomicBool::new(upnp_mapping_enabled),
         })
     }
     pub fn link(
@@ -81,6 +88,17 @@ impl Engine {
         );
         crypto::project_key(&self.directory.join("secrets/projects"), project, None)?;
         self.store.link(project, name, &root, mailbox, relay)
+    }
+}
+
+impl Engine {
+    pub fn upnp_mapping_enabled(&self) -> bool {
+        self.upnp_mapping_enabled.load(Ordering::SeqCst)
+    }
+    pub fn set_upnp_mapping_enabled(&self, enabled: bool) -> Result<()> {
+        settings::store_upnp_mapping(&self.directory, enabled)?;
+        self.upnp_mapping_enabled.store(enabled, Ordering::SeqCst);
+        Ok(())
     }
 }
 

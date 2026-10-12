@@ -373,7 +373,10 @@ impl Desktop {
                     .collect::<std::result::Result<_, _>>()?,
                 ..Default::default()
             };
-            Ok::<_, anyhow::Error>((PeerRuntime::start(engine_for_network, config)?, observation))
+            Ok::<_, anyhow::Error>((
+                PeerRuntime::start(engine_for_network, config, observation.clone(), true)?,
+                observation,
+            ))
         })
         .await??;
         let metadata = MailboxRuntime::start(engine.clone(), self.options.allow_loopback_http);
@@ -547,6 +550,25 @@ impl Desktop {
             }
         }));
         Ok(job_id)
+    }
+
+    pub async fn set_upnp_mapping(&self, enabled: bool) -> Result<()> {
+        let (engine, network) = {
+            let state = self.lock()?;
+            ensure!(
+                state.ready && !state.closing,
+                "Desktop is starting or closing"
+            );
+            (
+                state.engine.clone().context("Engine is unavailable")?,
+                state.network.clone().context("Network is unavailable")?,
+            )
+        };
+        let disk = engine.clone();
+        tauri::async_runtime::spawn_blocking(move || disk.set_upnp_mapping_enabled(enabled))
+            .await??;
+        network.set_mapping_consent(enabled);
+        Ok(())
     }
 
     async fn execute(

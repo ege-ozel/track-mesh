@@ -35,6 +35,7 @@ pub fn run() {
             commands::get_status,
             commands::choose_folder,
             commands::submit_action,
+            commands::set_upnp_mapping,
             commands::close_app
         ])
         .setup(move |app| {

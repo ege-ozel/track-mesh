@@ -4,7 +4,7 @@
 
 Use `D:\CodeSpace\track-mesh`, Rust for Windows, and Visual Studio C++ build tools. SQLite is bundled. Run the build commands from an x64 Visual Studio developer shell so the MSVC compiler/linker and Windows SDK header/library paths are initialized. Private device/project material uses current-user Windows DPAPI; a sandbox account may be unable to decrypt another account's data. There is no plaintext-key fallback.
 
-The last successful implementation build used Rust 1.98.1. The workspace currently declares `rust-version = "1.85"`; the pinned dependency/toolchain combination has not been verified on that minimum version. Use the known working toolchain unless the task is explicitly minimum-version compatibility work.
+The last successful implementation build used Rust 1.98.1. The workspace declares `rust-version = "1.88"` because igd-next 0.18 requires 1.88; this minimum has not been separately verified. Use the known working toolchain unless the task is explicitly minimum-version compatibility work.
 
 The Windows desktop package separately requires Rust 1.90, WebView2 and a supported Node/npm runtime. Phase 4 uses React/TypeScript/Vite and bundled static assets. Before checking the complete workspace, run `npm ci`, `npm run typecheck`, and `npm run build` in `apps/desktop`; no development server/watcher is needed. See [PHASE4.md](PHASE4.md) for the known local Node 24.19 fallback and native operation. Core-only CLI/service builds do not need frontend assets.
 

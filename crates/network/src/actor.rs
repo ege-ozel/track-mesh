@@ -42,9 +42,11 @@ pub fn start(
         peer_id: id.to_string(),
         ..Default::default()
     }));
+    let (mapping_tx, _mapping_rx) = tokio::sync::watch::channel(false);
     let handle = Network {
         command: tx,
         status: status.clone(),
+        mapping_consent: Arc::new(mapping_tx),
     };
     let actor = Actor {
         swarm,

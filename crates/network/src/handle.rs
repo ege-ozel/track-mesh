@@ -7,6 +7,7 @@ use std::{
     sync::{Arc, RwLock},
     time::Duration,
 };
+use tokio::sync::watch;
 use tokio::sync::{mpsc, oneshot};
 pub struct Incoming {
     pub peer: PeerId,
@@ -39,8 +40,39 @@ pub(super) enum Command {
 pub struct Network {
     pub(super) command: mpsc::Sender<Command>,
     pub(super) status: Arc<RwLock<NetworkStatus>>,
+    pub(super) mapping_consent: Arc<watch::Sender<bool>>,
 }
 impl Network {
+    pub fn set_mapping_consent(&self, enabled: bool) {
+        self.mapping_consent.send_if_modified(|current| {
+            if *current == enabled {
+                false
+            } else {
+                *current = enabled;
+                true
+            }
+        });
+        if let Ok(mut status) = self.status.write() {
+            if enabled {
+                status.port_mapping.consent_enabled = true;
+            } else if status.port_mapping.state == "MAPPED"
+                || status.port_mapping.state == "REMOVING"
+            {
+                status.port_mapping.consent_enabled = false;
+                status.port_mapping.state = "REMOVING".into();
+            } else if status.port_mapping.state == "FAILED"
+                && status
+                    .port_mapping
+                    .detail
+                    .as_deref()
+                    .is_some_and(|detail| detail.contains("cleanup"))
+            {
+                status.port_mapping.consent_enabled = false;
+            } else {
+                status.port_mapping = crate::PortMappingStatus::default();
+            }
+        }
+    }
     pub async fn pairing_window(&self, duration: Duration) -> Result<()> {
         self.command
             .send(Command::PairingWindow(duration))
