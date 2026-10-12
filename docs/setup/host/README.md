@@ -6,7 +6,7 @@ Peer sen uygulamayı açınca kendiliğinden bildirim almaz. İlk seferde özel 
 
 ## 1. Uygulamayı hazırla
 
-Windows x64 Desktop executable'ını güncel paketten aç. 2026-10-09 yönerge paketi `TrackMesh-PeerTrial-AutoPairing-20261009.zip` olur; EXE'ler 2026-10-08 otomatik eşleştirme build'iyle aynıdır. Varsayılan veri profili `%LOCALAPPDATA%\TrackMesh` olur; proje klasörünü bundan ayrı tut. Hazır paket varsa Rust/Node kurulumu gerekmez. Desktop WebView2 ister. İlk denemede küçük bir proje kopyası kullan. Bu makinedeki `target/release/trackmesh-desktop.exe` eski build olarak kaldı; onu güncel paketle karıştırma.
+Windows x64 Desktop executable'ını güncel paketten aç. 2026-10-10 `TrackMesh-PeerTrial-ConnectionCheck-20261010.zip` paketi yeni Desktop bağlantı kontrolünü ve aynı Wi-Fi rehberini içerir. Varsayılan veri profili `%LOCALAPPDATA%\TrackMesh` olur; proje klasörünü bundan ayrı tut. Hazır paket varsa Rust/Node kurulumu gerekmez. Desktop WebView2 ister. İlk denemede küçük bir proje kopyası kullan. Bu makinedeki `target/release/trackmesh-desktop.exe` eski build olarak kaldı; onu güncel paketle karıştırma.
 
 Kaynak koddan hazırlıyorsan x64 Visual Studio developer shell içinde:
 
@@ -73,7 +73,7 @@ Bu alan adları kullanılan TP-Link/Türk Telekom ekranına aittir; başka firmw
 - [ ] **Allow the connection if it is secure** seçeneğini bu denemede kullanma: ayrıca Windows IPsec yapılandırması ister. TrackMesh'in şifrelemesi/peer doğrulaması farklıdır ve normal Allow ile çalışmaya devam eder. [Windows kuralı rehberi](https://learn.microsoft.com/en-us/windows/security/operating-system-security/network-security/windows-firewall/configure), [IPsec seçeneğinin açıklaması](https://techcommunity.microsoft.com/blog/coreinfrastructureandsecurityblog/securing-rdp-with-ipsec/259108).
 - [ ] TrackMesh'e dön; public IPv4/dış portu ve `/ip4/PUBLIC_IPV4/tcp/43101`, `/ip4/PUBLIC_IPV4/udp/43101/quic-v1` önizlemelerini kontrol et.
 - [ ] **Export invitation with public addresses** ile native dosya penceresinde yeni bir `.json` adına kaydet. Manuel alanları kullanmak için bu düğmeyi seç; **Export invitation with current addresses** bu public alanları kullanmaz.
-- [ ] B'ye özel kanaldan **iki dosya gönder:** güncel yönergeli `TrackMesh-PeerTrial-AutoPairing-20261009.zip` ve export ettiğin özel davet `.json` dosyası. ZIP yerel build çıktısıdır; GitHub'a binary olarak yüklenmedi. Göndericide `.build/peer-packages` altında bulunur. `20261008` AutoPairing paketi aynı uygulamayı, önceki yönergeyi içerir; `20261007` paketi otomatik eşleştirmeyi içermez. Kaynak yönerge [peer/CLAUDE.md](../peer/CLAUDE.md) dosyasıdır; iki PC de otomatik eşleştirme build'ini kullanmalı.
+- [ ] B'ye özel kanaldan **iki dosya gönder:** `TrackMesh-PeerTrial-ConnectionCheck-20261010.zip` ve export ettiğin özel davet `.json` dosyası. ZIP yerel build çıktısıdır; GitHub'a binary olarak yüklenmedi. Göndericide `.build/peer-packages` altında bulunur. Eski `20261009` paketinde bağlantı kontrol paneli yoktur; `20261007` paketi otomatik eşleştirmeyi içermez. Kaynak yönerge [peer/CLAUDE.md](../peer/CLAUDE.md) dosyasıdır; iki PC de aynı güncel build'i kullanmalı.
 
 Davet private capability/proje anahtarı içerir. Payload'ı chat, clipboard, log, repo veya agente verilen dosya içeriğine koyma. Public alanlar export başına geçerlidir; kalıcı network ayarı değildir. Public IP/dış port değişirse yeni daveti özel paylaş ve B'de aynı hedef klasörüne import et.
 

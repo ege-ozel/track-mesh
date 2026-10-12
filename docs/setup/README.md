@@ -2,6 +2,8 @@
 
 Henüz setup/MSI yok; Windows executable ile elle deneme yapıyoruz. Küçük bir test projesi kullanın. İlk aktarım için VST3 kurulumu gerekmez. Gerçek doğrulama sonuçları yalnızca [IMPLEMENTATION.md](../IMPLEMENTATION.md) içinde tutulur.
 
+**Aynı Wi-Fi üzerindeki iki bilgisayarla ilk deneme:** A ve B adımlarını tek sırada veren [tek belgeyi](AYNI-WIFI-DENEMESI.md) izleyin.
+
 ## Önce kendi rolünü seç
 
 | Rol | Okunacak belge | Yapılacak işler |
@@ -98,7 +100,7 @@ Modem arızalarını ayırmak için [üreticinin port-forward sorun giderme rehb
 
 ## Tek eşleştirme akışı
 
-Yeni Desktop yanıtı şifreli peer bağlantısından otomatik gönderir; A'nın son onayı korunur. Alıcı, istek gönderildikten sonra onayı 60 saniyeye kadar sorgular. A offline/pencere kapalıysa import korunur; A **Open pairing window**, B **Retry automatic pairing** ile devam eder. Tek projede 10 dakikalık pencere vardır; süre bitince, kapanınca veya restart olunca onaysız istekler temizlenir. Bu süre davet/proje anahtarını iptal etmez. Eski invitation/card formatları ve transfer protokolü korunur; ayrı `/trackmesh/pairing/1` kanalı eklenir. İki tarafta da otomatik eşleştirme build'i gerekir: `20261007` ZIP'i bunu içermez, `20261008` AutoPairing paketi içerir, `20261009` paketi aynı EXE'lerle güncel yönergeyi taşır. Eski cihazlarla manuel kart yolu **Legacy file pairing** altında bulunur; `join`/`card` komutları değişmez, CLI'ye `request-pairing` eklenir. [Güvenlik sınırları](PAIRING_SECURITY.md).
+Yeni Desktop yanıtı şifreli peer bağlantısından otomatik gönderir; A'nın son onayı korunur. Alıcı, istek gönderildikten sonra onayı 60 saniyeye kadar sorgular. A offline/pencere kapalıysa import korunur; A **Open pairing window**, B **Retry automatic pairing** ile devam eder. Tek projede 10 dakikalık pencere vardır; süre bitince, kapanınca veya restart olunca onaysız istekler temizlenir. Bu süre davet/proje anahtarını iptal etmez. Eski invitation/card formatları ve transfer protokolü korunur; ayrı `/trackmesh/pairing/1` kanalı eklenir. İki tarafta da otomatik eşleştirme build'i gerekir: `20261007` ZIP'i bunu içermez, `20261008` AutoPairing paketi içerir, `20261009` paketi aynı EXE'lerle güncel yönergeyi taşır; `20261010` ConnectionCheck paketi yeni Desktop bağlantı yardımcısını ekler. Eski cihazlarla manuel kart yolu **Legacy file pairing** altında bulunur; `join`/`card` komutları değişmez, CLI'ye `request-pairing` eklenir. [Güvenlik sınırları](PAIRING_SECURITY.md).
 
 ## Ortak çalışma kuralları
 

@@ -1,6 +1,6 @@
 # TrackMesh: arkadaş bilgisayarında ilk Receive
 
-Bu belge dağıtım paketinde `CLAUDE.md` adıyla bulunur. Paket bir installer değildir: Windows x64 için `trackmesh-desktop.exe`, terminal işlemleri için `trackmesh-agent.exe`, gereken app-local Visual C++ runtime DLL'leri ve bu yönergeyi içerir. EXE/DLL dosyalarını aynı klasörde tutun. Rust/Node/repo arkadaş bilgisayarında gerekmez. Desktop [Microsoft WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) ister; CLI WebView2 kullanmaz. Eksik DLL veya açılış hatası varsa hatayı gönderene bildirin; rastgele DLL indirmeyin.
+Bu belge dağıtım paketinde `CLAUDE.md` adıyla bulunur. Paket bir installer değildir: Windows x64 için `trackmesh-desktop.exe`, terminal işlemleri için `trackmesh-agent.exe`, gereken app-local Visual C++ runtime DLL'leri ve bu yönergeyi içerir. Aynı Wi-Fi denemesi için paketteki `AYNI-WIFI-DENEMESI.md` belgesini izleyebilirsiniz. EXE/DLL dosyalarını aynı klasörde tutun. Rust/Node/repo arkadaş bilgisayarında gerekmez. Desktop [Microsoft WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) ister; CLI WebView2 kullanmaz. Eksik DLL veya açılış hatası varsa hatayı gönderene bildirin; rastgele DLL indirmeyin.
 
 ## Arkadaşın başlayacağı yer
 
@@ -14,7 +14,7 @@ Bağlantı başarılı olursa Receive proje dosyalarını seçilen klasöre indi
 
 ## Birleşik eşleştirme akışı
 
-Yeni Desktop daveti kabul edince cihaz isteğini şifreli bağlantıdan otomatik gönderir. CLI'de `join`, güvenli `status` ve yeni `request-pairing` aynı işi yapar. Gönderenin 10 dakikalık eşleştirme penceresi açık olmalı; son yetki için cihaz kimliğini doğrulayıp onaylaması gerekir. Alıcı onayı 60 saniyeye kadar sorgular; sonra retry yapılabilir. Proje anahtarı pairing mesajıyla gönderilmez ve agent context'ine girmez; ilk davet dosyası özel kanaldan paylaşılır ve yalnızca native import tarafından okunur. Her iki tarafta otomatik eşleştirme build'i gerekir; `20261007` paketi `request-pairing` içermez. `20261009` yönerge paketi, `20261008` AutoPairing paketinin aynı EXE'lerini içerir. Kullanıcı eski build ile kalmayı seçerse manuel `card --output`/Import collaborator card eski akışı kullanılabilir; otomatik başarı diye raporlama.
+Yeni Desktop daveti kabul edince cihaz isteğini şifreli bağlantıdan otomatik gönderir. CLI'de `join`, güvenli `status` ve yeni `request-pairing` aynı işi yapar. Gönderenin 10 dakikalık eşleştirme penceresi açık olmalı; son yetki için cihaz kimliğini doğrulayıp onaylaması gerekir. Alıcı onayı 60 saniyeye kadar sorgular; sonra retry yapılabilir. Proje anahtarı pairing mesajıyla gönderilmez ve agent context'ine girmez; ilk davet dosyası özel kanaldan paylaşılır ve yalnızca native import tarafından okunur. Her iki tarafta otomatik eşleştirme build'i gerekir; `20261007` paketi `request-pairing` içermez. `20261010` ConnectionCheck paketi yeni Desktop bağlantı yardımcısını içerir; önceki `20261009` paketinde bu panel yoktur. Kullanıcı eski build ile kalmayı seçerse manuel `card --output`/Import collaborator card eski akışı kullanılabilir; otomatik başarı diye raporlama.
 
 ## Göndereni nasıl buluruz; panel ne gösterir?
 

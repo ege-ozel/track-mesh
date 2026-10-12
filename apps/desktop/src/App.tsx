@@ -1,11 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { chooseFolder, closeApp, getStatus, submitAction } from './api';
-import type { Action, DesktopStatus, ProjectCard, SnapshotInfo } from './api';
+import type { Action, CheckView, DesktopStatus, ProjectCard, SnapshotInfo } from './api';
 
 const short = (id: string | null | undefined) => id ? id.slice(0, 8) : '—';
 const time = (value: string | null | undefined) => value ? new Date(value).toLocaleString() : 'Never';
 const bytes = (n: number) => n >= 1024 ** 3 ? `${(n / 1024 ** 3).toFixed(1)} GB` : n >= 1024 ** 2 ? `${(n / 1024 ** 2).toFixed(1)} MB` : n >= 1024 ? `${(n / 1024).toFixed(1)} KB` : `${n} B`;
 const CHECK_TIMEOUT_SECONDS = 30;
+
+function localIpv4Addresses(status: DesktopStatus) {
+  return [...new Set((status.network?.addresses ?? []).flatMap(address => {
+    const match = address.match(/^\/ip4\/([^/]+)\/(tcp|udp)\/(\d+)(?:\/|$)/);
+    return match && match[1] !== '0.0.0.0' && !match[1].startsWith('127.') && Number(match[3]) === status.listen_port ? [match[1]] : [];
+  }))];
+}
 
 function publicIpv4(value: string) {
   const parts = value.split('.');
@@ -25,10 +32,7 @@ function ConnectionSetup({ status, projectId, busy, act }: { status: DesktopStat
   const validPort = /^\d{1,5}$/.test(port) && Number(port) > 0 && Number(port) <= 65535;
   const valid = publicIpv4(publicIp) && validPort;
   const addresses = status.network?.addresses ?? [];
-  const localIps = [...new Set(addresses.flatMap(address => {
-    const match = address.match(/^\/ip4\/([^/]+)\/(tcp|udp)\/(\d+)(?:\/|$)/);
-    return match && match[1] !== '0.0.0.0' && !match[1].startsWith('127.') && Number(match[3]) === status.listen_port ? [match[1]] : [];
-  }))];
+  const localIps = localIpv4Addresses(status);
   return <details className="connection-setup"><summary>Connection setup</summary>
     <p>Local listen port: <strong>{status.listen_port}</strong> (default 43101). This session keeps its listen port; a different local port requires reopening with that startup port after the current owner exits.</p>
     <p>Local IPv4 / destination port: {localIps.length ? localIps.map(localIp => <code key={localIp}>{localIp}:{status.listen_port} </code>) : 'Waiting for a local IPv4 listen address. Do not use 0.0.0.0 as the router destination.'}</p>
@@ -73,6 +77,53 @@ function JobNotice({ job, startedAt }: { job: DesktopStatus['jobs'][number]; sta
   </div>;
 }
 
+function ConnectionAssistant({ card, status, peer, check, busy, act }: {
+  card: ProjectCard; status: DesktopStatus; peer: ProjectCard['peers'][number] | undefined;
+  check: CheckView | undefined; busy: boolean; act: (action: Action) => Promise<void>;
+}) {
+  const projectId = card.project.project_id;
+  const candidates = status.pairing.project_id === projectId ? status.pairing.requests : [];
+  const connection = peer ? status.network?.peers[peer.device.peer_id] : undefined;
+  const checkJob = status.jobs.find(job => job.project_id === projectId && job.label === 'Check peer');
+  const pairingRetry = status.jobs.some(job => job.project_id === projectId && job.outcome?.pairing_state === 'retry');
+  const localIps = localIpv4Addresses(status);
+  const runtimeError = status.error ?? status.network?.error;
+  const [expanded, setExpanded] = useState(!connection?.online || !!runtimeError);
+  let next = 'Export a current-address invitation on the sender PC, then accept it on the receiver PC.';
+  if (runtimeError) next = 'The local network session has an error. Reopen TrackMesh after current work finishes.';
+  else if (candidates.length) next = 'Compare the pending Device and Identity with the other PC, then approve the expected device in Pair collaborator.';
+  else if (!peer && status.pairing.project_id === projectId) next = 'The pairing window is open. Keep TrackMesh running while the other PC accepts the private invitation.';
+  else if (peer && checkJob?.running) next = 'Trying the selected collaborator now. This can take up to 30 seconds.';
+  else if (peer && checkJob?.error) next = connection?.online
+    ? 'The peer connection exists, but the project check failed. Read the error below and confirm the sender approved this device for this project.'
+    : 'The connection check failed. Keep both PCs open, compare the sender’s current Wi-Fi IP with the invitation, then check guest isolation and inbound Windows Firewall on the sender. A timeout cannot identify which one blocked traffic.';
+  else if (peer && !connection?.online) next = 'Run the connection check. If the invitation was imported but approval is still pending, open the sender’s pairing window and retry automatic pairing here.';
+  else if (peer && !check?.fresh) next = 'The peer is connected. Run the connection check to verify project access and compare current snapshots.';
+  else if (card.project.recovery_required) next = 'Local installation needs recovery. Close the DAW project and use Recover locally before another Receive.';
+  else if (check?.result.lineage === 'DIVERGED') next = 'Both folders changed independently. Resolve the difference manually before receiving; TrackMesh does not merge projects.';
+  else if (check?.result.verified_equal) next = 'Both snapshot heads are equal on this live connection.';
+  else if (check?.result.lineage === 'LOCAL_AHEAD') next = 'Your local snapshot is ahead. The other PC should Check peer and Receive from this PC.';
+  else if (check?.result.lineage === 'UNKNOWN') next = 'Snapshot ancestry is unknown. Review the current project warning before receiving.';
+  else if (check?.result.remote_snapshot) next = 'A source snapshot is available. Close the DAW project, then use Receive when the button is enabled.';
+  else if (card.local_snapshot) next = 'Your local snapshot is ready. The other PC should run Check peer and Receive.';
+  else if (peer) next = 'No source snapshot is available yet. Create one with Send Snapshot on the source PC.';
+
+  return <details className="connection-assistant" open={expanded} onToggle={event => setExpanded(event.currentTarget.open)}>
+    <summary>Connection check · one-click peer check and next step</summary>
+    <div className="diagnostic-grid">
+      <p><strong>Local app:</strong> {runtimeError ? `Network error: ${runtimeError}` : status.ready ? 'Network session running' : 'Starting'}</p>
+      <p><strong>Local address:</strong> {localIps.length ? localIps.map(ip => `${ip}:${status.listen_port}`).join(', ') : `No Wi-Fi IPv4 address shown yet · listen port ${status.listen_port}`}</p>
+      <p><strong>Device:</strong> {candidates.length ? `${candidates.length} request awaiting your approval` : peer ? `${peer.device.name} recorded locally; remote approval is verified by Check peer` : status.pairing.project_id === projectId ? 'Pairing window open; waiting for the other PC' : 'No collaborator recorded yet'}</p>
+      <p><strong>Connection:</strong> {connection?.online ? `${connection.route} · ${connection.transport}` : checkJob?.running ? 'Checking now' : checkJob?.error ? 'Last check failed' : 'No active peer connection'}</p>
+      <p><strong>Snapshot:</strong> {check?.fresh ? check.result.verified_equal ? 'Fresh equality verified' : check.result.remote_snapshot ? `Source snapshot ${short(check.result.remote_snapshot)} available` : 'No remote snapshot on the fresh check' : 'Not freshly verified'}</p>
+    </div>
+    <p className="diagnostic-next"><strong>Next:</strong> {next}</p>
+    {peer && <div className="actions"><button disabled={busy} onClick={() => act({ kind: 'check', project_id: projectId, device_id: peer.device.device_id })}>{checkJob?.running ? 'Checking…' : 'Run connection check'}</button>
+      {pairingRetry && <button disabled={busy} onClick={() => act({ kind: 'request_pairing', project_id: projectId, device_id: peer.device.device_id })}>Retry automatic pairing</button>}</div>}
+    <p className="muted">This checks the app’s own session and selected peer. Windows Firewall, guest Wi-Fi isolation and the other PC’s current IP cannot be identified separately from a connection timeout.</p>
+  </details>;
+}
+
 function Card({ card, status, jobStartedAt, act }: { card: ProjectCard; status: DesktopStatus; jobStartedAt: Record<string, number>; act: (action: Action) => Promise<void> }) {
   const [selected, setSelected] = useState('');
   const [dawClosed, setDawClosed] = useState(false);
@@ -115,6 +166,7 @@ function Card({ card, status, jobStartedAt, act }: { card: ProjectCard; status: 
         : lineage && lineage !== 'EQUAL' ? `${lineage.replaceAll('_', ' ')} · last-known metadata, Check peer before receiving`
         : `${verifiedForPeer ? `Last verified: ${time(project.last_verified_at)}` : 'No current verification for this collaborator'} · Check peer for a fresh comparison`}
     </div>
+    <ConnectionAssistant card={card} status={status} peer={peer} check={check} busy={busy} act={act} />
     {project.recovery_required && <div className="notice danger">Interrupted installation requires local recovery. Backups are retained.</div>}
     {transfer && <div className="transfer"><div><span>Last transfer · {short(transfer.snapshot_id)} · {transfer.state.replaceAll('_', ' ')}</span><span>{bytes(transfer.completed_bytes)} / {bytes(transfer.total_bytes)}</span></div>
       <progress max={Math.max(transfer.total_bytes, 1)} value={transfer.completed_bytes} />

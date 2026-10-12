@@ -8,8 +8,8 @@ A'nın uygulamayı açması sana bildirim göndermez. Daveti import edince proje
 
 ## 1. Paketi ve hedef klasörü hazırla
 
-- [ ] A'dan iki dosya al: **güncel yönergeli `TrackMesh-PeerTrial-AutoPairing-20261009.zip`** ve **ayrı özel davet `.json` dosyası**. AutoPairing `20261008` paketi aynı EXE'leri taşır; `20261007` build'i otomatik eşleştirme desteklemez.
-- [ ] ZIP'i normal, yazılabilir bir klasöre çıkar. `trackmesh-agent.exe`, `trackmesh-desktop.exe`, `vcruntime140.dll` ve `CLAUDE.md` birlikte kalsın; ZIP içinden çalıştırma. `package-info.json` ve `SHA256SUMS.txt` build bilgisi/doğrulama içindir.
+- [ ] A'dan iki dosya al: **`TrackMesh-PeerTrial-ConnectionCheck-20261010.zip`** ve **ayrı özel davet `.json` dosyası**. Eski `20261009` paketinde Desktop bağlantı kontrol paneli yoktur; `20261007` build'i otomatik eşleştirme desteklemez.
+- [ ] ZIP'i normal, yazılabilir bir klasöre çıkar. `trackmesh-agent.exe`, `trackmesh-desktop.exe`, `vcruntime140.dll`, `CLAUDE.md` ve `AYNI-WIFI-DENEMESI.md` birlikte kalsın; ZIP içinden çalıştırma. `package-info.json` ve `SHA256SUMS.txt` build bilgisi/doğrulama içindir.
 - [ ] Windows 10/11 x64 kullan. Rust/Node/repo gerekmez. Desktop [WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) ister; CLI istemez. Eksik DLL/açılış hatasını A'ya bildir; rastgele DLL indirme.
 - [ ] Paket, veri profili ve DAW hedef klasörü birbirinden ayrı olsun. İlk Receive için boş bir test klasörü seç; mevcut dosyaları silerek boşaltma.
 - [ ] Davet içeriğini Claude'a, chat'e, clipboard'a veya loga koyma. Native import veya CLI join yalnızca dosya yolu ile çalışır.
