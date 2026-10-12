@@ -247,9 +247,15 @@ impl PeerRuntime {
                 let _ = monitor.await;
             }
         }
-        if let Some((shutdown, task)) = self.mapping_task {
+        if let Some((shutdown, mut task)) = self.mapping_task {
             shutdown.send_replace(true);
-            let _ = tokio::time::timeout(Duration::from_secs(20), task).await;
+            if tokio::time::timeout(Duration::from_secs(20), &mut task)
+                .await
+                .is_err()
+            {
+                task.abort();
+                let _ = tokio::time::timeout(Duration::from_secs(1), &mut task).await;
+            }
         }
         self.network.shutdown().await;
         let actor = self.actor.await.context("network actor panicked")?;
