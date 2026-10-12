@@ -13,9 +13,18 @@ use serde::{Deserialize, Serialize};
 use std::{fs, path::Path};
 use uuid::Uuid;
 use zeroize::{Zeroize, Zeroizing};
+mod invite_drop;
 mod mailbox;
 mod pairing;
 mod supabase;
+pub use invite_drop::{decrypt_invite_drop, encrypt_invite_drop, EncryptedInviteDrop};
+
+pub fn zeroize_project_invite(invite: &mut protocol::ProjectInvite) {
+    invite.project_key.zeroize();
+    if let Some(backend) = &mut invite.backend {
+        backend.supabase_anon_key.zeroize();
+    }
+}
 pub use mailbox::verify_mailbox_auth;
 pub use pairing::{pairing_challenge, pairing_proof, verify_pairing_proof};
 pub use supabase::{endpoint_record_expires_at, unwrap_endpoint_record, wrap_endpoint_record};
@@ -33,6 +42,16 @@ struct IdentityData {
 }
 
 impl Identity {
+    pub fn sign_project_invite(&self, invite: &mut protocol::ProjectInvite) -> Result<()> {
+        ensure!(
+            invite.device.device_id == self.device_id,
+            "invitation signer mismatch"
+        );
+        invite.signature = None;
+        invite.signature = Some(self.sign(&invite.signing_bytes()?));
+        Ok(())
+    }
+
     pub fn load_or_create(directory: &Path, name: &str) -> Result<Self> {
         fs::create_dir_all(directory)?;
         let path = directory.join("identity.protected");
@@ -157,6 +176,25 @@ impl Identity {
         envelope.signature = self.sign(&envelope.signing_bytes()?);
         Ok(envelope)
     }
+}
+
+pub fn verify_project_invite(invite: &protocol::ProjectInvite) -> Result<()> {
+    let signature = invite
+        .signature
+        .as_deref()
+        .context("invitation signature missing")?;
+    let key_bytes: [u8; 32] = hex::decode(&invite.device.public_key)?
+        .try_into()
+        .map_err(|_| anyhow::anyhow!("invalid invitation signer key"))?;
+    let key = VerifyingKey::from_bytes(&key_bytes)?;
+    let signature_bytes: [u8; 64] = hex::decode(signature)?
+        .try_into()
+        .map_err(|_| anyhow::anyhow!("invalid invitation signature"))?;
+    key.verify_strict(
+        &invite.signing_bytes()?,
+        &Signature::from_bytes(&signature_bytes),
+    )?;
+    Ok(())
 }
 
 pub fn verify(public_key: &str, message: &[u8], signature: &str) -> Result<()> {

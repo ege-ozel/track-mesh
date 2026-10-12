@@ -3,7 +3,8 @@ export type Operation =
   | "member-grant"
   | "member-revoke"
   | "endpoint-publish"
-  | "endpoint-list";
+  | "endpoint-list"
+  | "invite-create";
 
 type Auth = {
   version: number;
@@ -23,6 +24,7 @@ const NONCE =
 const HEX_32 = /^[0-9a-f]{64}$/;
 const HEX_64 = /^[0-9a-f]{128}$/;
 const RFC3339_MILLIS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const INVITE_ID = /^[A-Za-z0-9_-]{43}$/;
 const AUTH_FIELDS = [
   "version",
   "project_route",
@@ -236,6 +238,13 @@ export function requireUuid(value: unknown): string {
   return value;
 }
 
+export function requireInviteId(value: unknown): string {
+  if (typeof value !== "string" || !INVITE_ID.test(value)) {
+    throw new RejectedRequest();
+  }
+  return value;
+}
+
 export function requirePublicKey(value: unknown): string {
   if (typeof value !== "string" || !HEX_32.test(value)) {
     throw new RejectedRequest();
@@ -264,9 +273,34 @@ export async function dispatch(
   if (!projectUrl || !serviceRoleKey) throw new Error("backend unavailable");
 
   let response: Response;
+  const rpcName = operation === "invite-create"
+    ? "trackmesh_invite_create"
+    : "trackmesh_dispatch";
+  const rpcBody = operation === "invite-create"
+    ? {
+      p_project_route: auth.project_route,
+      p_device_id: auth.device_id,
+      p_public_key: auth.public_key,
+      p_issued_at: auth.issued_at,
+      p_nonce: auth.nonce,
+      p_id: body.id,
+      p_expires_at: body.expires_at,
+      p_ciphertext: body.ciphertext,
+    }
+    : {
+      p_operation: operation,
+      p_project_route: auth.project_route,
+      p_device_id: auth.device_id,
+      p_public_key: auth.public_key,
+      p_issued_at: auth.issued_at,
+      p_nonce: auth.nonce,
+      p_body_hash: auth.body_hash,
+      p_signature: auth.signature,
+      p_body: body,
+    };
   try {
     response = await fetch(
-      projectUrl.replace(/\/$/, "") + "/rest/v1/rpc/trackmesh_dispatch",
+      projectUrl.replace(/\/$/, "") + "/rest/v1/rpc/" + rpcName,
       {
         method: "POST",
         headers: {
@@ -275,17 +309,7 @@ export async function dispatch(
           "content-type": "application/json",
         },
         signal: AbortSignal.timeout(10_000),
-        body: JSON.stringify({
-          p_operation: operation,
-          p_project_route: auth.project_route,
-          p_device_id: auth.device_id,
-          p_public_key: auth.public_key,
-          p_issued_at: auth.issued_at,
-          p_nonce: auth.nonce,
-          p_body_hash: auth.body_hash,
-          p_signature: auth.signature,
-          p_body: body,
-        }),
+        body: JSON.stringify(rpcBody),
       },
     );
   } catch {

@@ -19,7 +19,6 @@ struct ProjectSession {
     failures: u32,
     retry_at: Instant,
     grant_retry_at: Instant,
-    route_taken: bool,
     project_url: String,
     anon_key: String,
 }
@@ -34,7 +33,6 @@ impl Default for ProjectSession {
             failures: 0,
             retry_at: Instant::now(),
             grant_retry_at: Instant::now(),
-            route_taken: false,
             project_url: String::new(),
             anon_key: String::new(),
         }
@@ -94,11 +92,6 @@ impl SupabaseRuntime {
                             ..ProjectSession::default()
                         };
                     }
-                    if session.route_taken {
-                        let _ = engine
-                            .set_supabase_project_state(project, SupabaseProjectState::RouteTaken);
-                        continue;
-                    }
                     if session.retry_at > Instant::now() {
                         continue;
                     }
@@ -135,13 +128,11 @@ impl SupabaseRuntime {
                                             .await;
                                     }
                                     Err(::mailbox::SupabaseError::Rejected) => {
-                                        session.route_taken = true;
+                                        session.list_at = Instant::now() + Duration::from_secs(30);
                                         let _ = engine.set_supabase_project_state(
                                             project,
-                                            SupabaseProjectState::RouteTaken,
+                                            SupabaseProjectState::WaitingForGrant,
                                         );
-                                        session.retry_at =
-                                            Instant::now() + Duration::from_secs(3600);
                                         continue;
                                     }
                                     Err(::mailbox::SupabaseError::Unavailable) => {
@@ -164,7 +155,15 @@ impl SupabaseRuntime {
                                         apply_rows(engine.clone(), network.clone(), project, rows)
                                             .await;
                                     }
-                                    Err(_) => {
+                                    Err(::mailbox::SupabaseError::Rejected) => {
+                                        session.list_at = Instant::now() + Duration::from_secs(30);
+                                        let _ = engine.set_supabase_project_state(
+                                            project,
+                                            SupabaseProjectState::WaitingForGrant,
+                                        );
+                                        continue;
+                                    }
+                                    Err(::mailbox::SupabaseError::Unavailable) => {
                                         mark_unavailable(&engine, project, session);
                                         continue;
                                     }
@@ -178,6 +177,9 @@ impl SupabaseRuntime {
                     }
 
                     if session.claim_attempted && !session.member_proven {
+                        if session.list_at > Instant::now() {
+                            continue;
+                        }
                         match client.endpoint_page(&engine.identity, None).await {
                             Ok(rows) => {
                                 session.member_proven = true;
@@ -190,7 +192,15 @@ impl SupabaseRuntime {
                                 );
                                 apply_rows(engine.clone(), network.clone(), project, rows).await;
                             }
-                            Err(_) => {
+                            Err(::mailbox::SupabaseError::Rejected) => {
+                                session.list_at = Instant::now() + Duration::from_secs(30);
+                                let _ = engine.set_supabase_project_state(
+                                    project,
+                                    SupabaseProjectState::WaitingForGrant,
+                                );
+                                continue;
+                            }
+                            Err(::mailbox::SupabaseError::Unavailable) => {
                                 mark_unavailable(&engine, project, session);
                                 continue;
                             }

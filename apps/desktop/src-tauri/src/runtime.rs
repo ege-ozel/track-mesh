@@ -12,6 +12,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tauri::{AppHandle, Manager};
+use tauri_plugin_dialog::DialogExt;
 use trackmesh_core::{
     default_data_directory, observe_firewall, observe_network, peer::PeerRuntime,
     peer_connection_state, port_observation_status, Engine, FirewallObservation, MailboxRuntime,
@@ -64,6 +65,10 @@ pub enum Action {
     Join {
         folder: PathBuf,
     },
+    CompleteInviteLink {
+        supabase_url: String,
+        supabase_anon_key: String,
+    },
     Pair {
         project_id: Uuid,
     },
@@ -75,6 +80,9 @@ pub enum Action {
         project_id: Uuid,
         public_ip: Option<String>,
         external_port: Option<u16>,
+    },
+    CopyInviteLink {
+        project_id: Uuid,
     },
     ExportCard,
     OpenPairing {
@@ -123,12 +131,13 @@ pub enum Action {
 impl Action {
     fn project(&self) -> Option<Uuid> {
         match self {
-            Self::Join { .. } | Self::ExportCard => None,
+            Self::Join { .. } | Self::CompleteInviteLink { .. } | Self::ExportCard => None,
             Self::Link { project_id, .. }
             | Self::SetProjectBackend { project_id, .. }
             | Self::Pair { project_id }
             | Self::Revoke { project_id, .. }
             | Self::ExportInvite { project_id, .. }
+            | Self::CopyInviteLink { project_id }
             | Self::OpenPairing { project_id }
             | Self::ClosePairing { project_id }
             | Self::ApprovePairing { project_id, .. }
@@ -147,9 +156,11 @@ impl Action {
             Self::Link { .. } => "Link folder",
             Self::SetProjectBackend { .. } => "Save project backend",
             Self::Join { .. } => "Accept invitation and request pairing",
+            Self::CompleteInviteLink { .. } => "Accept invite link",
             Self::Pair { .. } => "Complete pairing",
             Self::Revoke { .. } => "Revoke device",
             Self::ExportInvite { .. } => "Export invitation",
+            Self::CopyInviteLink { .. } => "Copy invite link",
             Self::ExportCard => "Save pairing reply",
             Self::OpenPairing { .. } => "Open pairing window",
             Self::ClosePairing { .. } => "Close pairing window",
@@ -222,6 +233,7 @@ pub struct DesktopStatus {
     pub checks: Vec<CheckView>,
     pub project_backends: HashMap<Uuid, ProjectBackendConfig>,
     pub supabase_states: HashMap<Uuid, SupabaseProjectState>,
+    pub invite_pending: bool,
 }
 
 struct Checked {
@@ -251,6 +263,12 @@ struct Session {
     closing: bool,
     closed: bool,
     error: Option<String>,
+    pending_invite: Option<PendingInviteLink>,
+}
+
+struct PendingInviteLink {
+    id: String,
+    key: zeroize::Zeroizing<[u8; 32]>,
 }
 
 pub struct Desktop {
@@ -567,6 +585,7 @@ impl Desktop {
             checks,
             project_backends,
             supabase_states,
+            invite_pending: state.pending_invite.is_some(),
         })
     }
 
@@ -675,6 +694,63 @@ impl Desktop {
                 self.automatic_pairing(&engine, &network, project, device, true)
                     .await
             }
+            Action::CompleteInviteLink {
+                supabase_url,
+                supabase_anon_key,
+            } => {
+                let (id, key) = {
+                    let state = self.lock()?;
+                    let pending = state
+                        .pending_invite
+                        .as_ref()
+                        .context("No invitation link is waiting")?;
+                    (pending.id.clone(), pending.key.clone())
+                };
+                let folder = tauri::async_runtime::spawn_blocking(move || {
+                    app.dialog()
+                        .file()
+                        .blocking_pick_folder()
+                        .map(|path| path.into_path())
+                        .transpose()
+                        .map_err(|_| anyhow::anyhow!("Folder selection failed"))?
+                        .context("Choose a destination folder")
+                })
+                .await??;
+                let downloaded = mailbox::SupabaseClient::consume_invite_drop(
+                    &supabase_url,
+                    &supabase_anon_key,
+                    &id,
+                )
+                .await
+                .map_err(|_| anyhow::anyhow!("Invite link is invalid, expired, or unavailable"))?;
+                if let Ok(mut state) = self.lock() {
+                    state.pending_invite = None;
+                }
+                let ciphertext = zeroize::Zeroizing::new(downloaded.ciphertext);
+                let mut invite =
+                    crypto::decrypt_invite_drop(&id, &downloaded.expires_at, &ciphertext, &key)
+                        .map_err(|_| {
+                            anyhow::anyhow!("Invite link is invalid, expired, or unavailable")
+                        })?;
+                if crypto::verify_project_invite(&invite).is_err() {
+                    crypto::zeroize_project_invite(&mut invite);
+                    anyhow::bail!("Invite link is invalid, expired, or unavailable");
+                }
+                let project = invite.project_id;
+                let device = invite.device.device_id;
+                let disk = engine.clone();
+                tauri::async_runtime::spawn_blocking(move || disk.import_invite(invite, &folder))
+                    .await??;
+                let disk = engine.clone();
+                let namespaces =
+                    tauri::async_runtime::spawn_blocking(move || disk.namespaces()).await??;
+                network
+                    .reload(namespaces)
+                    .await
+                    .context("Invite accepted, but network reload failed; reopen desktop")?;
+                self.automatic_pairing(&engine, &network, project, device, true)
+                    .await
+            }
             Action::RequestPairing {
                 project_id,
                 device_id,
@@ -684,6 +760,73 @@ impl Desktop {
             }
             Action::Send { project_id } => {
                 serde_json::to_value(engine.send_snapshot(project_id, allow_http).await?)?
+            }
+            Action::CopyInviteLink { project_id } => {
+                let disk = engine.clone();
+                let config = tauri::async_runtime::spawn_blocking(move || {
+                    disk.project_backend_config(project_id)
+                })
+                .await??;
+                ensure!(
+                    config.backend == ProjectBackend::Supabase,
+                    "Select and save Supabase for this project before creating an invite link"
+                );
+                let url = config.supabase_url.context("Supabase is not configured")?;
+                let anon_key = config
+                    .supabase_anon_key
+                    .context("Supabase is not configured")?;
+                let addresses = advertised_addresses(&network);
+                let disk = engine.clone();
+                let mut invite = tauri::async_runtime::spawn_blocking(move || {
+                    disk.export_invite(project_id, addresses)
+                })
+                .await??;
+                let sealed_result = crypto::encrypt_invite_drop(&invite);
+                crypto::zeroize_project_invite(&mut invite);
+                let sealed = sealed_result?;
+                let client = mailbox::SupabaseClient::new(&url, &anon_key, project_id)?;
+                let accepted = client
+                    .create_invite_drop(
+                        &engine.identity,
+                        &sealed.id,
+                        &sealed.expires_at,
+                        &sealed.ciphertext,
+                    )
+                    .await
+                    .map_err(|_| anyhow::anyhow!("Invite link could not be created"))?;
+                ensure!(accepted, "Invite link could not be created");
+                let encoded_key = zeroize::Zeroizing::new(base64::Engine::encode(
+                    &base64::engine::general_purpose::URL_SAFE_NO_PAD,
+                    sealed.key.as_slice(),
+                ));
+                let link = zeroize::Zeroizing::new(format!(
+                    "trackmesh://invite/{}#{}",
+                    sealed.id,
+                    encoded_key.as_str(),
+                ));
+                let disk = engine.clone();
+                tauri::async_runtime::spawn_blocking(move || disk.open_pairing_window(project_id))
+                    .await??;
+                network
+                    .pairing_window(trackmesh_core::PAIRING_WINDOW)
+                    .await?;
+                let clipboard_value = zeroize::Zeroizing::new(link.to_string());
+                let sequence = tauri::async_runtime::spawn_blocking(move || {
+                    crate::clipboard::copy_invite_link(&clipboard_value)
+                })
+                .await??;
+                let cleanup_value = zeroize::Zeroizing::new(link.to_string());
+                let cleanup = tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(Duration::from_secs(60)).await;
+                    let _ = tauri::async_runtime::spawn_blocking(move || {
+                        crate::clipboard::clear_if_matches(&cleanup_value, sequence)
+                    })
+                    .await;
+                });
+                if let Ok(mut state) = self.lock() {
+                    state.tasks.push(cleanup);
+                }
+                json!({"message": "Invite link copied. Share it privately; it expires after 15 minutes and the clipboard clears after 60 seconds."})
             }
             Action::Publish { project_id } => {
                 serde_json::to_value(engine.publish_metadata(project_id, allow_http).await?)?
@@ -898,6 +1041,32 @@ impl Desktop {
                 let _ = window.unminimize();
                 let _ = window.set_focus();
             }
+        }
+    }
+    pub fn handle_invite_link(self: &Arc<Self>, app: AppHandle, value: String) {
+        self.reopen(&app);
+        let value = zeroize::Zeroizing::new(value);
+        let parsed = crate::uri::parse_invite_link(&value);
+        if let Ok(mut state) = self.lock() {
+            state.work_epoch = state.work_epoch.wrapping_add(1);
+            if let Ok((id, key)) = parsed {
+                if state.pending_invite.is_none() {
+                    state.pending_invite = Some(PendingInviteLink { id, key });
+                    return;
+                }
+            }
+            state.jobs.retain(|job| job.running);
+            state.jobs.push(Job {
+                job_id: Uuid::new_v4(),
+                project_id: None,
+                label: "Open invite link".to_owned(),
+                running: false,
+                outcome: None,
+                error: Some(
+                    "This invite link could not be opened. Open one link at a time and try again."
+                        .to_owned(),
+                ),
+            });
         }
     }
     async fn finish_close(&self, app: AppHandle) {

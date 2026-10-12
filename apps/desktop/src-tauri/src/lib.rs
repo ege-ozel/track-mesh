@@ -1,9 +1,11 @@
 //! Windows desktop adapter. Core owns project decisions; this adapter owns the window session.
 #[cfg(not(target_os = "windows"))]
 compile_error!("TrackMesh desktop MVP supports Windows only");
+mod clipboard;
 mod commands;
 mod documents;
 mod runtime;
+mod uri;
 
 use clap::Parser;
 use runtime::{Desktop, Options};
@@ -11,7 +13,8 @@ use std::sync::Arc;
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
 pub fn run() {
-    let options = Options::parse();
+    let startup_invite = std::env::args().find(|arg| uri::is_invite_link(arg));
+    let options = Options::parse_from(std::env::args().filter(|arg| !uri::is_invite_link(arg)));
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
         .with_ansi(false)
@@ -25,7 +28,10 @@ pub fn run() {
     let setup_desktop = desktop.clone();
     let application = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, args, _| {
-            if !args.iter().any(|arg| arg == "--plugin-owner") {
+            if let Some(link) = args.iter().find(|arg| uri::is_invite_link(arg)) {
+                app.state::<Arc<Desktop>>()
+                    .handle_invite_link(app.clone(), link.clone());
+            } else if !args.iter().any(|arg| arg == "--plugin-owner") {
                 app.state::<Arc<Desktop>>().reopen(app);
             }
         }))
@@ -39,6 +45,7 @@ pub fn run() {
             commands::close_app
         ])
         .setup(move |app| {
+            uri::register_protocol()?;
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title("TRACKMESH")
                 .inner_size(1180.0, 820.0)
@@ -51,6 +58,9 @@ pub fn run() {
                 })
                 .build()?;
             setup_desktop.start(app.handle().clone());
+            if let Some(link) = startup_invite.clone() {
+                setup_desktop.handle_invite_link(app.handle().clone(), link);
+            }
             Ok(())
         })
         .on_window_event(|window, event| {

@@ -71,7 +71,9 @@ function ConnectionSetup({ status, projectId, busy, act }: { status: DesktopStat
     {valid && <div className="connection-addresses"><code>/ip4/{publicIp}/tcp/{port}</code><code>/ip4/{publicIp}/udp/{port}/quic-v1</code></div>}
     <p>Router port forwarding: TCP {validPort ? port : 'PORT'} → this PC, local port {status.listen_port}; UDP {validPort ? port : 'PORT'} → this PC, local port {status.listen_port}. In Windows Firewall, allow TrackMesh inbound TCP {status.listen_port} and UDP {status.listen_port} on the active network profile. No firewall or router rules are changed automatically.</p>
     <p>Keep TrackMesh open, configure forwarding and firewall, then export. The generated public endpoints are included in this invitation only; these fields are not saved or advertised by the running swarm. Re-export and privately exchange a new invitation if the public IP changes.</p>
-    <button disabled={busy || !valid} onClick={() => act({ kind: 'export_invite', project_id: projectId, public_ip: publicIp, external_port: Number(port) })}>Export invitation with public addresses</button>
+    <button disabled={busy || !valid} onClick={() => act({ kind: 'export_invite', project_id: projectId, public_ip: publicIp, external_port: Number(port) })}>Save invitation file with public addresses</button>
+    <button disabled={busy || status.project_backends[projectId]?.backend !== 'SUPABASE' || !['CLAIMED', 'MEMBER'].includes(status.supabase_states[projectId] ?? '')} onClick={() => act({ kind: 'copy_invite_link', project_id: projectId })}>Copy invite link</button>
+    <p>Invite links expire after 15 minutes and can be opened once. The Windows clipboard is marked to exclude history and cloud sync, then cleared after 60 seconds if the link is still there. Share it privately. Invitation files remain available.</p>
     <details><summary>Current advertised / listen addresses</summary>{addresses.map(address => <code className="connection-address" key={address}>{address}</code>)}
       {status.configured_external_addresses.map(address => <code className="connection-address" key={`external-${address}`}>{address} (startup external address)</code>)}</details>
   </details>;
@@ -283,6 +285,8 @@ export default function App() {
   const [uuid, setUuid] = useState('');
   const [mailbox, setMailbox] = useState('');
   const [relay, setRelay] = useState('');
+  const [inviteServiceUrl, setInviteServiceUrl] = useState('');
+  const [inviteServiceKey, setInviteServiceKey] = useState('');
   const [jobStartedAt, setJobStartedAt] = useState<Record<string, number>>({});
   const polling = useRef(false);
   const mounted = useRef(true);
@@ -333,6 +337,12 @@ export default function App() {
     <main><header className="topbar"><div><div className="eyebrow">YOUR STUDIO, CONNECTED</div><h1>TRACKMESH</h1><p>Immutable snapshots. Trusted collaborators.</p></div>
       <div className="device"><span className={`status-dot ${status?.ready ? 'active' : ''}`} />{status?.device?.name ?? 'Starting device…'}<small>{short(status?.device?.device_id)}</small></div></header>
       {(error || status?.error || status?.network?.error) && <div className="notice danger" role="alert">{error || status?.error || status?.network?.error}</div>}
+      {status?.invite_pending && <section className="setup-panel"><h2>Accept invite link</h2>
+        <p>The link and its decryption key stay in the native app. Enter the sender’s Supabase Project URL and publishable/anon key to retrieve it, then choose a destination folder.</p>
+        <label>Supabase Project URL<input autoComplete="off" value={inviteServiceUrl} onChange={event => setInviteServiceUrl(event.target.value)} placeholder="https://your-project.supabase.co" /></label>
+        <label>Publishable / anon key<input type="password" autoComplete="new-password" value={inviteServiceKey} onChange={event => setInviteServiceKey(event.target.value)} /></label>
+        <div className="actions"><button className="primary" disabled={busy || !inviteServiceUrl.trim() || !inviteServiceKey.trim()} onClick={() => void act({ kind: 'complete_invite_link', supabase_url: inviteServiceUrl.trim(), supabase_anon_key: inviteServiceKey.trim() })}>Choose folder and accept</button></div>
+      </section>}
       {status?.closing && <div className="notice">Work finished. TRACKMESH is shutting down safely.</div>}
       <div className="section-heading"><div><h2>Projects</h2><span className="muted">Project files travel between collaborator PCs.</span></div><div className="actions">
         <button disabled={busy} onClick={() => { setSetup('join'); setFolder(''); }}>Accept invitation</button>

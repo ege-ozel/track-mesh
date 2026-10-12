@@ -4,6 +4,10 @@ Henüz setup/MSI yok; Windows executable ile elle deneme yapıyoruz. Küçük bi
 
 **Aynı Wi-Fi üzerindeki iki bilgisayarla ilk deneme:** A ve B adımlarını tek sırada veren [tek belgeyi](AYNI-WIFI-DENEMESI.md) izleyin.
 
+## Davet dosyası veya tek kullanımlık link
+
+Gönderen, özel `ProjectInvite` dosyasını kaydedip mevcut dosya akışıyla paylaşabilir. Supabase projesi ayarlı ve durum `CLAIMED`/`MEMBER` olduğunda **Copy invite link** de kullanılabilir. Link 15 dakika geçerlidir, bir kez açılır; Windows uygulaması linki native olarak işler. Alıcıdan drop hizmetinin Supabase Project URL ve publishable/anon key'i istenir; davet çözüldükten sonra imzalı içerikteki proje backend ayarları otomatik kaydedilir. Pairing yine challenge/proof ve gönderenin açık onayı gerektirir. Linki yalnız özel kanaldan paylaşın; fragment anahtarı, davet dosyası ve payload'ı chat'e/agent'a/loglara yapıştırmayın. Supabase servisi deploy edilmemişse dosya daveti kullanılabilir.
+
 ## Önce kendi rolünü seç
 
 | Rol | Okunacak belge | Yapılacak işler |
@@ -62,7 +66,7 @@ TrackMesh Windows Desktop olarak çalışır; bu deneme için UI'ı tarayıcıya
 | Private rendezvous | Yapılandırılmış, erişilebilir ve yetkilendirilmiş servis üzerinden trusted cihazlar adres keşfi yapabilir. Repo desteği vardır; public deployment ve ağ değişimi entegrasyonu doğrulanmamıştır. |
 | Private relay | Direct yol kurulamadığında şifreli trafiğe geçiş noktası sağlar; iki uç yine online olmalı. Database kaydı NAT engelini tek başına aşmaz. |
 | Mailbox + servis SQLite | Şifreli snapshot duyurularını tutar; proje dosyaları ve offline eşleştirme istekleri için storage değildir. |
-| Supabase / başka merkezi database | Şu an entegre değildir. Güvenli cihaz yetkilendirmesi ve kayıt güncelleme akışı ayrıca tasarlanır; DB seçmek kendiliğinden keşif veya relay kurmaz. |
+| Supabase | M5d endpoint mailbox ve M6 encrypted invite drop yerel olarak entegredir; canlı deployment doğrulanmamıştır. Invite link direct bağlantı/relay sağlamaz. |
 
 Altyapı işletimi [PHASE3.md](../PHASE3.md) içinde; varsayılan trial'da hazır servis olmadan relay/mailbox alanını doldurmayın. Yeni peer'ın altyapıya ilk erişim yetkisi de operatör tarafından hazırlanmalıdır; uygulamadaki onay servis ACL'lerini otomatik güncellemez.
 

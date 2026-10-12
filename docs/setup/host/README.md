@@ -4,6 +4,10 @@ Bu rehber ilk denemede kaynak olan bilgisayar içindir. [Ortak sıra ve sorun gi
 
 Peer sen uygulamayı açınca kendiliğinden bildirim almaz. İlk seferde özel daveti import eder; davetten proje adını/UUID'sini, senin cihaz kimliğini ve bağlantı adreslerini öğrenip kendi `Collaborator` listesinde seni görür. Sonra sana bağlanır ve sen gelen cihaz isteğini onaylarsın. Yerelde adının görünmesi, online bağlantı ve dosyaların alınması ayrı durumlardır. [Keşif, panel, iki yön ve IP değişimi](../README.md) ortak rehberde açıklanır.
 
+## Davet gönderme seçenekleri
+
+Varsayılan dosya yolu: güncel adreslerle **Save invitation file with public addresses** seçin ve oluşan JSON dosyasını özel kanaldan gönderin. Supabase'i bu proje için yapılandırıp durum `CLAIMED` veya `MEMBER` olduktan sonra **Copy invite link** ile 15 dakikalık, tek kullanımlık link oluşturabilirsiniz. Alıcı linki açarken Supabase Project URL ve publishable/anon key'i de bilmelidir; link fragment'i ayrı ve gizli decryption key taşır. Clipboard linki history/cloud dışlama formatlarıyla işaretlenir ve 60 saniye sonra yalnız içeriği/sequence'i değişmediyse temizlenir. Bu işaretler screenshot veya üçüncü taraf clipboard yazılımını engellemez. Invite link deploy edilmiş Supabase gerektirir; dosya yöntemi çevrimdışı ve geriye dönük kullanılabilir.
+
 ## 1. Uygulamayı hazırla
 
 Windows x64 Desktop executable'ını güncel paketten aç. 2026-10-10 `TrackMesh-PeerTrial-ConnectionCheck-20261010.zip` paketi yeni Desktop bağlantı kontrolünü ve aynı Wi-Fi rehberini içerir. Varsayılan veri profili `%LOCALAPPDATA%\TrackMesh` olur; proje klasörünü bundan ayrı tut. Hazır paket varsa Rust/Node kurulumu gerekmez. Desktop WebView2 ister. İlk denemede küçük bir proje kopyası kullan. Bu makinedeki `target/release/trackmesh-desktop.exe` eski build olarak kaldı; onu güncel paketle karıştırma.

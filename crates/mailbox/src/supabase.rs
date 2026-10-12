@@ -9,7 +9,16 @@ use std::time::Duration;
 use uuid::Uuid;
 
 const MAX_REQUEST_BYTES: usize = 64 * 1024;
+const MAX_INVITE_REQUEST_BYTES: usize = 70 * 1024;
 const MAX_RESPONSE_BYTES: usize = 8 * 64 * 1024 + 4096;
+const MAX_INVITE_RESPONSE_BYTES: usize = 64 * 1024 + 1024;
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SupabaseInviteDrop {
+    pub ciphertext: String,
+    pub expires_at: String,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SupabaseError {
@@ -61,6 +70,82 @@ impl SupabaseClient {
             )
             .await?;
         Ok(response.accepted)
+    }
+
+    pub async fn create_invite_drop(
+        &self,
+        identity: &Identity,
+        id: &str,
+        expires_at: &str,
+        ciphertext: &str,
+    ) -> std::result::Result<bool, SupabaseError> {
+        let response: SupabaseAccepted = self
+            .post(
+                identity,
+                "invite-create",
+                &serde_json::json!({"id": id, "expires_at": expires_at, "ciphertext": ciphertext}),
+                4096,
+            )
+            .await?;
+        Ok(response.accepted)
+    }
+
+    pub async fn consume_invite_drop(
+        project_url: &str,
+        anon_key: &str,
+        id: &str,
+    ) -> std::result::Result<SupabaseInviteDrop, SupabaseError> {
+        let endpoint = async {
+            super::validate_supabase_project_url(project_url)
+                .map_err(|_| SupabaseError::Rejected)?;
+            if anon_key.is_empty()
+                || anon_key.len() > 2048
+                || anon_key.chars().any(char::is_control)
+            {
+                return Err(SupabaseError::Rejected);
+            }
+            if id.len() != 43
+                || !id
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+            {
+                return Err(SupabaseError::Rejected);
+            }
+            let project_url = Url::parse(project_url).map_err(|_| SupabaseError::Rejected)?;
+            let client = Client::builder()
+                .redirect(redirect::Policy::none())
+                .no_proxy()
+                .connect_timeout(Duration::from_secs(5))
+                .timeout(Duration::from_secs(20))
+                .user_agent("TrackMesh/1")
+                .build()
+                .map_err(|_| SupabaseError::Unavailable)?;
+            let mut endpoint = project_url;
+            endpoint.set_path("/functions/v1/invite-consume");
+            let response = client
+                .post(endpoint)
+                .header("apikey", anon_key)
+                .header("authorization", format!("Bearer {anon_key}"))
+                .header("content-type", "application/json")
+                .body(
+                    serde_json::to_vec(&serde_json::json!({"id": id}))
+                        .map_err(|_| SupabaseError::Unavailable)?,
+                )
+                .send()
+                .await
+                .map_err(|_| SupabaseError::Unavailable)?;
+            if response.status() == StatusCode::BAD_REQUEST {
+                return Err(SupabaseError::Rejected);
+            }
+            if !response.status().is_success() {
+                return Err(SupabaseError::Unavailable);
+            }
+            bounded_json(response, MAX_INVITE_RESPONSE_BYTES)
+                .await
+                .map_err(|_| SupabaseError::Unavailable)
+        }
+        .await;
+        endpoint
     }
 
     pub async fn grant(
@@ -162,7 +247,12 @@ impl SupabaseClient {
         response_limit: usize,
     ) -> std::result::Result<T, SupabaseError> {
         let body = serde_json::to_vec(body_value).map_err(|_| SupabaseError::Unavailable)?;
-        if body.len() > MAX_REQUEST_BYTES {
+        let body_limit = if operation == "invite-create" {
+            MAX_INVITE_REQUEST_BYTES
+        } else {
+            MAX_REQUEST_BYTES
+        };
+        if body.len() > body_limit {
             return Err(SupabaseError::Rejected);
         }
         let auth = identity

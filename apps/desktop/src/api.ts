@@ -66,18 +66,21 @@ export interface DesktopStatus {
   page: { projects: ProjectCard[]; offset: number; has_more: boolean } | null;
   jobs: Job[]; checks: CheckView[];
   project_backends: Record<string, ProjectBackendConfig>;
-  supabase_states: Record<string, 'NOT_CONFIGURED' | 'UNKNOWN' | 'CLAIMED' | 'MEMBER' | 'ROUTE_TAKEN' | 'UNREACHABLE'>;
+  supabase_states: Record<string, 'NOT_CONFIGURED' | 'UNKNOWN' | 'CLAIMED' | 'MEMBER' | 'ROUTE_TAKEN' | 'WAITING_FOR_GRANT' | 'UNREACHABLE'>;
+  invite_pending: boolean;
 }
 export type Action =
   | { kind: 'link'; project_id: string; name: string; folder: string; mailbox_url: string | null; relay_address: string | null }
   | { kind: 'set_project_backend'; project_id: string; backend: ProjectBackend; supabase_url: string | null; supabase_anon_key: string | null }
   | { kind: 'join'; folder: string }
+  | { kind: 'complete_invite_link'; supabase_url: string; supabase_anon_key: string }
   | { kind: 'export_card' }
   | { kind: 'open_pairing' | 'close_pairing'; project_id: string }
   | { kind: 'approve_pairing' | 'reject_pairing'; project_id: string; request_id: string }
   | { kind: 'request_pairing'; project_id: string; device_id: string }
   | { kind: 'pair' | 'send' | 'publish' | 'refresh'; project_id: string }
   | { kind: 'export_invite'; project_id: string; public_ip?: string | null; external_port?: number | null }
+  | { kind: 'copy_invite_link'; project_id: string }
   | { kind: 'revoke' | 'check'; project_id: string; device_id: string }
   | { kind: 'receive'; project_id: string; device_id: string; snapshot_id: string | null; daw_closed: boolean }
   | { kind: 'recover'; project_id: string; daw_closed: boolean };

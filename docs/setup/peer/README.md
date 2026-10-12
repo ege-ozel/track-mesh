@@ -6,6 +6,10 @@ Bu rehber arkadaşın/alıcı bilgisayar içindir. [Ortak sıra ve sorun giderme
 
 A'nın uygulamayı açması sana bildirim göndermez. Daveti import edince proje adını/UUID'sini ve A'nın imzalı cihaz kimliğini yerelde görürsün; uygulama davetteki adreslere bağlanır. A'nın listede görünmesi, online olması ve Receive'in bitmesi ayrı durumlardır. [Ortak rehber](../README.md) panel, IP değişimi ve database/relay sınırlarını açıklar.
 
+## Davet dosyası veya tek kullanımlık link
+
+Gönderenin size JSON davet dosyası vermesi hâlâ desteklenir; Desktop'ta **Accept invitation** akışından import edin. `trackmesh://invite/...#...` linki geldiyse Windows'ta TrackMesh ile açın. Link ve fragment anahtarı native uygulamada kalır. Blob'u indirmek için gönderenin Supabase Project URL ve publishable/anon key'ini girin; ardından boş hedef klasörünü seçin. Decrypt/import sonrası aynı otomatik challenge/proof pairing isteği gönderilir ve gönderenin açık **Approve device** onayı gerekir. ID'yi tek başına tüketmek mümkün olduğundan linki özel kanalda paylaşın; link kullanılamaz veya süresi dolmuşsa gönderenden yeni link isteyin. Link için Supabase'in deploy edilmiş olması gerekir.
+
 ## 1. Paketi ve hedef klasörü hazırla
 
 - [ ] A'dan iki dosya al: **`TrackMesh-PeerTrial-ConnectionCheck-20261010.zip`** ve **ayrı özel davet `.json` dosyası**. Eski `20261009` paketinde Desktop bağlantı kontrol paneli yoktur; `20261007` build'i otomatik eşleştirme desteklemez.

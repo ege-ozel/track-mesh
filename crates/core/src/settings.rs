@@ -30,6 +30,7 @@ pub enum SupabaseProjectState {
     Claimed,
     Member,
     RouteTaken,
+    WaitingForGrant,
     Unreachable,
 }
 

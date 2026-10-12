@@ -6306,6 +6306,7 @@ dependencies = [
  "uuid",
  "windows",
  "windows-sys 0.61.2",
+ "zeroize",
 ]
 
 [[package]]
@@ -6333,6 +6334,7 @@ name = "trackmesh-desktop"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "clap",
  "serde",
  "serde_json",
@@ -6344,9 +6346,13 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "trackmesh-core",
+ "trackmesh-crypto",
+ "trackmesh-mailbox",
  "trackmesh-network",
  "trackmesh-protocol",
  "uuid",
+ "windows-sys 0.61.2",
+ "zeroize",
 ]
 
 [[package]]
