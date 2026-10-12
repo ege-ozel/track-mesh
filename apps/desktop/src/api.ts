@@ -28,6 +28,7 @@ export interface ProjectBackendConfig {
   supabase_url: string | null;
   supabase_anon_key: string | null;
 }
+export interface SupabaseDefaultConfig { url: string; publishable_key: string }
 export interface Connection { online: boolean; route: 'DIRECT' | 'RELAYED' | 'OFFLINE'; transport: string }
 export interface FirewallObservation {
   state: string;
@@ -66,14 +67,16 @@ export interface DesktopStatus {
   page: { projects: ProjectCard[]; offset: number; has_more: boolean } | null;
   jobs: Job[]; checks: CheckView[];
   project_backends: Record<string, ProjectBackendConfig>;
+  default_supabase: SupabaseDefaultConfig | null;
   supabase_states: Record<string, 'NOT_CONFIGURED' | 'UNKNOWN' | 'CLAIMED' | 'MEMBER' | 'ROUTE_TAKEN' | 'WAITING_FOR_GRANT' | 'UNREACHABLE'>;
   invite_pending: boolean;
 }
 export type Action =
   | { kind: 'link'; project_id: string; name: string; folder: string; mailbox_url: string | null; relay_address: string | null }
   | { kind: 'set_project_backend'; project_id: string; backend: ProjectBackend; supabase_url: string | null; supabase_anon_key: string | null }
+  | { kind: 'set_default_supabase'; url: string | null; publishable_key: string | null }
   | { kind: 'join'; folder: string }
-  | { kind: 'complete_invite_link'; supabase_url: string; supabase_anon_key: string }
+  | { kind: 'complete_invite_link'; supabase_url?: string; supabase_anon_key?: string }
   | { kind: 'export_card' }
   | { kind: 'open_pairing' | 'close_pairing'; project_id: string }
   | { kind: 'approve_pairing' | 'reject_pairing'; project_id: string; request_id: string }

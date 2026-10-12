@@ -38,6 +38,27 @@ const AUTH_FIELDS = [
 ];
 
 export class RejectedRequest extends Error {}
+class BackendConfigurationError extends Error {}
+
+function serviceSecretKey(): string {
+  const source = Deno.env.get("SUPABASE_SECRET_KEYS");
+  let keys: unknown;
+  try {
+    keys = source ? JSON.parse(source) : null;
+  } catch {
+    throw new BackendConfigurationError();
+  }
+  if (typeof keys !== "object" || keys === null || Array.isArray(keys)) {
+    throw new BackendConfigurationError();
+  }
+  const key = (keys as Record<string, unknown>).default;
+  if (
+    typeof key !== "string" || !key.startsWith("sb_secret_") ||
+    key.length < "sb_secret_".length + 16 || key.length > 256 ||
+    !/^[A-Za-z0-9_-]+$/.test(key)
+  ) throw new BackendConfigurationError();
+  return key;
+}
 
 export function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -269,8 +290,8 @@ export async function dispatch(
   auth: Auth,
 ): Promise<unknown> {
   const projectUrl = Deno.env.get("SUPABASE_URL");
-  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!projectUrl || !serviceRoleKey) throw new Error("backend unavailable");
+  const secretKey = serviceSecretKey();
+  if (!projectUrl) throw new Error("backend unavailable");
 
   let response: Response;
   const rpcName = operation === "invite-create"
@@ -304,8 +325,7 @@ export async function dispatch(
       {
         method: "POST",
         headers: {
-          apikey: serviceRoleKey,
-          authorization: "Bearer " + serviceRoleKey,
+          apikey: secretKey,
           "content-type": "application/json",
         },
         signal: AbortSignal.timeout(10_000),
@@ -354,6 +374,9 @@ export function handler(
     } catch (error) {
       if (error instanceof RejectedRequest) {
         return jsonResponse({ error: "request rejected" }, 400);
+      }
+      if (error instanceof BackendConfigurationError) {
+        return jsonResponse({ error: "service unavailable" }, 500);
       }
       return jsonResponse({ error: "service unavailable" }, 503);
     }

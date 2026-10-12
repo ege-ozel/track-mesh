@@ -42,6 +42,22 @@ pub struct ProjectBackendConfig {
     pub supabase_anon_key: Option<String>,
 }
 
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SupabaseDefaultConfig {
+    pub url: String,
+    pub publishable_key: String,
+}
+
+fn compiled_default_supabase() -> Option<SupabaseDefaultConfig> {
+    let url = option_env!("TRACKMESH_DEFAULT_SUPABASE_URL")?;
+    let publishable_key = option_env!("TRACKMESH_DEFAULT_SUPABASE_PUBLISHABLE_KEY")?;
+    Some(SupabaseDefaultConfig {
+        url: url.to_owned(),
+        publishable_key: publishable_key.to_owned(),
+    })
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PendingGrant {
@@ -62,6 +78,8 @@ pub(super) struct Settings {
     pub actor_sequences: HashMap<Uuid, u64>,
     #[serde(default)]
     pub pending_grants: Vec<PendingGrant>,
+    #[serde(default = "compiled_default_supabase")]
+    pub default_supabase: Option<SupabaseDefaultConfig>,
 }
 
 impl Default for Settings {
@@ -72,6 +90,7 @@ impl Default for Settings {
             project_backends: HashMap::new(),
             actor_sequences: HashMap::new(),
             pending_grants: Vec::new(),
+            default_supabase: compiled_default_supabase(),
         }
     }
 }
@@ -143,6 +162,16 @@ impl SettingsState {
     ) -> Result<()> {
         let mut candidate = self.value.clone();
         candidate.project_backends.insert(project, config);
+        self.commit(directory, candidate)
+    }
+
+    pub fn set_default_supabase(
+        &mut self,
+        directory: &Path,
+        config: Option<SupabaseDefaultConfig>,
+    ) -> Result<()> {
+        let mut candidate = self.value.clone();
+        candidate.default_supabase = config;
         self.commit(directory, candidate)
     }
 

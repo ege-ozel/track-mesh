@@ -4,7 +4,6 @@ create table public.invite_drops (
   id text primary key check (id ~ '^[A-Za-z0-9_-]{43}$'),
   ciphertext text not null check (octet_length(ciphertext) < 65536 and ciphertext ~ '^[A-Za-z0-9_-]+$'),
   expires_at timestamptz not null,
-  consumed boolean not null default false,
   created_at timestamptz not null default clock_timestamp()
 );
 create index invite_drops_expiry on public.invite_drops (expires_at);
@@ -120,8 +119,8 @@ begin
   if not public.trackmesh_invite_rate_limit('invite-consume-global','all-projects',300)
     or not public.trackmesh_invite_rate_limit('invite-consume-id',p_id,10)
   then return jsonb_build_object('accepted',false); end if;
-  update public.invite_drops set consumed=true
-    where id=p_id and consumed=false and expires_at>clock_timestamp()
+  delete from public.invite_drops
+    where id=p_id and expires_at>clock_timestamp()
     returning * into v_drop;
   if not found then return jsonb_build_object('accepted',false); end if;
   return jsonb_build_object('accepted',true,'ciphertext',v_drop.ciphertext,

@@ -24,7 +24,9 @@ mod mailbox;
 pub use connection::public_ipv4_addresses;
 pub mod peer;
 pub use mailbox::{MailboxRuntime, PublicationStatus, RefreshStatus};
-pub use settings::{PendingGrant, ProjectBackend, ProjectBackendConfig, SupabaseProjectState};
+pub use settings::{
+    PendingGrant, ProjectBackend, ProjectBackendConfig, SupabaseDefaultConfig, SupabaseProjectState,
+};
 pub use supabase::SupabaseRuntime;
 mod workflows;
 pub use workflows::{
@@ -142,10 +144,7 @@ impl Engine {
                 let url = config.supabase_url.as_deref().unwrap_or_default();
                 let key = config.supabase_anon_key.as_deref().unwrap_or_default();
                 ::mailbox::validate_supabase_project_url(url)?;
-                ensure!(
-                    !key.is_empty() && key.len() <= 2048 && !key.chars().any(char::is_control),
-                    "invalid Supabase publishable key"
-                );
+                ::mailbox::validate_supabase_publishable_key(key)?;
             }
             ProjectBackend::None | ProjectBackend::SelfHostedMailbox => ensure!(
                 config.supabase_url.is_none() && config.supabase_anon_key.is_none(),
@@ -176,6 +175,32 @@ impl Engine {
             }
         }
         Ok(())
+    }
+
+    pub fn default_supabase_config(&self) -> Result<Option<SupabaseDefaultConfig>> {
+        let config = self
+            .settings
+            .lock()
+            .map_err(|_| anyhow::anyhow!("settings lock poisoned"))?
+            .value
+            .default_supabase
+            .clone();
+        if let Some(config) = &config {
+            ::mailbox::validate_supabase_project_url(&config.url)?;
+            ::mailbox::validate_supabase_publishable_key(&config.publishable_key)?;
+        }
+        Ok(config)
+    }
+
+    pub fn set_default_supabase_config(&self, config: Option<SupabaseDefaultConfig>) -> Result<()> {
+        if let Some(config) = &config {
+            ::mailbox::validate_supabase_project_url(&config.url)?;
+            ::mailbox::validate_supabase_publishable_key(&config.publishable_key)?;
+        }
+        self.settings
+            .lock()
+            .map_err(|_| anyhow::anyhow!("settings lock poisoned"))?
+            .set_default_supabase(&self.directory, config)
     }
 
     pub(crate) fn queue_supabase_grant(
@@ -341,12 +366,7 @@ impl Engine {
                 match info.backend {
                     protocol::InviteBackend::Supabase => {
                         ::mailbox::validate_supabase_project_url(&info.supabase_url)?;
-                        ensure!(
-                            !info.supabase_anon_key.is_empty()
-                                && info.supabase_anon_key.len() <= 2048
-                                && !info.supabase_anon_key.chars().any(char::is_control),
-                            "invalid Supabase publishable key"
-                        );
+                        ::mailbox::validate_supabase_publishable_key(&info.supabase_anon_key)?;
                     }
                 }
             }

@@ -18,7 +18,7 @@ use trackmesh_core::{
     peer_connection_state, port_observation_status, Engine, FirewallObservation, MailboxRuntime,
     NetworkObservation, PairingStatus, PeerCheck, PeerConnectionState, PluginRuntime,
     PortObservationStatus, ProjectBackend, ProjectBackendConfig, SessionGrace, SummaryPage,
-    SupabaseProjectState,
+    SupabaseDefaultConfig, SupabaseProjectState,
 };
 use uuid::Uuid;
 
@@ -62,12 +62,16 @@ pub enum Action {
         supabase_url: Option<String>,
         supabase_anon_key: Option<String>,
     },
+    SetDefaultSupabase {
+        url: Option<String>,
+        publishable_key: Option<String>,
+    },
     Join {
         folder: PathBuf,
     },
     CompleteInviteLink {
-        supabase_url: String,
-        supabase_anon_key: String,
+        supabase_url: Option<String>,
+        supabase_anon_key: Option<String>,
     },
     Pair {
         project_id: Uuid,
@@ -131,7 +135,10 @@ pub enum Action {
 impl Action {
     fn project(&self) -> Option<Uuid> {
         match self {
-            Self::Join { .. } | Self::CompleteInviteLink { .. } | Self::ExportCard => None,
+            Self::Join { .. }
+            | Self::CompleteInviteLink { .. }
+            | Self::SetDefaultSupabase { .. }
+            | Self::ExportCard => None,
             Self::Link { project_id, .. }
             | Self::SetProjectBackend { project_id, .. }
             | Self::Pair { project_id }
@@ -155,6 +162,7 @@ impl Action {
         match self {
             Self::Link { .. } => "Link folder",
             Self::SetProjectBackend { .. } => "Save project backend",
+            Self::SetDefaultSupabase { .. } => "Save default Supabase settings",
             Self::Join { .. } => "Accept invitation and request pairing",
             Self::CompleteInviteLink { .. } => "Accept invite link",
             Self::Pair { .. } => "Complete pairing",
@@ -232,6 +240,7 @@ pub struct DesktopStatus {
     pub jobs: Vec<Job>,
     pub checks: Vec<CheckView>,
     pub project_backends: HashMap<Uuid, ProjectBackendConfig>,
+    pub default_supabase: Option<SupabaseDefaultConfig>,
     pub supabase_states: HashMap<Uuid, SupabaseProjectState>,
     pub invite_pending: bool,
 }
@@ -445,7 +454,7 @@ impl Desktop {
         let data_directory = engine
             .as_ref()
             .map(|engine| engine.directory.display().to_string());
-        let (page, pairing, project_backends) = match engine {
+        let (page, pairing, project_backends, default_supabase) = match engine {
             Some(engine) => {
                 tauri::async_runtime::spawn_blocking(move || -> Result<_> {
                     let page = engine.summary_page(offset)?;
@@ -459,11 +468,17 @@ impl Desktop {
                             ))
                         })
                         .collect::<Result<HashMap<_, _>>>()?;
-                    Ok((Some(page), engine.pairing_status()?, project_backends))
+                    let default_supabase = engine.default_supabase_config()?;
+                    Ok((
+                        Some(page),
+                        engine.pairing_status()?,
+                        project_backends,
+                        default_supabase,
+                    ))
                 })
                 .await??
             }
-            None => (None, PairingStatus::default(), HashMap::new()),
+            None => (None, PairingStatus::default(), HashMap::new(), None),
         };
         let state_engine = { self.lock()?.engine.clone() };
         let supabase_states = match state_engine {
@@ -584,6 +599,7 @@ impl Desktop {
             jobs: state.jobs.clone(),
             checks,
             project_backends,
+            default_supabase,
             supabase_states,
             invite_pending: state.pending_invite.is_some(),
         })
@@ -706,6 +722,27 @@ impl Desktop {
                         .context("No invitation link is waiting")?;
                     (pending.id.clone(), pending.key.clone())
                 };
+                let disk = engine.clone();
+                let configured =
+                    tauri::async_runtime::spawn_blocking(move || disk.default_supabase_config())
+                        .await??;
+                let config = match configured {
+                    Some(config) => config,
+                    None => {
+                        let config = SupabaseDefaultConfig {
+                            url: supabase_url.context("Enter the Supabase Project URL")?,
+                            publishable_key: supabase_anon_key
+                                .context("Enter the Supabase publishable key")?,
+                        };
+                        let disk = engine.clone();
+                        let saved = config.clone();
+                        tauri::async_runtime::spawn_blocking(move || {
+                            disk.set_default_supabase_config(Some(saved))
+                        })
+                        .await??;
+                        config
+                    }
+                };
                 let folder = tauri::async_runtime::spawn_blocking(move || {
                     app.dialog()
                         .file()
@@ -717,8 +754,8 @@ impl Desktop {
                 })
                 .await??;
                 let downloaded = mailbox::SupabaseClient::consume_invite_drop(
-                    &supabase_url,
-                    &supabase_anon_key,
+                    &config.url,
+                    &config.publishable_key,
                     &id,
                 )
                 .await
@@ -917,6 +954,15 @@ impl Desktop {
                         Action::SetProjectBackend { project_id, backend, supabase_url, supabase_anon_key } => {
                             disk.set_project_backend_config(project_id, ProjectBackendConfig { backend, supabase_url, supabase_anon_key })?;
                             Ok(json!({"message": "Project backend settings saved"}))
+                        }
+                        Action::SetDefaultSupabase { url, publishable_key } => {
+                            let config = match (url, publishable_key) {
+                                (None, None) => None,
+                                (Some(url), Some(publishable_key)) => Some(SupabaseDefaultConfig { url, publishable_key }),
+                                _ => anyhow::bail!("Enter both the Supabase Project URL and publishable key"),
+                            };
+                            disk.set_default_supabase_config(config)?;
+                            Ok(json!({"message": "Default Supabase settings saved"}))
                         }
                         Action::OpenPairing { project_id } => {
                             disk.open_pairing_window(project_id)?;

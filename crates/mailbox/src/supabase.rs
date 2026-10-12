@@ -13,6 +13,23 @@ const MAX_INVITE_REQUEST_BYTES: usize = 70 * 1024;
 const MAX_RESPONSE_BYTES: usize = 8 * 64 * 1024 + 4096;
 const MAX_INVITE_RESPONSE_BYTES: usize = 64 * 1024 + 1024;
 
+pub fn validate_supabase_publishable_key(key: &str) -> Result<()> {
+    ensure!(
+        key.starts_with("sb_publishable_")
+            && (key.len() - "sb_publishable_".len()) >= 16
+            && key.len() <= 256
+            && key
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-'),
+        if key.starts_with("sb_secret_") {
+            "secret key istemciye girilmez"
+        } else {
+            "invalid Supabase publishable key"
+        }
+    );
+    Ok(())
+}
+
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SupabaseInviteDrop {
@@ -38,12 +55,7 @@ impl SupabaseClient {
         protocol::require_protocol(protocol::PROTOCOL_VERSION)?;
         ensure!(!project.is_nil(), "Supabase route cannot be nil");
         super::validate_supabase_project_url(project_url)?;
-        ensure!(
-            !anon_key.is_empty()
-                && anon_key.len() <= 2048
-                && !anon_key.chars().any(char::is_control),
-            "invalid Supabase publishable key"
-        );
+        super::validate_supabase_publishable_key(anon_key)?;
         let project_url = Url::parse(project_url)?;
         let client = Client::builder()
             .redirect(redirect::Policy::none())
@@ -98,10 +110,7 @@ impl SupabaseClient {
         let endpoint = async {
             super::validate_supabase_project_url(project_url)
                 .map_err(|_| SupabaseError::Rejected)?;
-            if anon_key.is_empty()
-                || anon_key.len() > 2048
-                || anon_key.chars().any(char::is_control)
-            {
+            if super::validate_supabase_publishable_key(anon_key).is_err() {
                 return Err(SupabaseError::Rejected);
             }
             if id.len() != 43
@@ -125,7 +134,6 @@ impl SupabaseClient {
             let response = client
                 .post(endpoint)
                 .header("apikey", anon_key)
-                .header("authorization", format!("Bearer {anon_key}"))
                 .header("content-type", "application/json")
                 .body(
                     serde_json::to_vec(&serde_json::json!({"id": id}))
@@ -269,7 +277,6 @@ impl SupabaseClient {
             .client
             .post(endpoint)
             .header("apikey", &self.anon_key)
-            .header("authorization", format!("Bearer {}", self.anon_key))
             .header("x-trackmesh-auth", auth)
             .header("content-type", "application/json")
             .body(body)

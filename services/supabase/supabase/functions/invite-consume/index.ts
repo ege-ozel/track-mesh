@@ -15,18 +15,32 @@ Deno.serve(async (request) => {
     requireFields(body, ["id"]);
     const id = requireInviteId(body.id);
     const projectUrl = Deno.env.get("SUPABASE_URL");
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    if (!projectUrl || !serviceRoleKey) {
-      return jsonResponse({ error: "service unavailable" }, 503);
+    const secretsSource = Deno.env.get("SUPABASE_SECRET_KEYS");
+    let secrets: unknown;
+    try {
+      secrets = secretsSource ? JSON.parse(secretsSource) : null;
+    } catch {
+      return jsonResponse({ error: "service unavailable" }, 500);
     }
+    const serviceSecretKey =
+      typeof secrets === "object" && secrets !== null && !Array.isArray(secrets)
+        ? (secrets as Record<string, unknown>).default
+        : null;
+    if (
+      typeof serviceSecretKey !== "string" ||
+      !serviceSecretKey.startsWith("sb_secret_") ||
+      serviceSecretKey.length < "sb_secret_".length + 16 ||
+      serviceSecretKey.length > 256 ||
+      !/^[A-Za-z0-9_-]+$/.test(serviceSecretKey)
+    ) return jsonResponse({ error: "service unavailable" }, 500);
+    if (!projectUrl) return jsonResponse({ error: "service unavailable" }, 503);
     const response = await fetch(
       projectUrl.replace(/\/$/, "") +
         "/rest/v1/rpc/trackmesh_invite_consume",
       {
         method: "POST",
         headers: {
-          apikey: serviceRoleKey,
-          authorization: "Bearer " + serviceRoleKey,
+          apikey: serviceSecretKey,
           "content-type": "application/json",
         },
         body: JSON.stringify({ p_id: id }),
