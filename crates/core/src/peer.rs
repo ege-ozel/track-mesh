@@ -8,7 +8,7 @@ use std::{
     net::{IpAddr, Ipv4Addr},
     sync::{
         atomic::{AtomicU64, AtomicUsize, Ordering},
-        Arc,
+        Arc, RwLock,
     },
     time::Duration,
 };
@@ -22,7 +22,10 @@ pub struct PeerRuntime {
     // Windows closes this exclusive handle only after this runtime is drained.
     _lease: Arc<std::fs::File>,
     activity: Arc<ResponderActivity>,
-    mapping: Option<PortMappingRuntime>,
+    mapping_task: Option<(tokio::sync::watch::Sender<bool>, JoinHandle<()>)>,
+    observation: Arc<RwLock<crate::NetworkObservation>>,
+    monitor: Option<JoinHandle<()>>,
+    monitor_cancel: Option<tokio::sync::watch::Sender<bool>>,
 }
 #[derive(Default)]
 struct ResponderActivity {
@@ -46,15 +49,104 @@ impl PeerRuntime {
         config.rendezvous = engine.namespaces()?;
         let (network, mut incoming, actor) =
             network::start(engine.identity.clone(), engine.store.clone(), config)?;
-        let mapping = if start_mapping {
+        let initial_target = upnp_target(&observation);
+        if start_mapping {
             network.set_mapping_consent(engine.upnp_mapping_enabled());
-            Some(PortMappingRuntime::start(
-                network.clone(),
-                upnp_target(&observation),
-                engine.identity.device_id.to_string(),
-            ))
+        }
+        let (mapping_updates, _) = tokio::sync::watch::channel((0u64, initial_target));
+        let mapping_task = if start_mapping {
+            let mut updates = mapping_updates.subscribe();
+            let network = network.clone();
+            let device_id = engine.identity.device_id.to_string();
+            let mut mapping =
+                PortMappingRuntime::start(network.clone(), initial_target, device_id.clone());
+            let (shutdown, mut shutdown_rx) = tokio::sync::watch::channel(false);
+            let task = tokio::spawn(async move {
+                loop {
+                    tokio::select! {
+                        _ = shutdown_rx.changed() => {
+                            mapping.stop(&network).await;
+                            return;
+                        }
+                        changed = updates.changed() => {
+                            if changed.is_err() { mapping.stop(&network).await; return; }
+                            mapping.stop_for_target_change(&network).await;
+                            if *shutdown_rx.borrow() { return; }
+                            let (_, target) = *updates.borrow_and_update();
+                            mapping = PortMappingRuntime::start(network.clone(), target, device_id.clone());
+                        }
+                    }
+                }
+            });
+            Some((shutdown, task))
         } else {
             None
+        };
+        let observation = Arc::new(RwLock::new(observation.clone()));
+        let (monitor_cancel, monitor) = if start_mapping {
+            let (cancel, mut cancelled) = tokio::sync::watch::channel(false);
+            let monitor_observation = observation.clone();
+            let monitor_network = network.clone();
+            let updates = mapping_updates;
+            let initial_observation = observation
+                .read()
+                .map(|value| value.clone())
+                .unwrap_or_default();
+            let monitor = tokio::spawn(async move {
+                let mut previous = observation_signature(&initial_observation);
+                let mut previous_listeners =
+                    listener_signature(&monitor_network.status().addresses);
+                let mut current_observation = initial_observation;
+                let mut generation = 0u64;
+                loop {
+                    tokio::select! {
+                        _ = cancelled.changed() => return,
+                        _ = tokio::time::sleep(Duration::from_secs(10)) => {}
+                    }
+                    let observed = match tokio::task::spawn_blocking(crate::observe_network).await {
+                        Ok(observed) => observed,
+                        Err(error) => {
+                            tracing::warn!(%error, "network observation worker failed");
+                            continue;
+                        }
+                    };
+                    let signature = observation_signature(&observed);
+                    let listeners = listener_signature(&monitor_network.status().addresses);
+                    let observation_changed = signature != previous;
+                    let listeners_changed = listeners != previous_listeners;
+                    if !observation_changed && !listeners_changed {
+                        continue;
+                    }
+                    if observation_changed {
+                        let notified = tokio::select! {
+                            _ = cancelled.changed() => return,
+                            result = tokio::time::timeout(Duration::from_secs(2), monitor_network.network_changed()) => result,
+                        };
+                        match notified {
+                            Ok(Ok(())) => {}
+                            Ok(Err(error)) => {
+                                tracing::debug!(%error, "network actor is unavailable for network-change notification");
+                                return;
+                            }
+                            Err(_) => {
+                                tracing::warn!("network-change command queue remained full; observation will be retried");
+                                continue;
+                            }
+                        }
+                        current_observation = observed.clone();
+                        if let Ok(mut current) = monitor_observation.write() {
+                            *current = observed.clone();
+                        }
+                    }
+                    generation = generation.wrapping_add(1);
+                    previous = signature;
+                    previous_listeners = listeners;
+                    let _ = updates.send((generation, upnp_target(&current_observation)));
+                }
+            });
+            (Some(cancel), Some(monitor))
+        } else {
+            (None, None)
         };
         // The lease outlives an accidentally dropped adapter handle as well.
         let actor_lease = lease.clone();
@@ -108,11 +200,20 @@ impl PeerRuntime {
             responder,
             _lease: lease,
             activity,
-            mapping,
+            observation,
+            monitor,
+            monitor_cancel,
+            mapping_task,
         })
     }
     pub fn is_finished(&self) -> bool {
         self.actor.is_finished()
+    }
+    pub fn network_observation(&self) -> crate::NetworkObservation {
+        self.observation
+            .read()
+            .map(|value| value.clone())
+            .unwrap_or_default()
     }
     pub fn idle_epoch(&self) -> Option<u64> {
         let epoch = self.activity.epoch.load(Ordering::SeqCst);
@@ -134,14 +235,73 @@ impl PeerRuntime {
         Ok(())
     }
     pub async fn stop(self) -> Result<()> {
-        if let Some(mapping) = self.mapping {
-            mapping.stop(&self.network).await;
+        if let Some(cancel) = self.monitor_cancel {
+            cancel.send_replace(true);
+        }
+        if let Some(mut monitor) = self.monitor {
+            if tokio::time::timeout(Duration::from_secs(15), &mut monitor)
+                .await
+                .is_err()
+            {
+                monitor.abort();
+                let _ = monitor.await;
+            }
+        }
+        if let Some((shutdown, task)) = self.mapping_task {
+            shutdown.send_replace(true);
+            let _ = tokio::time::timeout(Duration::from_secs(20), task).await;
         }
         self.network.shutdown().await;
         let actor = self.actor.await.context("network actor panicked")?;
         self.responder.await.context("peer responder panicked")??;
         actor
     }
+}
+
+type NetworkSignature = (Vec<(u32, Vec<Ipv4Addr>)>, Vec<(u32, Ipv4Addr)>);
+
+fn listener_signature(addresses: &[String]) -> Vec<String> {
+    let mut listeners = addresses
+        .iter()
+        .filter(|address| !address.contains("/p2p-circuit"))
+        .cloned()
+        .collect::<Vec<_>>();
+    listeners.sort();
+    listeners.dedup();
+    listeners
+}
+
+fn observation_signature(observation: &crate::NetworkObservation) -> NetworkSignature {
+    let mut interfaces = observation
+        .interfaces
+        .iter()
+        .map(|interface| {
+            let mut addresses = interface
+                .ipv4
+                .iter()
+                .filter_map(|address| address.parse::<Ipv4Addr>().ok())
+                .collect::<Vec<_>>();
+            addresses.sort_unstable();
+            addresses.dedup();
+            (interface.interface_index, addresses)
+        })
+        .collect::<Vec<_>>();
+    interfaces.sort_unstable();
+    interfaces.dedup();
+    let mut gateways = observation
+        .default_gateways
+        .iter()
+        .filter_map(|gateway| {
+            gateway
+                .address
+                .parse::<Ipv4Addr>()
+                .ok()
+                .map(|address| (gateway.interface_index, address))
+        })
+        .collect::<Vec<_>>();
+    gateways.sort_unstable();
+    gateways.dedup();
+    (interfaces, gateways)
 }
 
 fn upnp_target(observation: &crate::NetworkObservation) -> Option<UpnpTarget> {
@@ -162,7 +322,11 @@ fn upnp_target(observation: &crate::NetworkObservation) -> Option<UpnpTarget> {
         .filter_map(|value| value.parse::<Ipv4Addr>().ok())
         .filter(|ip| {
             !ip.is_unspecified() && !ip.is_loopback() && !ip.is_link_local() && !ip.is_multicast()
-        });
+        })
+        .collect::<Vec<_>>();
+    addresses.sort_unstable();
+    addresses.dedup();
+    let mut addresses = addresses.into_iter();
     let local = addresses.next()?;
     addresses
         .next()

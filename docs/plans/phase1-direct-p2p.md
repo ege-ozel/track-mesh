@@ -39,7 +39,7 @@ M0 web incelemesi crate metadata'sı, docs.rs belgeleri/kaynakları, upstream de
 | Arayüz ve gateway | Windows IP Helper [`GetAdaptersAddresses(AF_INET, GAA_FLAG_INCLUDE_GATEWAYS)`](https://learn.microsoft.com/en-us/windows/win32/api/iphlpapi/nf-iphlpapi-getadaptersaddresses) ile arayüz, IPv4 ve gateway adayları; [`GetIpForwardTable2(AF_INET)`](https://learn.microsoft.com/en-us/windows/win32/api/netioapi/nf-netioapi-getipforwardtable2) ile `0.0.0.0/0` varsayılan rota satırları. Birden fazla rota/arayıüz olabilir; ilk gateway'i varsayılan sayma. `GetAdaptersAddresses` senkron ve maliyetli olabileceğinden M1 çağrıları `spawn_blocking` içinde yapılmalı. | API seçildi; Rust binding/derleme ve çoklu arayüz davranışı **[V]**. [`IP_ADAPTER_ADDRESSES`](https://learn.microsoft.com/en-us/windows/win32/api/iptypes/ns-iptypes-ip_adapter_addresses_xp), [`MIB_IPFORWARD_ROW2`](https://learn.microsoft.com/en-us/windows/win32/api/netioapi/ns-netioapi-mib_ipforward_row2). |
 | Windows Firewall | Salt okunur durum için [`INetFwPolicy2`](https://learn.microsoft.com/en-us/windows/win32/api/netfw/nn-netfw-inetfwpolicy2): etkin profil bitmask'i, etkinlik, varsayılan eylem ve kural koleksiyonu; [`INetFwRule`](https://learn.microsoft.com/en-us/windows/win32/api/netfw/nn-netfw-inetfwrule) alanlarıyla TCP/UDP, yön, eylem, port, adres/arayüz kapsamını gözlemle. [`CoInitializeEx`](https://learn.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-coinitializeex) ve COM sorguları aynı blocking thread'de; kural oluşturma/değiştirme yok. [`INetFwProducts::get_Count`](https://learn.microsoft.com/en-us/windows/win32/api/netfw/nf-netfw-inetfwproducts-get_count) yalnız kayıtlı üçüncü taraf ürünleri sayar; sıfır başka paket filtreleri olmadığını kanıtlamaz. | API seçildi; COM projection/etkili politika yorumlama ve Windows doğrulaması **[V]**. Gerçek internet erişilebilirliği firewall tablosundan çıkarılmaz. |
 
-`GetAdaptersAddresses` ve `GetIpForwardTable2` M1'de doğrudan Windows API ile, PowerShell'e shell-out yapmadan okunur. `INetFwPolicy2` salt-okunur incelemesi M8 kapsamındadır; M1'de firewall API'sine çağrı yapılmaz. Windows IP Helper uygulaması `crates/core/src/network_observation.rs` içindedir ve Windows çağrı noktası Desktop'ın `spawn_blocking` işçisidir. Windows API yüzeyinin derlemesi M1'de ayrıca Windows hedefiyle kontrol edilir.
+`GetAdaptersAddresses` ve `GetIpForwardTable2` M1'de doğrudan Windows API ile, PowerShell'e shell-out yapmadan okunur. `INetFwPolicy2` salt-okunur incelemesi M8 kapsamındadır; M1'de firewall API'sine çağrı yapılmaz. Windows IP Helper uygulaması `crates/core/src/network_observation.rs` içindedir. Açılış gözlemi Desktop `spawn_blocking` işçisinde; M4 periyodik gözlemi PeerRuntime izleyicisinde `spawn_blocking` ile alınır, hiçbir IP Helper çağrısı actor veya async executor thread'inde yapılmaz. Windows API yüzeyi M1'de Windows hedefiyle kontrol edilir.
 
 ## 4. Ortak durum modeli
 
@@ -99,9 +99,12 @@ Her başlık: **Amaç / Dosyalar / Görevler / Korunacaklar / Kontroller / Elle 
 
 ### M4 — Başlangıç/ağ değişimi yeniden değerlendirmesi
 
+- **Durum (2026-10-12):** uygulandı; statik kontroller geçti, gerçek Windows ağ geçişi/router davranışı **unverified**.
 - **Amaç:** Açılışta ve ağ değişiminde doğrudan denemelerin hızlanması, lease yenilemesi.
-- **Dosyalar:** `discovery.rs` (`Discovery::tick`, yeni `network_changed()`), `actor.rs` (periyodik ağ imzası karşılaştırma, ör. 6 sn'lik mevcut tick içinde), eşleme yenileme görevi (lease/2'de).
-- **Görevler:** yerel arayüz/IP kümesi veya gateway değişince: `direct_attempts` sıfırla, eşlemeleri yeniden değerlendir, dış IP/port değiştiyse `SetExternalAddresses`. Yenileme başarısızsa `EXPIRED` ve UI'da gerekçe.
+- **Dosyalar:** `crates/core/src/peer.rs` ayrı on saniyelik monitor; `network_observation.rs` zaten mevcut senkron IP Helper okuması `spawn_blocking` içinden çağrılır; `discovery.rs` (`network_changed()`), `actor.rs` (yalnız sayaç sıfırlama), `portmap.rs` watch hedef supervisor'ı ve lease yenilemesi.
+- **Görevler:** sıralanmış/tekrarsız IPv4 arayüz-adres ve varsayılan-gateway imzası değişince Desktop gözlemi güncellenir, `direct_attempts` sıfırlanır ve eşleme hedefi yeniden değerlendirilir. İzleyici ayrıca dinleme adres/port değişimini fark edip mapping hedefini yeniden kurar. Lease yenilemesinde router dış IP'si tekrar okunur; başarısız protokol `EXPIRED` ve gerekçesiyle gösterilir, Gateway kaynaklı dış adres listesi güncellenir/boşaltılır. İzleme yalnız uzun ömürlü mapping-enabled PeerRuntime'larda başlar; one-shot CLI komutları etkilemez.
+- **M1/M4 sınırı:** router observation/UPnP mapping worker'ın önceden var olan, açık onaylı M2 işlemi dışında ağ değişikliği izleyicisi router'a, firewall'a veya Windows Firewall COM'a istek yapmaz. M4 mapping hedef değişiminde worker bounded sahiplik kontrolü/kaldırma ve gateway adreslerini geri çekme sonrasında yenilenir; onay bayrağı değiştirilmez.
+- **Kontrol:** repository'de statik check kayıtları `docs/IMPLEMENTATION.md` M4 girdisinde; Windows Wi-Fi/VPN geçişi, gerçek router WAN değişimi ve gerçek inbound bağlantı **unverified**.
 - **Korunacaklar:** altı saniyelik tick, QUIC tercihi, TCP fallback, doğrudan > relayed, `connection_limits`.
 - **Elle:** Wi-Fi değiştirme, modem yeniden başlatma, VPN aç/kapa.
 
@@ -173,6 +176,7 @@ En az bir cihaz erişilebilirken **relay olmadan** doğrulanmış doğrudan tran
 2. **M2 onay tercihi:** kod incelemesinde mevcut kalıcı ayar deposu bulunmadı. Öneri: SQLite şemasını değiştirmeden TrackMesh yerel veri dizininde sürümlü bir settings dosyası; yer/atomik yazım/ACL davranışı M2'de kararlaştırılır. Mevcut DB değerleri değiştirilmez.
 3. Endpoint kaydının mailbox'ta ayrı `kind` mı yoksa ayrı uç mu olacağı (M5) — `services/mailbox/AGENTS.md` ile uyumlu.
 4. Sürekli kısa kod çözücü sunucu (M6) — Aşama 1'de uygulanmaz, yalnız tasarlanır.
+5. **M4 kararı:** Windows bildirim API'si veya yeni crate/Windows feature'ı eklenmedi. PeerRuntime'da 10 saniyelik iptal edilebilir izleyici, blocking IP Helper worker'ı ve sıralı watch hedefi kullanılır; actor'daki mevcut altı saniyelik tick değişmez. NetworkChanged yalnız `direct_attempts` sayaçlarını temizler. `SetExternalAddresses` mevcut kaynak ayrımıyla kullanılır; router/WAN ve Windows çalışma davranışı **[V]** kalır.
 
 ## 9. Codex yürütme protokolü (alt-ajan destekli)
 

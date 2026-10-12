@@ -68,6 +68,10 @@ pub(super) struct Discovery {
 }
 
 impl Discovery {
+    pub(super) fn network_changed(&mut self) {
+        self.direct_attempts.clear();
+    }
+
     pub(super) fn reload(&mut self) {
         self.registered.clear();
     }
