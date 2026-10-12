@@ -1,4 +1,4 @@
-use crate::{Engine, SupabaseRuntime};
+use crate::Engine;
 use anyhow::{ensure, Context, Result};
 use network::{Network, NetworkConfig};
 use network::{PortMappingRuntime, UpnpTarget};
@@ -232,11 +232,8 @@ impl PeerRuntime {
         })
     }
     pub fn is_finished(&self) -> bool {
+        // A failed Supabase worker is reported as UNREACHABLE; it must not end direct sessions.
         self.actor.is_finished()
-            || self
-                .supabase
-                .as_ref()
-                .is_some_and(SupabaseRuntime::is_finished)
     }
     pub fn network_observation(&self) -> crate::NetworkObservation {
         self.observation
