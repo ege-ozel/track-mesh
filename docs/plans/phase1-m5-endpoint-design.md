@@ -1,6 +1,6 @@
 # Phase 1 M5 — İmzalı endpoint güncellemesi ve M6 davet tasarımı
 
-**Durum:** Tasarım belgesi; M5a protokol/kripto primitive'leri yerel olarak uygulanmıştır. M5b–M6 henüz uygulanmadı ve bu belge güvenlik denetimi yapıldığı anlamına gelmez. M5a değişikliği Cargo manifest/lock veya veritabanı şemasını değiştirmedi.
+**Durum:** Tasarım belgesi; M5a protokol/kripto primitive'leri ve M5b additive storage schema v3 yerel olarak uygulanmıştır. M5c–M6 henüz uygulanmadı ve bu belge güvenlik denetimi yapıldığı anlamına gelmez. Uygulama dependency veya Cargo manifest/lock değiştirmedi.
 
 ## 1. Özet karar önerisi
 
@@ -53,7 +53,7 @@ serde_json::to_vec((
 
 `signature` tuple'a dahil edilmez. M5a bu tuple sırasını ve JSON serialization'ı sabitledi; hex Ed25519 imza biçimi mevcut crypto helper'ını kullanır. M5a `EndpointRecord` tipi `shared/protocol/src/endpoint.rs` içindedir; `Identity::sign_endpoint` imzalar ve `crypto::verify_endpoint` doğrular. Golden byte fixture bu işte eklenmedi.
 
-Sıra önerisi: tek cihaz kimliği başına global, kalıcı, monotonik `u64`. Alıcı `seq > highest_seq` şartını uygular. Gönderen sayaç artırımı ve yeni imzalı kaydın saklanması atomik olmalı; restart aynı/azalan sırayı üretmemeli. SQLite'ın signed INTEGER sınırı nedeniyle tam `u64` saklanacaksa decimal canonical TEXT olarak okunup uygulama içinde `u64` karşılaştırması yapılmalı. DB restore/cihaz kimliği anahtarının sıfırlanması sayaç gerilemesi yaratabileceğinden ayrı reset/yeniden eşleştirme davranışı uygulama tasarımında kararlaştırılmalı; alıcıda monotonikliği gevşetmek güvenli geri dönüş değildir.
+Sıra önerisi: tek cihaz kimliği başına global, kalıcı, monotonik `u64`. Alıcı `seq > highest_seq` şartını uygular. Gönderenin durable allocator'ı `max(last_seq + 1, current_unix_epoch_millis)` kullanır; saat geriye giderse `last_seq + 1` ilerlemeyi sürdürür, yedekten dönüş çoğu durumda güncel epoch millis'e sıçrayarak peer watermark kilitlenmesini önler. `last_seq + 1` taşarsa hata ile fail-closed olur. U64 değerleri signed SQLite INTEGER aralığına sığmayabileceğinden kanonik decimal TEXT saklanıp parse hatası fail-closed ele alınır. Kimlik anahtarının sıfırlanması farklı device_id üretir; monotoniklik her device_id kapsamındadır.
 
 ### 3.2 Alımda fail-closed doğrulama sırası
 
@@ -86,15 +86,15 @@ Endpoint mailbox route ayrı yetkilendirme/body validation yapmalı, yazarın `d
 - İki cihaz aynı anda adres değiştirir, aralarında açık bağlantı yoktur ve erişilebilir mailbox/rendezvous yoktur: otomatik kurtarma kanalı kalmayabilir. Kullanıcı yeni daveti/elle bağlantı yolunu kullanır. Bu, M5'in açık ürün sınırıdır.
 - Relay/rendezvous bağlantı taşımasına yardım edebilir ancak bu tasarım relay'e proje endpoint kaydı veya dosya akışı emanet etmez. Gerçek servis endpoint, DNS, HTTPS sertifika, pinned infrastructure PeerId, ACL provisioning ve reachable advertised address olmadan mailbox/rendezvous kurulmuş varsayılmaz. ACL grant'leri yerel pairing onayından otomatik türemez.
 
-## 5. Şema ve sürüm geçiş taslağı — ayrı onay kapısı
+## 5. M5b schema v3 ve sürüm geçişi
 
-**Şema onayı gerekir; burada hiçbir schema değişikliği yapılmadı.** Önerilen schema v3, mevcut DB v2 üstüne yalnız ek tablolar koyar; `devices`, `trusted_peers`, `project_peers`, snapshots, recovery veya transfer satırlarını güncellemez.
+**M5b uygulaması:** schema v3, mevcut DB v2 üstüne yalnız iki tablo ekler; `devices`, `trusted_peers`, `project_peers`, snapshots, recovery veya transfer satırlarına dokunmaz.
 
 - `endpoint_local_sequence(device_id PRIMARY KEY, last_seq TEXT NOT NULL)` — cihazın sonraki global endpoint sıra numarasını durable ve atomic üretmek için.
 - `peer_endpoints(device_id PRIMARY KEY REFERENCES devices(device_id), highest_seq TEXT NOT NULL, record_json TEXT NOT NULL, expires_at TEXT NOT NULL)` — son kabul edilen signed record ve replay watermark. Expired kayıt dial için kullanılamaz, fakat watermark daha eski bir imzayı engellemek için saklanır.
 - Endpoints'i proje izinlerinden bağımsız erişilebilir kılma: yasak. Her yeni kayıt önce `project_peers`/`trusted_peers` bağlamında doğrulanır; endpoint state global device-address bilgisidir ve hiçbir Core/network authorization tablosunu değiştirmez.
 
-Migration taslağı: açılışta v0/v1/v2 için mevcut sırayı koru; v2'den v3'e tek transaction içinde yeni tabloları oluştur, sonra `user_version=3` yazıp commit et. Hata olursa DDL+version birlikte rollback. `CREATE TABLE IF NOT EXISTS` gelecekteki startup'ta güvenli olabilir ama migration başarı kanıtının yerini almaz. v3 DB eski v2 binary tarafından açılmaz (`crates/storage/src/lib.rs:29-36` yeni sürümde `version > supported` reddediyor); dağıtım öncesi kapalı uygulama DB backup/checkpoint ve rollback planı gerekir. Otomatik downgrade veya mevcut DB değerlerini yeniden yorumlama yok. Backup'tan eski v2 DB'ye dönülürse endpoint seq durumu da geriye dönebileceğinden karşı tarafın yüksek watermark'ı ve yeniden eşleştirme/sequence recovery davranışı ayrıca kararlaştırılmalı.
+Migration v0/v1/v2 sırasını korur; v2'den v3'e iki endpoint tablosu ve `user_version=3` tek transaction'da commit edilir; hata DDL ile version artışını birlikte geri alır. v3 DB eski v2 binary tarafından açılmaz. İlk yeni binary çalıştırılmadan önce uygulama kapatılarak `%LOCALAPPDATA%\TrackMesh` klasörünün yedeği alınmalı; rollback için uygulama kapalıyken yedek geri yüklenmelidir. M5b mevcut tablolardaki verileri güncellemez/yeniden yorumlamaz; v0/v1 için mevcut snapshot chunk backfill adımı aynen korunur.
 
 ## 6. M6 adayı — tek kullanımlık, şifreli davet bırakma (tasarım)
 
@@ -134,8 +134,8 @@ Bu bölüm M6'nın mevcut `ProjectInvite` JSON/kimlik doğrulamasını değişti
 
 ## 8. M5/M6 kilometre taşları ve onay kapıları
 
-1. **M5a — protokol/API onayı:** `EndpointRecord`, `trackmesh-endpoint-v1` signing bytes, 16 KiB/16-address bounds, 10-minute preferred and 15-minute maximum TTL, two-minute future skew, address validation, and duplicate/equivocation behavior are implemented. No dependency, DB schema, mailbox or direct RPC change. Static checks are recorded in `docs/IMPLEMENTATION.md`; Clippy remains unverified because the tool could not access its configuration.
-2. **M5b — storage migration:** schema v3 additive tables, seq durability, expiry/rollback planı netleşsin. **Kullanıcı onayı şart:** migration, backup/restore ve eski binary uyumluluğu.
+1. **M5a — protokol/API onayı:** `EndpointRecord`, `trackmesh-endpoint-v1` signing bytes, 16 KiB/16-address bounds, 10-minute preferred and 15-minute maximum TTL, two-minute future skew, address validation, and duplicate/equivocation behavior are implemented. No dependency, DB schema, mailbox or direct RPC change. Static checks are recorded in `docs/IMPLEMENTATION.md`; Clippy passed in the follow-up worktree review recorded there.
+2. **M5b — storage migration:** schema v3 additive tables, durable monotonic seq (`max(last_seq+1, Unix epoch ms)`), watermark retention after expiry and backup/rollback warning are implemented in storage; version bump and both new tables commit atomically. No existing application rows are modified by v2→v3. Static checks are recorded in `docs/IMPLEMENTATION.md`.
 3. **M5c — mevcut doğrudan bağlantı:** authenticated peer event ile imzalı endpoint alışverişi, network actor'a mevcut API dışında swarm owner eklememe. Static checks ve iki Windows peer elle doğrulaması.
 4. **M5d — mailbox ayrı türü:** yeni client/service route + paging, ciphertext-only persistence, retention ve ACL provisioning. **Kullanıcı onayı şart:** service API/deployment/storage değişikliği. Servis log/ciphertext bounds ve deletion elle doğrulanmalı.
 5. **M5e — Core apply/expiry:** `trusted_author` → key/PeerId → signature → seq → time → address → atomic store → existing learned-address interface sırası. Elle stale/replay/wrong-author/expired/malformed ve address-change senaryoları.

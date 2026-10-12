@@ -1,5 +1,6 @@
 //! Persisted records and SQLite row decoding. Public types remain re-exported at crate root.
 use crate::TransferState;
+use protocol::EndpointRecord;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -45,6 +46,20 @@ pub struct TransferInfo {
     pub error: Option<String>,
     pub base_snapshot_id: Option<Uuid>,
 }
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PeerEndpointState {
+    /// None when the stored endpoint has expired; the replay watermark remains available.
+    pub record: Option<EndpointRecord>,
+    pub highest_seq: u64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EndpointWriteOutcome {
+    Stored,
+    Duplicate,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Lineage {

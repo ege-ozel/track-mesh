@@ -106,6 +106,7 @@ Yeni Desktop yanıtı şifreli peer bağlantısından otomatik gönderir; A'nın
 
 - İki taraf aynı uygulama sürümünü kullansın. Windows 10/11 x64 ve Desktop için WebView2 gerekir; CLI WebView2 kullanmaz. Installer veya otomatik firewall/router ayarı yoktur.
 - Desktop varsayılan profili `%LOCALAPPDATA%\TrackMesh`, peer CLI deneme profili `%LOCALAPPDATA%\TrackMeshPeerTrial` olur. Aynı profilde Desktop/CLI serve/check/receive/plugin owner aynı anda network runtime açmasın. DAW proje klasörü, veri profili ve executable paketi ayrı olsun.
+- Schema v3 kullanan yeni sürüme ilk geçişten önce uygulamayı kapatıp `%LOCALAPPDATA%\TrackMesh` profil klasörünün yedeğini alın. Yeni veritabanını eski v2 binary açamaz; geri dönüşte uygulamayı kapatıp yedeği geri yükleyin.
 - Davet private capability/proje anahtarı içerir. Yalnızca özel kanaldan dosya olarak paylaşın; payload'ı clipboard, chat, agent context, log veya repoya koymayın. Native dialog veya CLI `join --invite-file` kullanın. Profil, veritabanı ve secrets paylaşılmaz.
 - Dosya eklemek otomatik sync değildir; A **Send Snapshot**, B **Receive** yapar. `2 publications pending` iki authored snapshot'ın metadata duyurusunun ACK beklemesidir; dosya sayısı veya teslim sonucu değildir.
 - Mailbox yalnızca encrypted metadata/snapshot announcement tutar. `PUBLISHED` dosyaların B'ye ulaştığını göstermez. Mailbox yokken yerel snapshot hazırsa direct Receive denenebilir.
