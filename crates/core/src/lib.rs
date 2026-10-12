@@ -8,6 +8,8 @@ use std::{
 use storage::Store;
 use uuid::Uuid;
 mod connection;
+mod network_observation;
+pub use network_observation::{observe_network, NetworkObservation};
 mod pairing;
 pub use pairing::{PairingCandidate, PairingStatus, PAIRING_WINDOW};
 mod mailbox;
