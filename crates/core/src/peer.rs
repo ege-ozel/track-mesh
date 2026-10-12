@@ -59,6 +59,9 @@ impl PeerRuntime {
             network.clone(),
             observation.clone(),
             endpoint_publisher_rx,
+            // Short-lived CLI commands may share this device identity; only the
+            // long-lived runtime may advertise its listeners as the device endpoint.
+            start_mapping,
         ));
         if start_mapping {
             network.set_mapping_consent(engine.upnp_mapping_enabled());

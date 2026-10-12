@@ -96,8 +96,12 @@ pub(crate) async fn run_endpoint_publisher(
     network: Network,
     observation: Arc<std::sync::RwLock<crate::NetworkObservation>>,
     mut cancel: watch::Receiver<bool>,
+    publish: bool,
 ) {
     restore_endpoint_candidates(engine.clone(), network.clone()).await;
+    if !publish {
+        return;
+    }
     let mut interval = tokio::time::interval(Duration::from_secs(5));
     let mut state = PublisherState::default();
     loop {
