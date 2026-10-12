@@ -2,7 +2,7 @@
 use crate::{
     behaviour::{build_swarm, BehaviourEvent, PeerSwarm},
     discovery::{configure, Discovery},
-    handle::{Command, IncomingChannel},
+    handle::{Command, ExternalAddressSource, IncomingChannel},
     status::{refresh_status, Connections},
     Incoming, IncomingRequest, Network, NetworkConfig, NetworkStatus,
 };
@@ -18,7 +18,7 @@ use libp2p::{
 };
 use protocol::{PairingResponse, PeerResponse};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{Arc, RwLock},
     time::{Duration, Instant},
 };
@@ -34,6 +34,11 @@ pub fn start(
     mpsc::Receiver<Incoming>,
     tokio::task::JoinHandle<Result<()>>,
 )> {
+    let manual_external_addresses = config
+        .external_addresses
+        .iter()
+        .cloned()
+        .collect::<HashSet<_>>();
     let swarm = build_swarm(&identity, &store, &config)?;
     let id = *swarm.local_peer_id();
     let (tx, commands) = mpsc::channel(128);
@@ -60,6 +65,11 @@ pub fn start(
         pairing_rates: HashMap::new(),
         connections: HashMap::new(),
         discovery: Discovery::default(),
+        ip_source: manual_external_addresses
+            .into_iter()
+            .map(|address| (address, HashSet::from([ExternalAddressSource::Manual])))
+            .collect(),
+        gateway_external_addresses: HashSet::new(),
     };
     let task = tokio::spawn(actor.run());
     Ok((handle, incoming_rx, task))
@@ -78,6 +88,8 @@ struct Actor {
     pairing_rates: HashMap<PeerId, (Instant, u8)>,
     connections: Connections,
     discovery: Discovery,
+    ip_source: HashMap<Multiaddr, HashSet<ExternalAddressSource>>,
+    gateway_external_addresses: HashSet<Multiaddr>,
 }
 
 impl Actor {
@@ -193,9 +205,37 @@ impl Actor {
                 configure(&mut self.swarm, &self.store, &self.namespaces)?;
                 self.discovery.reload();
             }
+            Some(Command::SetExternalAddresses(addresses)) => {
+                let new = addresses.into_iter().collect::<HashSet<_>>();
+                let previous = std::mem::replace(&mut self.gateway_external_addresses, new.clone());
+                for address in previous.difference(&new) {
+                    self.remove_external_source(address, ExternalAddressSource::Gateway);
+                }
+                for address in new.difference(&previous) {
+                    self.add_external_source(address.clone(), ExternalAddressSource::Gateway);
+                }
+            }
             Some(Command::Shutdown) | None => return Ok(false),
         }
         Ok(true)
+    }
+
+    fn add_external_source(&mut self, address: Multiaddr, source: ExternalAddressSource) {
+        let sources = self.ip_source.entry(address.clone()).or_default();
+        if sources.insert(source) && sources.len() == 1 {
+            self.swarm.add_external_address(address);
+        }
+    }
+
+    fn remove_external_source(&mut self, address: &Multiaddr, source: ExternalAddressSource) {
+        let Some(sources) = self.ip_source.get_mut(address) else {
+            return;
+        };
+        sources.remove(&source);
+        if sources.is_empty() {
+            self.ip_source.remove(address);
+            self.swarm.remove_external_address(address);
+        }
     }
 
     fn event(&mut self, event: SwarmEvent<BehaviourEvent>) -> Result<()> {
@@ -250,8 +290,12 @@ impl Actor {
                     .allowed_peers()
                     .contains(&peer_id)
                 {
-                    self.discovery
-                        .identified(&mut self.swarm, peer_id, info, &self.namespaces);
+                    if let Some(address) =
+                        self.discovery
+                            .identified(&mut self.swarm, peer_id, info, &self.namespaces)
+                    {
+                        self.add_external_source(address, ExternalAddressSource::PeerObserved);
+                    }
                 }
             }
             SwarmEvent::Behaviour(BehaviourEvent::Pairing(request_response::Event::Message {

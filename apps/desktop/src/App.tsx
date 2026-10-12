@@ -53,7 +53,7 @@ function ConnectionSetup({ status, projectId, busy, act }: { status: DesktopStat
     <p><strong>UPnP IGD (observation)</strong>: {status.network?.port_mapping.state ?? 'NOT_ATTEMPTED'}; TCP {status.network?.port_mapping.tcp ?? 'NOT_ATTEMPTED'}; UDP {status.network?.port_mapping.udp ?? 'NOT_ATTEMPTED'}; router external IPv4 {status.network?.port_mapping.external_ip_state ?? 'UNKNOWN'}</p>
     <label><input type="checkbox" checked={status.network?.port_mapping.consent_enabled ?? false} disabled={busy || mappingSaving || !status.ready || status.closing}
       onChange={event => { void changeMappingConsent(event.currentTarget.checked); }} />
-      Request time-limited UPnP port mappings on my router (explicit consent). Inbound reachability remains unverified.</label>
+      Request time-limited UPnP port mappings on my router (explicit consent). PCP is NOT_ATTEMPTED in this build; inbound reachability remains unverified.</label>
     {mappingError && <p className="error">Could not save UPnP preference: {mappingError}</p>}
     {status.network?.port_mapping.detail && <p>{status.network.port_mapping.detail}</p>}
     <p>Local listen port: <strong>{status.listen_port}</strong> (default 43101). This session keeps its listen port; a different local port requires reopening with that startup port after the current owner exits.</p>
