@@ -14,10 +14,10 @@ This directory contains the Supabase server side for signed endpoint metadata, i
 ## Supabase Dashboard setup
 
 1. Create a Supabase project and choose its region and plan. In **Project Settings → API Keys**, copy the Project URL and the new-format `sb_publishable_...` key. The publishable key is public; membership still depends on TrackMesh device signatures and server ACL checks. Never distribute the `sb_secret_...` key or database password.
-2. In **SQL Editor**, apply [`supabase/migrations/20261012000100_trackmesh_m5d.sql`](supabase/migrations/20261012000100_trackmesh_m5d.sql) once. Check that the four tables have RLS enabled, no `anon`/`authenticated` policies or grants, and that the RPC is executable only by `service_role`.
-3. Apply [`supabase/migrations/20261012000200_m6_invite_drop.sql`](supabase/migrations/20261012000200_m6_invite_drop.sql) once after the M5d migration. Check that `invite_drops`, `invite_request_nonces`, and `invite_rate_limits` have RLS enabled and no `anon`/`authenticated` policies or grants.
+2. If the GitHub integration is not configured, apply in **SQL Editor** [`supabase/migrations/20261012000100_trackmesh_m5d.sql`](supabase/migrations/20261012000100_trackmesh_m5d.sql) once. Check that the four tables have RLS enabled, no `anon`/`authenticated` policies or grants, and that the RPC is executable only by `service_role`.
+3. Without the integration, apply [`supabase/migrations/20261012000200_m6_invite_drop.sql`](supabase/migrations/20261012000200_m6_invite_drop.sql) once after the M5d migration. Check that `invite_drops`, `invite_request_nonces`, and `invite_rate_limits` have RLS enabled and no `anon`/`authenticated` policies or grants.
 4. In **Edge Functions**, deploy `project-claim`, `member-grant`, `member-revoke`, `endpoint-publish`, `endpoint-list`, `invite-create`, and `invite-consume`. Use the function source bundle so `supabase/functions/_shared/http.ts` is included. Keep JWT verification disabled for all seven functions; the committed `supabase/config.toml` records that setting.
-5. Configure `SUPABASE_SECRET_KEYS` as a JSON dictionary containing the server secret key under `default`, for example `{"default":"<sb_secret_...>"}`. Edge Functions fail closed with a generic server error if the value is absent or invalid. The secret remains server-side; no Function sends an `Authorization: Bearer` header.
+5. Do not set any secret by hand. Supabase injects `SUPABASE_URL` and `SUPABASE_SECRET_KEYS` (a JSON dictionary whose `default` entry is the project secret key) into every Edge Function. Edge Functions fail closed with a generic server error if the value is absent or invalid. The secret remains server-side; no Function sends an `Authorization: Bearer` header.
 6. Keep the client URL/key separate from the Function secret. A deployment without the injected privileged key must fail closed; do not work around it by putting a secret key in the desktop application.
 
 The Dashboard editor is useful for an initial project and inspection. The repository remains the source of truth for migration and Function source; Dashboard edits do not update this checkout. Prefer the CLI path below for repeatable deployments.
@@ -29,7 +29,6 @@ Run from this directory with the official Supabase CLI installed and authenticat
 ```powershell
 supabase login
 supabase link --project-ref <project-ref>
-supabase secrets set SUPABASE_SECRET_KEYS='{"default":"<sb_secret_...>"}'
 supabase db push
 supabase functions deploy project-claim --no-verify-jwt
 supabase functions deploy member-grant --no-verify-jwt
