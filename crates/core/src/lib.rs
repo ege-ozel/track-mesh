@@ -15,6 +15,7 @@ mod endpoints;
 mod firewall_observation;
 mod network_observation;
 mod settings;
+mod supabase;
 pub use firewall_observation::{observe_firewall, FirewallObservation};
 pub use network_observation::{observe_network, NetworkObservation};
 mod pairing;
@@ -23,6 +24,8 @@ mod mailbox;
 pub use connection::public_ipv4_addresses;
 pub mod peer;
 pub use mailbox::{MailboxRuntime, PublicationStatus, RefreshStatus};
+pub use settings::{PendingGrant, ProjectBackend, ProjectBackendConfig, SupabaseProjectState};
+pub use supabase::SupabaseRuntime;
 mod workflows;
 pub use workflows::{
     peer_connection_state, port_observation_status, LocalStatus, PeerCheck, PeerConnectionState,
@@ -49,6 +52,8 @@ pub struct Engine {
     pub identity: Arc<Identity>,
     metadata_jobs: Mutex<std::collections::HashMap<Uuid, Arc<tokio::sync::Mutex<()>>>>,
     pairing: Mutex<pairing::PairingState>,
+    settings: Mutex<settings::SettingsState>,
+    supabase_states: Mutex<std::collections::HashMap<Uuid, SupabaseProjectState>>,
     upnp_mapping_enabled: AtomicBool,
 }
 impl Engine {
@@ -58,7 +63,8 @@ impl Engine {
         let identity = Arc::new(Identity::load_or_create(&directory.join("secrets"), name)?);
         let store = Arc::new(Store::open(&directory.join("trackmesh.db"))?);
         let chunks = ChunkStore::new(directory.join("chunks"))?;
-        let upnp_mapping_enabled = settings::load_upnp_mapping(&directory);
+        let settings = settings::SettingsState::load(&directory);
+        let upnp_mapping_enabled = settings.value.upnp_mapping_enabled();
         let peer_id = network::peer_id(&identity)?;
         store.add_device(
             identity.device_id,
@@ -73,6 +79,8 @@ impl Engine {
             identity,
             metadata_jobs: Mutex::new(std::collections::HashMap::new()),
             pairing: Mutex::new(pairing::PairingState::default()),
+            settings: Mutex::new(settings),
+            supabase_states: Mutex::new(std::collections::HashMap::new()),
             upnp_mapping_enabled: AtomicBool::new(upnp_mapping_enabled),
         })
     }
@@ -102,9 +110,144 @@ impl Engine {
         self.upnp_mapping_enabled.load(Ordering::SeqCst)
     }
     pub fn set_upnp_mapping_enabled(&self, enabled: bool) -> Result<()> {
-        settings::store_upnp_mapping(&self.directory, enabled)?;
+        let mut settings = self
+            .settings
+            .lock()
+            .map_err(|_| anyhow::anyhow!("settings lock poisoned"))?;
+        settings.set_upnp_mapping(&self.directory, enabled)?;
         self.upnp_mapping_enabled.store(enabled, Ordering::SeqCst);
         Ok(())
+    }
+
+    pub fn project_backend_config(&self, project: Uuid) -> Result<ProjectBackendConfig> {
+        self.settings
+            .lock()
+            .map_err(|_| anyhow::anyhow!("settings lock poisoned"))?
+            .value
+            .project_backends
+            .get(&project)
+            .cloned()
+            .map(Ok)
+            .unwrap_or_else(|| Ok(ProjectBackendConfig::default()))
+    }
+
+    pub fn set_project_backend_config(
+        &self,
+        project: Uuid,
+        config: ProjectBackendConfig,
+    ) -> Result<()> {
+        self.store.project(project)?;
+        match config.backend {
+            ProjectBackend::Supabase => {
+                let url = config.supabase_url.as_deref().unwrap_or_default();
+                let key = config.supabase_anon_key.as_deref().unwrap_or_default();
+                ::mailbox::validate_supabase_project_url(url)?;
+                ensure!(
+                    !key.is_empty() && key.len() <= 2048 && !key.chars().any(char::is_control),
+                    "invalid Supabase publishable key"
+                );
+            }
+            ProjectBackend::None | ProjectBackend::SelfHostedMailbox => ensure!(
+                config.supabase_url.is_none() && config.supabase_anon_key.is_none(),
+                "Supabase credentials are only valid for the Supabase backend"
+            ),
+        }
+        let is_supabase = matches!(config.backend, ProjectBackend::Supabase);
+        {
+            let mut settings = self
+                .settings
+                .lock()
+                .map_err(|_| anyhow::anyhow!("settings lock poisoned"))?;
+            settings.set_project_backend(&self.directory, project, config)?;
+        }
+        self.set_supabase_project_state(
+            project,
+            if is_supabase {
+                SupabaseProjectState::Unknown
+            } else {
+                SupabaseProjectState::NotConfigured
+            },
+        )?;
+        if is_supabase {
+            for card in self.store.peers(Some(project))? {
+                if card.device_id != self.identity.device_id {
+                    self.queue_supabase_grant(project, &card)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn queue_supabase_grant(
+        &self,
+        project: Uuid,
+        card: &protocol::DeviceCard,
+    ) -> Result<PendingGrant> {
+        network::validate_card(card)?;
+        let mut settings = self
+            .settings
+            .lock()
+            .map_err(|_| anyhow::anyhow!("settings lock poisoned"))?;
+        ensure!(
+            settings
+                .value
+                .project_backends
+                .get(&project)
+                .is_some_and(|config| matches!(config.backend, ProjectBackend::Supabase)),
+            "Supabase backend is not selected for this project"
+        );
+        settings.enqueue_grant(
+            &self.directory,
+            project,
+            card.device_id,
+            card.public_key.clone(),
+        )
+    }
+
+    pub(crate) fn pending_supabase_grants(
+        &self,
+        project: Option<Uuid>,
+    ) -> Result<Vec<PendingGrant>> {
+        Ok(self
+            .settings
+            .lock()
+            .map_err(|_| anyhow::anyhow!("settings lock poisoned"))?
+            .pending_grants(project))
+    }
+
+    pub(crate) fn complete_supabase_grant(&self, grant: &PendingGrant) -> Result<()> {
+        self.settings
+            .lock()
+            .map_err(|_| anyhow::anyhow!("settings lock poisoned"))?
+            .complete_grant(&self.directory, grant)
+    }
+
+    pub(crate) fn set_supabase_project_state(
+        &self,
+        project: Uuid,
+        state: SupabaseProjectState,
+    ) -> Result<()> {
+        self.supabase_states
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Supabase status lock poisoned"))?
+            .insert(project, state);
+        Ok(())
+    }
+
+    pub fn supabase_project_state(&self, project: Uuid) -> Result<SupabaseProjectState> {
+        if !matches!(
+            self.project_backend_config(project)?.backend,
+            ProjectBackend::Supabase
+        ) {
+            return Ok(SupabaseProjectState::NotConfigured);
+        }
+        Ok(self
+            .supabase_states
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Supabase status lock poisoned"))?
+            .get(&project)
+            .copied()
+            .unwrap_or_default())
     }
 }
 

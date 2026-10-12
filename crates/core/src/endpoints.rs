@@ -84,10 +84,13 @@ struct EndpointRecipient {
 struct PublisherState {
     addresses: Vec<String>,
     recipients: HashSet<EndpointRecipient>,
+    supabase_projects: HashSet<Uuid>,
     record: Option<EndpointRecord>,
     issued_at: Option<Instant>,
     acknowledged: HashSet<EndpointRecipient>,
     last_attempt: HashMap<EndpointRecipient, Instant>,
+    supabase_acknowledged: HashSet<Uuid>,
+    supabase_last_attempt: HashMap<Uuid, Instant>,
 }
 
 /// Publishes only to already connected, directly authorized project peers.
@@ -161,9 +164,18 @@ pub(crate) async fn run_endpoint_publisher(
             .map(|(peer, _)| peer)
             .collect::<HashSet<_>>();
         let engine_for_recipients = engine.clone();
-        let recipients = match tokio::task::spawn_blocking(move || {
+        let (recipients, supabase_projects) = match tokio::task::spawn_blocking(move || {
             let mut recipients = HashSet::new();
+            let mut supabase_projects = HashSet::new();
             for project in engine_for_recipients.store.projects()? {
+                if matches!(
+                    engine_for_recipients
+                        .project_backend_config(project.project_id)?
+                        .backend,
+                    crate::ProjectBackend::Supabase
+                ) {
+                    supabase_projects.insert(project.project_id);
+                }
                 for card in engine_for_recipients
                     .store
                     .peers(Some(project.project_id))?
@@ -176,7 +188,7 @@ pub(crate) async fn run_endpoint_publisher(
                     }
                 }
             }
-            Ok::<_, anyhow::Error>(recipients)
+            Ok::<_, anyhow::Error>((recipients, supabase_projects))
         })
         .await
         {
@@ -184,11 +196,15 @@ pub(crate) async fn run_endpoint_publisher(
             _ => continue,
         };
 
-        let changed = addresses != state.addresses || recipients != state.recipients;
+        let changed = addresses != state.addresses
+            || recipients != state.recipients
+            || supabase_projects != state.supabase_projects;
         let refresh = state
             .issued_at
             .is_some_and(|issued| issued.elapsed() >= Duration::from_secs(8 * 60));
-        if !recipients.is_empty() && (state.record.is_none() || changed || refresh) {
+        if (!recipients.is_empty() || !supabase_projects.is_empty())
+            && (state.record.is_none() || changed || refresh)
+        {
             let local_peer = network.status().peer_id;
             let engine_for_record = engine.clone();
             let address_list = addresses.clone();
@@ -204,9 +220,12 @@ pub(crate) async fn run_endpoint_publisher(
             state.issued_at = Some(Instant::now());
             state.acknowledged.clear();
             state.last_attempt.clear();
+            state.supabase_acknowledged.clear();
+            state.supabase_last_attempt.clear();
         }
         state.addresses = addresses;
         state.recipients = recipients;
+        state.supabase_projects = supabase_projects;
 
         let Some(record) = state.record.clone() else {
             continue;
@@ -224,40 +243,96 @@ pub(crate) async fn run_endpoint_publisher(
             })
             .cloned()
             .collect::<Vec<_>>();
-        if pending.is_empty() {
-            continue;
-        }
-        for recipient in &pending {
-            state.last_attempt.insert(recipient.clone(), now);
-        }
-        let requests = pending.into_iter().map(|recipient| {
-            let network = network.clone();
-            let record = record.clone();
-            async move {
-                let response = tokio::time::timeout(
-                    Duration::from_secs(15),
-                    network.request(
-                        &recipient.peer_id,
-                        PeerRequest::EndpointUpdate {
-                            project_id: recipient.project_id,
-                            record,
-                        },
-                    ),
-                )
-                .await;
-                (
-                    recipient,
-                    matches!(response, Ok(Ok(protocol::PeerResponse::EndpointUpdated))),
-                )
+        if !pending.is_empty() {
+            for recipient in &pending {
+                state.last_attempt.insert(recipient.clone(), now);
             }
-        });
-        let results = tokio::select! {
-            _ = cancel.changed() => return,
-            results = futures::future::join_all(requests) => results,
-        };
-        for (recipient, accepted) in results {
-            if accepted {
-                state.acknowledged.insert(recipient);
+            let requests = pending.into_iter().map(|recipient| {
+                let network = network.clone();
+                let record = record.clone();
+                async move {
+                    let response = tokio::time::timeout(
+                        Duration::from_secs(15),
+                        network.request(
+                            &recipient.peer_id,
+                            PeerRequest::EndpointUpdate {
+                                project_id: recipient.project_id,
+                                record,
+                            },
+                        ),
+                    )
+                    .await;
+                    (
+                        recipient,
+                        matches!(response, Ok(Ok(protocol::PeerResponse::EndpointUpdated))),
+                    )
+                }
+            });
+            let results = tokio::select! {
+                _ = cancel.changed() => return,
+                results = futures::future::join_all(requests) => results,
+            };
+            for (recipient, accepted) in results {
+                if accepted {
+                    state.acknowledged.insert(recipient);
+                }
+            }
+        }
+
+        let supabase_pending = state
+            .supabase_projects
+            .iter()
+            .filter(|project| !state.supabase_acknowledged.contains(project))
+            .filter(|project| {
+                state
+                    .supabase_last_attempt
+                    .get(project)
+                    .is_none_or(|attempt| attempt.elapsed() >= Duration::from_secs(30))
+            })
+            .copied()
+            .collect::<Vec<_>>();
+        for project in supabase_pending {
+            state.supabase_last_attempt.insert(project, Instant::now());
+            let engine_for_config = engine.clone();
+            let project_config = tokio::task::spawn_blocking(move || -> Result<_> {
+                let config = engine_for_config.project_backend_config(project)?;
+                let key = crypto::project_key(
+                    &engine_for_config.directory.join("secrets/projects"),
+                    project,
+                    None,
+                )?;
+                Ok((config, *key))
+            })
+            .await;
+            let Ok(Ok((config, project_key))) = project_config else {
+                continue;
+            };
+            let Some(url) = config.supabase_url else {
+                continue;
+            };
+            let Some(anon_key) = config.supabase_anon_key else {
+                continue;
+            };
+            let wrapper_record = record.clone();
+            let wrapper = tokio::task::spawn_blocking(move || {
+                crypto::wrap_endpoint_record(project, &wrapper_record, &project_key)
+            })
+            .await;
+            let Ok(Ok(ciphertext)) = wrapper else {
+                continue;
+            };
+            let client = match ::mailbox::SupabaseClient::new(&url, &anon_key, project) {
+                Ok(client) => client,
+                Err(_) => continue,
+            };
+            let expires_at = crypto::endpoint_record_expires_at(&record);
+            if matches!(
+                client
+                    .publish_endpoint(&engine.identity, record.seq, &expires_at, &ciphertext,)
+                    .await,
+                Ok(true)
+            ) {
+                state.supabase_acknowledged.insert(project);
             }
         }
     }

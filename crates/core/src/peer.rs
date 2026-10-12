@@ -28,6 +28,7 @@ pub struct PeerRuntime {
     monitor_cancel: Option<tokio::sync::watch::Sender<bool>>,
     endpoint_publisher: JoinHandle<()>,
     endpoint_publisher_cancel: tokio::sync::watch::Sender<bool>,
+    supabase: Option<crate::SupabaseRuntime>,
 }
 #[derive(Default)]
 struct ResponderActivity {
@@ -63,6 +64,8 @@ impl PeerRuntime {
             // long-lived runtime may advertise its listeners as the device endpoint.
             start_mapping,
         ));
+        let supabase =
+            start_mapping.then(|| crate::SupabaseRuntime::start(engine.clone(), network.clone()));
         if start_mapping {
             network.set_mapping_consent(engine.upnp_mapping_enabled());
         }
@@ -224,6 +227,7 @@ impl PeerRuntime {
             monitor_cancel,
             endpoint_publisher,
             endpoint_publisher_cancel,
+            supabase,
             mapping_task,
         })
     }
@@ -256,6 +260,11 @@ impl PeerRuntime {
         Ok(())
     }
     pub async fn stop(self) -> Result<()> {
+        let supabase_result = if let Some(supabase) = self.supabase {
+            supabase.stop().await
+        } else {
+            Ok(())
+        };
         self.endpoint_publisher_cancel.send_replace(true);
         let mut endpoint_publisher = self.endpoint_publisher;
         if tokio::time::timeout(Duration::from_secs(15), &mut endpoint_publisher)
@@ -290,6 +299,7 @@ impl PeerRuntime {
         self.network.shutdown().await;
         let actor = self.actor.await.context("network actor panicked")?;
         self.responder.await.context("peer responder panicked")??;
+        supabase_result?;
         actor
     }
 }

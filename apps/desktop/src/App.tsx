@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { chooseFolder, closeApp, getStatus, setUpnpMapping, submitAction } from './api';
-import type { Action, CheckView, DesktopStatus, ProjectCard, SnapshotInfo } from './api';
+import type { Action, CheckView, DesktopStatus, ProjectBackend, ProjectBackendConfig, ProjectCard, SnapshotInfo } from './api';
 
 const short = (id: string | null | undefined) => id ? id.slice(0, 8) : '—';
 const time = (value: string | null | undefined) => value ? new Date(value).toLocaleString() : 'Never';
@@ -82,6 +82,35 @@ function Snapshot({ value, empty }: { value: SnapshotInfo | null; empty: string 
     <p>{value.author_name} · {time(value.created_at)}</p>
     <p>{value.file_count} files · {bytes(value.total_size)} · {bytes(value.changed_bytes)} changed</p></>
     : <p className="muted">{empty}</p>;
+}
+
+function ProjectBackendSettings({ projectId, config, state, busy, act }: {
+  projectId: string; config: ProjectBackendConfig | undefined; busy: boolean;
+  state: DesktopStatus['supabase_states'][string];
+  act: (action: Action) => Promise<void>;
+}) {
+  const [backend, setBackend] = useState<ProjectBackend>(config?.backend ?? 'NONE');
+  const [url, setUrl] = useState(config?.supabase_url ?? '');
+  const [anonKey, setAnonKey] = useState(config?.supabase_anon_key ?? '');
+  return <section className="backend-settings">
+    <h3>ENDPOINT BACKEND</h3>
+    <label>Backend<select value={backend} disabled={busy} onChange={event => setBackend(event.target.value as ProjectBackend)}>
+      <option value="NONE">NONE · direct connections</option>
+      <option value="SELF_HOSTED_MAILBOX">SELF_HOSTED_MAILBOX · existing mailbox URL</option>
+      <option value="SUPABASE">SUPABASE</option>
+    </select></label>
+    {backend === 'SELF_HOSTED_MAILBOX' && <p className="muted">Uses this project's existing mailbox URL without changing its behavior.</p>}
+    {backend === 'SUPABASE' && <div className="backend-fields">
+      <label>Supabase Project URL<input autoComplete="off" spellCheck={false} value={url} disabled={busy} placeholder="https://your-project.supabase.co" onChange={event => setUrl(event.target.value)} /></label>
+      <label>Publishable / anon key<input type="password" autoComplete="new-password" spellCheck={false} value={anonKey} disabled={busy} onChange={event => setAnonKey(event.target.value)} /></label>
+      <p className="muted">HTTPS `*.supabase.co` URLs only. This key selects the public API project; membership still requires device signing. Never enter a service role or secret key.</p>
+    </div>}
+    <div className="actions"><button disabled={busy || (backend === 'SUPABASE' && (!url.trim() || !anonKey.trim()))} onClick={async () => {
+      await act({ kind: 'set_project_backend', project_id: projectId, backend,
+        supabase_url: backend === 'SUPABASE' ? url.trim() : null,
+        supabase_anon_key: backend === 'SUPABASE' ? anonKey.trim() : null });
+    }}>Save backend</button><span className="badge">{backend === 'SELF_HOSTED_MAILBOX' ? 'SELF_HOSTED' : state}</span></div>
+  </section>;
 }
 
 function jobStatus(job: DesktopStatus['jobs'][number], startedAt: number | undefined) {
@@ -238,6 +267,7 @@ function Card({ card, status, jobStartedAt, act }: { card: ProjectCard; status: 
         <button className="text-button danger" disabled={busy || !peer} onClick={() => peer && window.confirm(`Remove ${peer.device.name}'s local access to this project? Infrastructure ACLs also need an operator update.`) && act({ kind: 'revoke', project_id: project.project_id, device_id: peer.device.device_id })}>Revoke selected peer</button></div>
       <p>UUID <code>{project.project_id}</code></p><p>Mailbox <code>{project.mailbox_url ?? 'Not configured'}</code></p><p>Relay <code>{project.relay_address ?? 'Not configured'}</code></p>
       <p>Mailbox stores encrypted metadata / snapshot announcements only. It does not carry project files. A configured private relay provides a peer connection path when direct connection fails; file transfer still requires the collaborator online.</p>
+      <ProjectBackendSettings projectId={project.project_id} config={status.project_backends[project.project_id]} state={status.supabase_states[project.project_id] ?? 'NOT_CONFIGURED'} busy={busy} act={act} />
       <ConnectionSetup status={status} projectId={project.project_id} busy={busy} act={act} />
     </details>
   </article>;
