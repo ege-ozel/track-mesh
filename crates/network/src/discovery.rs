@@ -175,13 +175,15 @@ impl Discovery {
         peer: PeerId,
         info: identify::Info,
         namespaces: &[(Multiaddr, String)],
-    ) {
-        if namespaces
+    ) -> Option<Multiaddr> {
+        let observed = if namespaces
             .iter()
             .any(|(a, _)| infrastructure_id(a).ok() == Some(peer))
         {
-            swarm.add_external_address(info.observed_addr);
-        }
+            Some(info.observed_addr)
+        } else {
+            None
+        };
         let addresses = self.learned.entry(peer).or_default();
         for address in info.listen_addrs.into_iter().take(16) {
             if addresses.len() < 32 && !addresses.contains(&address) {
@@ -189,6 +191,7 @@ impl Discovery {
             }
             swarm.add_peer_address(peer, address);
         }
+        observed
     }
 
     pub(super) fn event(

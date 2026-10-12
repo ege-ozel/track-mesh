@@ -35,12 +35,19 @@ impl PortMappingRuntime {
     pub async fn stop(mut self, network: &Network) {
         network.set_mapping_consent(false);
         self.cancel.send_replace(true);
-        if timeout(Duration::from_secs(15), &mut self.task)
+        let deadline = Instant::now() + Duration::from_secs(15);
+        let mut worker_stopped = timeout(Duration::from_secs(10), &mut self.task)
             .await
-            .is_err()
-        {
+            .is_ok();
+        if !worker_stopped {
             self.task.abort();
             tracing::warn!("cleanup could not be confirmed; finite lease will expire");
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            worker_stopped = timeout(remaining, &mut self.task).await.is_ok();
+        }
+        if worker_stopped {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            let _ = timeout(remaining, network.set_external_addresses(Vec::new())).await;
         }
     }
 }
@@ -98,17 +105,20 @@ async fn run(
                 }
             }
         };
-        let external_ip_state = tokio::select! {
+        let router_external_ip = tokio::select! {
             _ = cancel.changed() => return,
             result = timeout(Duration::from_secs(5), gateway.get_external_ip()) => match result {
-            Ok(result) => match result {
-            Ok(std::net::IpAddr::V4(ip)) if is_public_ipv4(ip) => "PUBLIC",
-            Ok(std::net::IpAddr::V4(_)) => "PRIVATE_OR_CGNAT",
-            _ => "UNKNOWN",
-            },
-            Err(_) => "UNKNOWN",
+                Ok(Ok(std::net::IpAddr::V4(ip))) => Some(ip),
+                _ => None,
             }
         };
+        let external_ip_state = match router_external_ip {
+            Some(ip) if is_public_ipv4(ip) => "PUBLIC",
+            Some(ip) if is_private_or_cgnat_ipv4(ip) => "PRIVATE_OR_CGNAT",
+            None => "UNKNOWN",
+            Some(_) => "UNKNOWN",
+        };
+        let external_ip = router_external_ip.filter(|ip| is_public_ipv4(*ip));
         let description = format!(
             "TrackMesh {}",
             device_id.chars().take(8).collect::<String>()
@@ -207,6 +217,12 @@ async fn run(
         let mut mapping_status = status(state, tcp_state, udp_state, Some(detail));
         mapping_status.external_ip_state = external_ip_state.into();
         set_status(&network, mapping_status);
+        let addresses = if *consent.borrow() && !*cancel.borrow() {
+            mapped_external_addresses(external_ip, tcp_state, udp_state, ports)
+        } else {
+            Vec::new()
+        };
+        let _ = network.set_external_addresses(addresses).await;
         let mut cleanup_failed = false;
         if !owned.is_empty() {
             let mut renew_at = Instant::now() + Duration::from_secs(1800);
@@ -230,10 +246,17 @@ async fn run(
                         let mut renewed = status(state, tcp_state, udp_state, Some("UPnP mapping lease renewal status"));
                         renewed.external_ip_state = external_ip_state.into();
                         set_status(&network, renewed);
+                        let addresses = if *consent.borrow() && !*cancel.borrow() {
+                            mapped_external_addresses(external_ip, tcp_state, udp_state, ports)
+                        } else {
+                            Vec::new()
+                        };
+                        let _ = network.set_external_addresses(addresses).await;
                         renew_at = Instant::now() + Duration::from_secs(1800);
                     }
                 }
             }
+            let _ = network.set_external_addresses(Vec::new()).await;
             for (protocol, port) in owned {
                 let check = tokio::time::timeout(
                     Duration::from_secs(5),
@@ -402,7 +425,7 @@ fn status(state: &str, tcp: &str, udp: &str, detail: Option<&str>) -> PortMappin
     }
 }
 fn is_public_ipv4(ip: Ipv4Addr) -> bool {
-    let [a, b, _, _] = ip.octets();
+    let [a, b, c, _] = ip.octets();
     !ip.is_private()
         && !ip.is_loopback()
         && !ip.is_link_local()
@@ -412,6 +435,38 @@ fn is_public_ipv4(ip: Ipv4Addr) -> bool {
         && a < 224
         && !(a == 100 && (64..=127).contains(&b))
         && !(a == 198 && (b == 18 || b == 19))
+        && !(a == 192 && ((b == 0 && c == 0) || (b == 88 && c == 99)))
+}
+fn is_private_or_cgnat_ipv4(ip: Ipv4Addr) -> bool {
+    ip.is_private()
+        || ip.is_link_local()
+        || (ip.octets()[0] == 100 && (64..=127).contains(&ip.octets()[1]))
+}
+fn mapped_external_addresses(
+    external_ip: Option<Ipv4Addr>,
+    tcp_state: &str,
+    udp_state: &str,
+    ports: (Option<u16>, Option<u16>),
+) -> Vec<libp2p::Multiaddr> {
+    let Some(ip) = external_ip.filter(|ip| is_public_ipv4(*ip)) else {
+        return Vec::new();
+    };
+    let mut addresses = Vec::new();
+    if tcp_state == "MAPPED" {
+        if let Some(port) = ports.0 {
+            if let Ok(address) = format!("/ip4/{ip}/tcp/{port}").parse() {
+                addresses.push(address);
+            }
+        }
+    }
+    if udp_state == "MAPPED" {
+        if let Some(port) = ports.1 {
+            if let Ok(address) = format!("/ip4/{ip}/udp/{port}/quic-v1").parse() {
+                addresses.push(address);
+            }
+        }
+    }
+    addresses
 }
 fn set_status(network: &Network, mapping: PortMappingStatus) {
     if let Ok(mut state) = network.status.write() {

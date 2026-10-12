@@ -34,7 +34,14 @@ pub(super) enum Command {
     PairingRespond(Incoming, PairingResponse),
     PairingWindow(Duration),
     Reload(Vec<(Multiaddr, String)>),
+    SetExternalAddresses(Vec<Multiaddr>),
     Shutdown,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(super) enum ExternalAddressSource {
+    Gateway,
+    Manual,
+    PeerObserved,
 }
 #[derive(Clone)]
 pub struct Network {
@@ -43,6 +50,13 @@ pub struct Network {
     pub(super) mapping_consent: Arc<watch::Sender<bool>>,
 }
 impl Network {
+    pub async fn set_external_addresses(&self, addresses: Vec<Multiaddr>) -> Result<()> {
+        self.command
+            .send(Command::SetExternalAddresses(addresses))
+            .await
+            .context("network stopped")
+    }
+
     pub fn set_mapping_consent(&self, enabled: bool) {
         self.mapping_consent.send_if_modified(|current| {
             if *current == enabled {

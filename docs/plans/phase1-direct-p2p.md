@@ -87,13 +87,14 @@ Her başlık: **Amaç / Dosyalar / Görevler / Korunacaklar / Kontroller / Elle 
 - **Elle (Windows+TP-Link):** UPnP açık/kapalı, zaten kullanılan port, yönlendirici yeniden başlatma, lease bitişi, uygulama kapanınca silinme.
 - **Riskler:** router UPnP'yi yalan söyleyebilir ("başarılı" ama erişilemez) → durum `MAPPED`+`UNVERIFIED`; çift NAT/CGNAT'ta IGD yalnız ilk cihazı eşler; bazı cihazlar sabit lease süresi istemez (0 → sonsuz) — sonlu lease zorunlu, reddedilirse yeniden dene.
 
-### M3 — Dinamik dış adres + PCP
+### M3 — Dinamik dış adres + PCP (PCP ertelendi)
 
-- **Amaç:** Eşleme sonucunu çalışan swarm'a yansıtmak; UPnP başarısız/uygunsuzsa **ayrı** PCP.
-- **Dosyalar:** `crates/network/src/handle.rs` (+`Command`), `actor.rs`, `behaviour.rs` (başlangıç dışı güncelleme yolu), yeni `portmap/pcp.rs`.
-- **Görevler:** `Command::SetExternalAddresses(Vec<Multiaddr>)`; aktör eski/yeni farkını `add_external_address`/`remove_external_address` ile uygular; kaynak etiketi `ip_source` ile saklanır. PCP: PCP sunucusu keşfi (gateway), `MAP` TCP ve UDP için ayrı, nonce+lease, `UNSUPP_VERSION`/`NOT_AUTHORIZED` → `UNSUPPORTED`/`DENIED`. Sıra: çalışan doğrudan bağlantı yoksa UPnP → olmadı/uygunsuzsa PCP. İkisi ayrı `MappingMethod` ve ayrı tanı satırı. NAT-PMP: uygulanmaz, M0 notunda gerekçe.
+- **Amaç:** Eşleme sonucunu çalışan swarm'a yansıtmak; UPnP başarısız/uygunsuzsa ayrı PCP yolu sonraki iş olarak değerlendirilmişti.
+- **Dosyalar (uygulanan dinamik adres bölümü):** `crates/network/src/handle.rs` (`Command`), `actor.rs`, `discovery.rs`, `portmap.rs`, Desktop connection setup.
+- **Dinamik adres:** `Command::SetExternalAddresses(Vec<Multiaddr>)`; aktör yalnız Gateway kaynaklı eski/yeni farkını `add_external_address`/`remove_external_address` ile uygular. Başlangıç MANUAL adresleri ve izinli altyapı eşlerinden alınan PEER_OBSERVED adresler kaynak etiketleriyle korunur. Yalnız UPnP protokolü `MAPPED` ve router external IPv4'ü PUBLIC ise ilgili gerçek TCP/QUIC port adresi eklenir; yenileme başarısızlığı, rıza iptali ve kapanışta kaldırılır. Ham dış IP status/log'a yazılmaz. PCP gözlem satırı ayrı kalır ve `NOT_ATTEMPTED` gösterir.
+- **PCP ertelendi:** Kullanıcının M3 karar eşiği, elle uygulamanın yaklaşık 300 satırı aşmaması ve RFC yorumunda belirsizlik kalmamasıydı. Salt okunur keşif, tam request/response ayrıştırma, TCP/UDP nonce sahipliği, lease yenileme/silme ve worker yaşam döngüsünün toplamını yaklaşık 280–380 satır tahmin etti; kullanıcı eşiğine göre bu uygulama “kolay” değil. Yeni crate eklenmedi. Resmi [RFC 6887](https://www.rfc-editor.org/rfc/rfc6887) MAP paket alanları, yanıt doğrulaması, hata kodları ve lifetime/silme kuralları için esas alındı; PCP kodu yazılmadı. PCP `NOT_ATTEMPTED` kalır ve hiçbir PCP isteği gönderilmez. NAT-PMP uygulanmaz; eski NAT-PMP uyumluluğunu eklemek bu ertelenen PCP uygulamasının yerine geçmez.
 - **Korunacaklar:** Mevcut `external_addresses` başlangıç davranışı.
-- **Elle:** UPnP kapalı + PCP destekleyen cihaz (varsa); PCP yoksa `UNSUPPORTED` göründüğü. **PCP yalnız PCP destekli bir gateway ile doğrulanabilir; yoksa "unverified" kalır.**
+- **Elle:** Windows/router ile UPnP public endpoint ekleme/çekme ve başlangıç MANUAL adresinin korunmasını doğrula. PCP bu kilometre taşında uygulanmadığı için destekli/desteksiz gateway senaryoları `NOT_ATTEMPTED` olarak kalır; PCP wire davranışı doğrulanmadı.
 - **Risk:** PCP pek çok ev router'ında yoktur; beklenti "UPnP veya hiçbiri" olabilir.
 
 ### M4 — Başlangıç/ağ değişimi yeniden değerlendirmesi
@@ -152,7 +153,7 @@ Her başlık: **Amaç / Dosyalar / Görevler / Korunacaklar / Kontroller / Elle 
 | 1 | Aynı LAN, UPnP kapalı | Doğrudan QUIC/TCP, `Reachability` LAN; eşleme `NOT_ATTEMPTED` |
 | 2 | Farklı ev/ISS; A genel IPv4 + UPnP onaylı, B yalnız çıkış | B→A doğrudan; A `VERIFIED_INBOUND`; B `OUTBOUND_ONLY` |
 | 3 | UPnP kapalı | `UNSUPPORTED/DENIED`, net gerekçe, transfer garanti edilmez |
-| 4 | PCP destekli/desteksiz gateway | `MAPPED` / `UNSUPPORTED`, UPnP'den ayrı satır |
+| 4 | PCP destekli/desteksiz gateway | PCP ertelenene kadar her ikisinde `NOT_ATTEMPTED`; PCP paketi gönderilmez |
 | 5 | Port başka uygulamada | Çakışma `DENIED/FAILED`, başkasının mapping'i dokunulmaz |
 | 6 | Windows Firewall engeli / farklı profil | Eşleme `MAPPED`, erişilebilirlik `UNVERIFIED`; rapor profili gösterir |
 | 7 | Dış IP değişimi, modem yeniden başlama | Yeni imzalı endpoint, JSON gerekmeden yeniden bağlanma |
@@ -168,7 +169,7 @@ En az bir cihaz erişilebilirken **relay olmadan** doğrulanmış doğrudan tran
 
 ## 8. Açık kararlar
 
-1. **Karar verildi (M0):** UPnP için `igd-next`; PCP için `crab_nat::pcp`; Windows ağ ve firewall API seçimleri §3'te. Her iki crate'in Windows hedef derlemesi **[V]** ve entegrasyon öncesi doğrulanmalı.
+1. **Karar verildi (M0/M3):** UPnP için `igd-next` kullanılıyor. M0'da PCP crate'i araştırılmış olsa da M3'te kullanıcı eşiği nedeniyle PCP ertelendi; `crab_nat` bağımlılığı eklenmedi ve PCP durumu `NOT_ATTEMPTED`. Windows ağ ve firewall API seçimleri §3'te; runtime/router uyumluluğu **[V]**.
 2. **M2 onay tercihi:** kod incelemesinde mevcut kalıcı ayar deposu bulunmadı. Öneri: SQLite şemasını değiştirmeden TrackMesh yerel veri dizininde sürümlü bir settings dosyası; yer/atomik yazım/ACL davranışı M2'de kararlaştırılır. Mevcut DB değerleri değiştirilmez.
 3. Endpoint kaydının mailbox'ta ayrı `kind` mı yoksa ayrı uç mu olacağı (M5) — `services/mailbox/AGENTS.md` ile uyumlu.
 4. Sürekli kısa kod çözücü sunucu (M6) — Aşama 1'de uygulanmaz, yalnız tasarlanır.
