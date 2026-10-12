@@ -1,6 +1,6 @@
 # Phase 1 M5 — İmzalı endpoint güncellemesi ve M6 davet tasarımı
 
-**Durum:** Tasarım belgesi; M5a protokol/kripto primitive'leri ve M5b additive storage schema v3 yerel olarak uygulanmıştır. M5c–M6 henüz uygulanmadı ve bu belge güvenlik denetimi yapıldığı anlamına gelmez. Uygulama dependency veya Cargo manifest/lock değiştirmedi.
+**Durum (2026-10-12):** M5a protokol/kripto primitive'leri, M5b additive storage schema v3, M5c doğrudan endpoint RPC alışverişi uygulanmıştır. M5d mailbox kanalı ve M6 açık kalmıştır. Bu belge güvenlik denetimi veya Windows çalışma doğrulaması yapıldığı anlamına gelmez.
 
 ## 1. Özet karar önerisi
 
@@ -74,6 +74,8 @@ Adresler project key ile şifreli mailbox kaydında cihazlar dışındaki gözle
 1. **Mevcut doğrudan bağlantı:** Zaten açık ve transport `PeerId`'si doğrulanmış bağlantıda endpoint RPC/identify eklentisi ile imzalı kayıt gönder. Mesaj proje kapsamını bağlasın; Core alıcıda proje yetkisini tekrar denetlesin. Bu kanal yeni bağlantı kurmaz ve relay üzerinden dosya/proje verisi taşımaz.
 2. **Yapılandırılmış proje mailbox'ı:** Yeni endpoint-specific record/route (`kind = endpoint`) ve ayrı pagination/cursor biçimi kullan. Payload proje anahtarıyla XChaCha20-Poly1305 AEAD altında şifrelensin. Yeni wrapper AAD'si yeni domain (`trackmesh-endpoint-mailbox-v1`) kullansın; iç `EndpointRecord` cihaz imzasını da korusun. `Envelope::aad()` ve mevcut `/announcements` şeması aynen kalsın. Mailbox kimlik doğrulaması, TLS, imzalı body ve mevcut ACL davranışı kullanılır; `MailboxAuth` için endpoint'e özgü ayrı scope (ör. `POST endpoint`) ve body hash tanımlansın. Sunucu ciphertext dışında endpoint adreslerini/anahtarını çözemez.
 3. **İnsan-okur kod / çözüm sunucusu:** bu M5 tesliminde yok; M6'nın kısa kod seçeneği yalnız tasarım adayıdır.
+
+M5c endpoint RPC yolunu uygular. Network actor gönderimde mevcut direct bağlantı şartını, alımda ise gelen bağlantı kimliğinin direct olmasını denetler. Core'daki `Engine::apply_endpoint_record` doğrudan ve sonraki mailbox kaynağı için ortak kabul fonksiyonudur. Runtime davranışı, eski ikili sürümlerle endpoint variant uyumu ve iki Windows peer ile yeniden bağlanma henüz elle doğrulanmadı.
 
 Önerilen limit: plaintext endpoint kaydı < 16 KiB ve şifreli+JSON/base64 wrapper/HTTP body < 64 KiB. Mevcut mailbox envelope gövde sınırı 128 KiB'dir (`shared/protocol/src/mailbox.rs:8-9`); yeni endpoint türü kendi küçük sınırını tanımlamalı ve servis request-body sınırında da uygulamalı. Bu sayılar tasarım hedefidir, kodda doğrulanmış özellik değildir.
 

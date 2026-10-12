@@ -111,11 +111,12 @@ Her başlık: **Amaç / Dosyalar / Görevler / Korunacaklar / Kontroller / Elle 
 ### M5 — Güvenli endpoint güncellemesi (JSON'suz yeniden bağlanma)
 
 - **Amaç:** IP/port değişince güvenilir peer'in yeni adresini imzalı, süreli, sıralı kayıtla duyurmak.
-- **Dosyalar:** `shared/protocol` (yeni tip + `signing_bytes`, **yeni** etiket `trackmesh-endpoint-v1`; `DeviceCard`/`Envelope` değişmez), `crates/crypto` (imza/doğrulama), `crates/storage` (yeni tablo veya `trusted_peers` yanında ek alan — **şema değişikliği olacak; M5 başında ayrıca onay ve migration planı**), `crates/core` (yayın/alım), `services/mailbox` yalnız opak kayıt türü gerekiyorsa.
+- **Durum (2026-10-12):** M5a protokol/kripto, M5b kalıcı sıra ve endpoint watermark/expiry deposu, M5c mevcut doğrudan bağlantı üzerinden imzalı endpoint alışverişi uygulandı. M5d mailbox kanalı ve iki Windows eşle elle doğrulama açık.
+- **Dosyalar:** `shared/protocol` (endpoint tipi ve yeni, proje kapsamlı RPC varyantları; mevcut varyantlar ve `trackmesh-endpoint-v1` imza biçimi değişmez), `crates/crypto` (imza), `crates/storage` (M5b additive schema v3), `crates/core/src/endpoints.rs` (ortak kabul/yayın), `crates/network` (actor RPC ve süreli adaylar). Mailbox desteği M5d kapsamıdır.
 - **Tasarım:**
   - Kayıt: `{device_id, peer_id, addresses[≤16], issued_at, expires_at (kısa), seq (monotonik u64)}` cihaz anahtarıyla imzalı.
   - Alıcı: cihaz projede güvenilir mi (`trusted_author`), `peer_id`/anahtar bağı, `seq > saklanan`, süre sınırı, adres biçimi/özel-aralık doğrulaması; geçerse `learned` adres olarak eklenir. **Kart ve yetki yeniden yazılmaz** (böylece `Store::trust` üzerine-yazma gerilemesi yaşanmaz).
-  - Kanal öncelikleri: (1) var olan doğrudan bağlantı üzerinden identify/yeni istek, (2) mailbox'ta şifreli kayıt (proje anahtarıyla AEAD, mevcut AAD biçimine dokunmadan **ayrı** `kind`), (3) kısa insan-okur kod için süreli çözüm sunucusu — **yalnız tasarım notu**, bu aşamada uygulanmaz.
+  - Kanal öncelikleri: (1) M5c'de var olan doğrudan bağlantı üzerinden proje kapsamlı endpoint RPC (yeni bağlantı kurulmaz; relay reddedilir), (2) M5d'de mailbox'ta şifreli kayıt (proje anahtarıyla AEAD, mevcut AAD biçimine dokunmadan ayrı tür), (3) kısa insan-okur kod için süreli çözüm sunucusu — yalnız tasarım notu.
   - Sunucu ağ trafiği veya proje dosyası relay etmez; yalnız şifreli küçük kayıt (<64 KiB sınırı).
 - **Korunacaklar:** İmzalı kimlik, proje yetkisi, davet ve pairing akışı; sunucuda çözülmüş manifest/anahtar yok.
 - **Riskler:** mailbox yoksa iki taraf da aynı anda IP değiştirirse hiçbir kanal kalmaz → UI "adres bilinmiyor, davet yenile" gösterir; replay → `seq`+`expires_at`; uzun URL daveti ID paylaşımıyla yetki vermez (davet hâlâ sahiplik kanıtı ister).

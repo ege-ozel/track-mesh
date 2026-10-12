@@ -7,6 +7,7 @@ use uuid::Uuid;
 pub const ENDPOINT_DOMAIN: &str = "trackmesh-endpoint-v1";
 pub const MAX_ENDPOINT_ADDRESSES: usize = 16;
 pub const MAX_ENDPOINT_RECORD_BYTES: usize = 16 * 1024;
+pub const MAX_ENDPOINT_REQUEST_BYTES: usize = MAX_ENDPOINT_RECORD_BYTES + 256;
 pub const PREFERRED_ENDPOINT_TTL: Duration = Duration::minutes(10);
 pub const MAX_ENDPOINT_TTL: Duration = Duration::minutes(15);
 const MAX_FUTURE_SKEW: Duration = Duration::minutes(2);

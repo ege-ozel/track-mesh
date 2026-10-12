@@ -60,6 +60,10 @@ async fn read_json<T: AsyncRead + Unpin + Send, V: DeserializeOwned>(
     io: &mut T,
     limit: usize,
 ) -> io::Result<V> {
+    let data = read_frame(io, limit).await?;
+    serde_json::from_slice(&data).map_err(invalid)
+}
+async fn read_frame<T: AsyncRead + Unpin + Send>(io: &mut T, limit: usize) -> io::Result<Vec<u8>> {
     let mut size = [0; 4];
     io.read_exact(&mut size).await?;
     let size = u32::from_le_bytes(size) as usize;
@@ -68,7 +72,7 @@ async fn read_json<T: AsyncRead + Unpin + Send, V: DeserializeOwned>(
     }
     let mut data = vec![0; size];
     io.read_exact(&mut data).await?;
-    serde_json::from_slice(&data).map_err(invalid)
+    Ok(data)
 }
 async fn write_json<T: AsyncWrite + Unpin + Send, V: Serialize>(
     io: &mut T,
@@ -76,11 +80,18 @@ async fn write_json<T: AsyncWrite + Unpin + Send, V: Serialize>(
     limit: usize,
 ) -> io::Result<()> {
     let data = serde_json::to_vec(value).map_err(invalid)?;
+    write_frame(io, &data, limit).await
+}
+async fn write_frame<T: AsyncWrite + Unpin + Send>(
+    io: &mut T,
+    data: &[u8],
+    limit: usize,
+) -> io::Result<()> {
     if data.len() > limit {
         return Err(invalid("frame exceeds protocol limit"));
     }
     io.write_all(&(data.len() as u32).to_le_bytes()).await?;
-    io.write_all(&data).await
+    io.write_all(data).await
 }
 #[async_trait]
 impl Codec for TransferCodec {
@@ -91,7 +102,12 @@ impl Codec for TransferCodec {
     where
         T: AsyncRead + Unpin + Send,
     {
-        read_json(io, 16 * 1024).await
+        let data = read_frame(io, protocol::MAX_ENDPOINT_REQUEST_BYTES).await?;
+        let request: PeerRequest = serde_json::from_slice(&data).map_err(invalid)?;
+        if !matches!(&request, PeerRequest::EndpointUpdate { .. }) && data.len() > 16 * 1024 {
+            return Err(invalid("request frame exceeds protocol limit"));
+        }
+        Ok(request)
     }
     async fn write_request<T>(
         &mut self,
@@ -102,7 +118,13 @@ impl Codec for TransferCodec {
     where
         T: AsyncWrite + Unpin + Send,
     {
-        write_json(io, &request, 16 * 1024).await?;
+        let data = serde_json::to_vec(&request).map_err(invalid)?;
+        let limit = if matches!(&request, PeerRequest::EndpointUpdate { .. }) {
+            protocol::MAX_ENDPOINT_REQUEST_BYTES
+        } else {
+            16 * 1024
+        };
+        write_frame(io, &data, limit).await?;
         io.close().await
     }
     async fn read_response<T>(

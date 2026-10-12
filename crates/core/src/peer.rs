@@ -26,6 +26,8 @@ pub struct PeerRuntime {
     observation: Arc<RwLock<crate::NetworkObservation>>,
     monitor: Option<JoinHandle<()>>,
     monitor_cancel: Option<tokio::sync::watch::Sender<bool>>,
+    endpoint_publisher: JoinHandle<()>,
+    endpoint_publisher_cancel: tokio::sync::watch::Sender<bool>,
 }
 #[derive(Default)]
 struct ResponderActivity {
@@ -50,6 +52,17 @@ impl PeerRuntime {
         let (network, mut incoming, actor) =
             network::start(engine.identity.clone(), engine.store.clone(), config)?;
         let initial_target = upnp_target(&observation);
+        let observation = Arc::new(RwLock::new(observation.clone()));
+        let (endpoint_publisher_cancel, endpoint_publisher_rx) = tokio::sync::watch::channel(false);
+        let endpoint_publisher = tokio::spawn(crate::endpoints::run_endpoint_publisher(
+            engine.clone(),
+            network.clone(),
+            observation.clone(),
+            endpoint_publisher_rx,
+            // Short-lived CLI commands may share this device identity; only the
+            // long-lived runtime may advertise its listeners as the device endpoint.
+            start_mapping,
+        ));
         if start_mapping {
             network.set_mapping_consent(engine.upnp_mapping_enabled());
         }
@@ -82,7 +95,6 @@ impl PeerRuntime {
         } else {
             None
         };
-        let observation = Arc::new(RwLock::new(observation.clone()));
         let (monitor_cancel, monitor) = if start_mapping {
             let (cancel, mut cancelled) = tokio::sync::watch::channel(false);
             let monitor_observation = observation.clone();
@@ -177,6 +189,13 @@ impl PeerRuntime {
                             let _work = work;
                             let peer=message.peer.to_string();let request=message.request.clone();
                             match request {
+                                network::IncomingRequest::EndpointUpdate { project_id, record } => {
+                                    let response = match engine.apply_endpoint_record(&network, project_id, peer.clone(), record).await {
+                                        Ok(_) => PeerResponse::EndpointUpdated,
+                                        Err(_) => PeerResponse::Error { message: "endpoint update rejected".into() },
+                                    };
+                                    let _ = network.respond(message, response).await;
+                                }
                                 network::IncomingRequest::Transfer(request) => {
                                     let response=tokio::task::spawn_blocking(move||transfer::serve(&engine.store,&engine.chunks,&peer,&request)).await;
                                     let response=match response {Ok(Ok(r))=>r,Ok(Err(e))=>PeerResponse::Error {message:e.to_string()},Err(_)=>PeerResponse::Error {message:"peer disk operation failed".into()}};
@@ -203,6 +222,8 @@ impl PeerRuntime {
             observation,
             monitor,
             monitor_cancel,
+            endpoint_publisher,
+            endpoint_publisher_cancel,
             mapping_task,
         })
     }
@@ -235,6 +256,15 @@ impl PeerRuntime {
         Ok(())
     }
     pub async fn stop(self) -> Result<()> {
+        self.endpoint_publisher_cancel.send_replace(true);
+        let mut endpoint_publisher = self.endpoint_publisher;
+        if tokio::time::timeout(Duration::from_secs(15), &mut endpoint_publisher)
+            .await
+            .is_err()
+        {
+            endpoint_publisher.abort();
+            let _ = tokio::time::timeout(Duration::from_secs(1), &mut endpoint_publisher).await;
+        }
         if let Some(cancel) = self.monitor_cancel {
             cancel.send_replace(true);
         }

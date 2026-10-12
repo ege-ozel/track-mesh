@@ -16,6 +16,9 @@ pub fn serve(
         "project access denied"
     );
     match request {
+        PeerRequest::EndpointUpdate { .. } => {
+            anyhow::bail!("endpoint updates are handled by the core runtime")
+        }
         PeerRequest::Head { .. } => Ok(PeerResponse::Head {
             snapshot: store.head(project)?,
         }),

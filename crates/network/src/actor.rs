@@ -17,7 +17,7 @@ use libp2p::{
     swarm::{ConnectionId, SwarmEvent},
     Multiaddr, PeerId,
 };
-use protocol::{PairingResponse, PeerResponse};
+use protocol::{PairingResponse, PeerRequest, PeerResponse};
 use std::{
     collections::{HashMap, HashSet},
     sync::{Arc, RwLock},
@@ -164,6 +164,17 @@ impl Actor {
                         reply.send(Err(anyhow::anyhow!("peer is not trusted for this project")));
                     return Ok(true);
                 }
+                if matches!(&request, protocol::PeerRequest::EndpointUpdate { .. })
+                    && !self
+                        .connections
+                        .values()
+                        .any(|(connected, relayed, _)| *connected == peer && !*relayed)
+                {
+                    let _ = reply.send(Err(anyhow::anyhow!(
+                        "endpoint updates require an existing direct connection"
+                    )));
+                    return Ok(true);
+                }
                 let id = self
                     .swarm
                     .behaviour_mut()
@@ -228,6 +239,15 @@ impl Actor {
                 self.inbound_connections.clear();
                 self.reset_reachability();
             }
+            Some(Command::EndpointAddresses(reply)) => {
+                let _ = reply.send(self.local_endpoint_addresses());
+            }
+            Some(Command::LearnPeerAddresses(peer, addresses, sequence, expiry)) => {
+                if self.swarm.behaviour().allow.allowed_peers().contains(&peer) {
+                    self.discovery
+                        .learn_endpoint_addresses(peer, addresses, sequence, expiry);
+                }
+            }
             Some(Command::NetworkChanged) => {
                 self.inbound_connections.clear();
                 self.reset_reachability();
@@ -236,6 +256,32 @@ impl Actor {
             Some(Command::Shutdown) | None => return Ok(false),
         }
         Ok(true)
+    }
+
+    fn local_endpoint_addresses(&self) -> Vec<String> {
+        let local_peer = self.swarm.local_peer_id().to_string();
+        let mut candidates = HashSet::new();
+        for address in self.ip_source.keys() {
+            let value = without_local_peer_suffix(address, &local_peer);
+            if protocol::validate_endpoint_address(&value).is_ok() {
+                candidates.insert(value);
+            }
+        }
+        if let Ok(status) = self.status.read() {
+            for address in &status.addresses {
+                let Ok(address) = address.parse::<Multiaddr>() else {
+                    continue;
+                };
+                let value = without_local_peer_suffix(&address, &local_peer);
+                if protocol::validate_endpoint_address(&value).is_ok() {
+                    candidates.insert(value);
+                }
+            }
+        }
+        let mut candidates = candidates.into_iter().collect::<Vec<_>>();
+        candidates.sort();
+        candidates.truncate(protocol::MAX_ENDPOINT_ADDRESSES);
+        candidates
     }
 
     fn add_external_source(&mut self, address: Multiaddr, source: ExternalAddressSource) {
@@ -414,6 +460,20 @@ impl Actor {
                 request_response::Message::Request {
                     request, channel, ..
                 } => {
+                    if matches!(&request, PeerRequest::EndpointUpdate { .. })
+                        && !self
+                            .connections
+                            .get(&connection_id)
+                            .is_some_and(|(connected, relayed, _)| *connected == peer && !*relayed)
+                    {
+                        let _ = self.swarm.behaviour_mut().transfer.send_response(
+                            channel,
+                            PeerResponse::Error {
+                                message: "endpoint updates require a direct connection".into(),
+                            },
+                        );
+                        return Ok(());
+                    }
                     if self
                         .store
                         .authorized(protocol::request_project(&request), &peer.to_string())?
@@ -428,9 +488,15 @@ impl Actor {
                         return Ok(());
                     }
                     self.record_inbound_observation(peer, connection_id);
+                    let request = match request {
+                        PeerRequest::EndpointUpdate { project_id, record } => {
+                            IncomingRequest::EndpointUpdate { project_id, record }
+                        }
+                        request => IncomingRequest::Transfer(request),
+                    };
                     let incoming = Incoming {
                         peer,
-                        request: IncomingRequest::Transfer(request),
+                        request,
                         channel: IncomingChannel::Transfer(channel),
                     };
                     if let Err(error) = self.incoming_tx.try_send(incoming) {
@@ -595,6 +661,12 @@ fn multiaddr_transport_port(address: &Multiaddr, transport: &str) -> Option<u16>
         }
     }
     None
+}
+
+fn without_local_peer_suffix(address: &Multiaddr, local_peer: &str) -> String {
+    let address = address.to_string();
+    let suffix = format!("/p2p/{local_peer}");
+    address.strip_suffix(&suffix).unwrap_or(&address).to_owned()
 }
 
 fn is_public_remote(address: &Multiaddr) -> bool {

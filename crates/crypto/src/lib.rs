@@ -85,6 +85,23 @@ impl Identity {
         record.signature = self.sign(&record.signing_bytes()?);
         Ok(record)
     }
+    pub fn sign_current_endpoint(
+        &self,
+        peer_id: String,
+        addresses: Vec<String>,
+        seq: u64,
+    ) -> Result<EndpointRecord> {
+        let issued_at = chrono::Utc::now();
+        self.sign_endpoint(EndpointRecord {
+            device_id: self.device_id,
+            peer_id,
+            addresses,
+            issued_at,
+            expires_at: issued_at + protocol::PREFERRED_ENDPOINT_TTL,
+            seq,
+            signature: String::new(),
+        })
+    }
     pub fn sign_snapshot(&self, manifest: Manifest) -> Result<SignedSnapshot> {
         manifest.validate()?;
         let mut snapshot = SignedSnapshot {
