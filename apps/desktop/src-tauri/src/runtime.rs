@@ -16,7 +16,8 @@ use trackmesh_core::{
     default_data_directory, observe_firewall, observe_network, peer::PeerRuntime,
     peer_connection_state, port_observation_status, Engine, FirewallObservation, MailboxRuntime,
     NetworkObservation, PairingStatus, PeerCheck, PeerConnectionState, PluginRuntime,
-    PortObservationStatus, SessionGrace, SummaryPage,
+    PortObservationStatus, ProjectBackend, ProjectBackendConfig, SessionGrace, SummaryPage,
+    SupabaseProjectState,
 };
 use uuid::Uuid;
 
@@ -53,6 +54,12 @@ pub enum Action {
         folder: PathBuf,
         mailbox_url: Option<String>,
         relay_address: Option<String>,
+    },
+    SetProjectBackend {
+        project_id: Uuid,
+        backend: ProjectBackend,
+        supabase_url: Option<String>,
+        supabase_anon_key: Option<String>,
     },
     Join {
         folder: PathBuf,
@@ -118,6 +125,7 @@ impl Action {
         match self {
             Self::Join { .. } | Self::ExportCard => None,
             Self::Link { project_id, .. }
+            | Self::SetProjectBackend { project_id, .. }
             | Self::Pair { project_id }
             | Self::Revoke { project_id, .. }
             | Self::ExportInvite { project_id, .. }
@@ -137,6 +145,7 @@ impl Action {
     fn label(&self) -> &'static str {
         match self {
             Self::Link { .. } => "Link folder",
+            Self::SetProjectBackend { .. } => "Save project backend",
             Self::Join { .. } => "Accept invitation and request pairing",
             Self::Pair { .. } => "Complete pairing",
             Self::Revoke { .. } => "Revoke device",
@@ -211,6 +220,8 @@ pub struct DesktopStatus {
     pub page: Option<SummaryPage>,
     pub jobs: Vec<Job>,
     pub checks: Vec<CheckView>,
+    pub project_backends: HashMap<Uuid, ProjectBackendConfig>,
+    pub supabase_states: HashMap<Uuid, SupabaseProjectState>,
 }
 
 struct Checked {
@@ -416,14 +427,38 @@ impl Desktop {
         let data_directory = engine
             .as_ref()
             .map(|engine| engine.directory.display().to_string());
-        let (page, pairing) = match engine {
+        let (page, pairing, project_backends) = match engine {
             Some(engine) => {
                 tauri::async_runtime::spawn_blocking(move || -> Result<_> {
-                    Ok((Some(engine.summary_page(offset)?), engine.pairing_status()?))
+                    let page = engine.summary_page(offset)?;
+                    let project_backends = page
+                        .projects
+                        .iter()
+                        .map(|item| {
+                            Ok((
+                                item.project.project_id,
+                                engine.project_backend_config(item.project.project_id)?,
+                            ))
+                        })
+                        .collect::<Result<HashMap<_, _>>>()?;
+                    Ok((Some(page), engine.pairing_status()?, project_backends))
                 })
                 .await??
             }
-            None => (None, PairingStatus::default()),
+            None => (None, PairingStatus::default(), HashMap::new()),
+        };
+        let state_engine = { self.lock()?.engine.clone() };
+        let supabase_states = match state_engine {
+            Some(engine) => {
+                let ids = project_backends.keys().copied().collect::<Vec<_>>();
+                tauri::async_runtime::spawn_blocking(move || {
+                    ids.into_iter()
+                        .map(|id| Ok((id, engine.supabase_project_state(id)?)))
+                        .collect::<Result<HashMap<_, _>>>()
+                })
+                .await??
+            }
+            None => HashMap::new(),
         };
         let mut state = self.lock()?;
         let mut network = state.network.as_ref().map(Network::status);
@@ -530,6 +565,8 @@ impl Desktop {
             page,
             jobs: state.jobs.clone(),
             checks,
+            project_backends,
+            supabase_states,
         })
     }
 
@@ -733,6 +770,10 @@ impl Desktop {
                             if let Some(relay) = &relay_address { let _: network::NetworkConfig = NetworkConfig { rendezvous: vec![(relay.parse()?, String::new())], ..Default::default() }; }
                             disk.link(project_id, &name, &folder, mailbox_url.as_deref(), relay_address.as_deref())?;
                             Ok(json!({"message": "Folder linked"}))
+                        }
+                        Action::SetProjectBackend { project_id, backend, supabase_url, supabase_anon_key } => {
+                            disk.set_project_backend_config(project_id, ProjectBackendConfig { backend, supabase_url, supabase_anon_key })?;
+                            Ok(json!({"message": "Project backend settings saved"}))
                         }
                         Action::OpenPairing { project_id } => {
                             disk.open_pairing_window(project_id)?;

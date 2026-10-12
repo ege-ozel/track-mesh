@@ -22,6 +22,12 @@ export interface ProjectCard {
     recovery_required: boolean; mailbox_url: string | null; relay_address: string | null; error: string | null };
   local_snapshot: SnapshotInfo | null; peers: Peer[]; pending_publications: number; transfer: Transfer | null;
 }
+export type ProjectBackend = 'NONE' | 'SELF_HOSTED_MAILBOX' | 'SUPABASE';
+export interface ProjectBackendConfig {
+  backend: ProjectBackend;
+  supabase_url: string | null;
+  supabase_anon_key: string | null;
+}
 export interface Connection { online: boolean; route: 'DIRECT' | 'RELAYED' | 'OFFLINE'; transport: string }
 export interface FirewallObservation {
   state: string;
@@ -59,9 +65,12 @@ export interface DesktopStatus {
   firewall_observation: FirewallObservation;
   page: { projects: ProjectCard[]; offset: number; has_more: boolean } | null;
   jobs: Job[]; checks: CheckView[];
+  project_backends: Record<string, ProjectBackendConfig>;
+  supabase_states: Record<string, 'NOT_CONFIGURED' | 'UNKNOWN' | 'CLAIMED' | 'MEMBER' | 'ROUTE_TAKEN' | 'UNREACHABLE'>;
 }
 export type Action =
   | { kind: 'link'; project_id: string; name: string; folder: string; mailbox_url: string | null; relay_address: string | null }
+  | { kind: 'set_project_backend'; project_id: string; backend: ProjectBackend; supabase_url: string | null; supabase_anon_key: string | null }
   | { kind: 'join'; folder: string }
   | { kind: 'export_card' }
   | { kind: 'open_pairing' | 'close_pairing'; project_id: string }

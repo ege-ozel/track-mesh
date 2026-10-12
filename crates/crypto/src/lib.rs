@@ -15,8 +15,10 @@ use uuid::Uuid;
 use zeroize::{Zeroize, Zeroizing};
 mod mailbox;
 mod pairing;
+mod supabase;
 pub use mailbox::verify_mailbox_auth;
 pub use pairing::{pairing_challenge, pairing_proof, verify_pairing_proof};
+pub use supabase::{endpoint_record_expires_at, unwrap_endpoint_record, wrap_endpoint_record};
 
 pub struct Identity {
     pub device_id: Uuid,
@@ -91,7 +93,10 @@ impl Identity {
         addresses: Vec<String>,
         seq: u64,
     ) -> Result<EndpointRecord> {
-        let issued_at = chrono::Utc::now();
+        let issued_at = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(
+            chrono::Utc::now().timestamp_millis(),
+        )
+        .context("could not format endpoint issue time to milliseconds")?;
         self.sign_endpoint(EndpointRecord {
             device_id: self.device_id,
             peer_id,

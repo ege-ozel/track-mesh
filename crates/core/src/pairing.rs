@@ -125,7 +125,13 @@ impl Engine {
             .pending
             .get(&request)
             .context("pairing request expired or removed")?;
-        self.pair(project, pending.card.clone())?;
+        let card = pending.card.clone();
+        self.pair(project, card.clone())?;
+        if self.project_backend_config(project)?.backend == crate::ProjectBackend::Supabase {
+            // Persist the grant before removing the approval request so an I/O
+            // failure can be retried by approving again without losing the card.
+            self.queue_supabase_grant(project, &card)?;
+        }
         window.pending.remove(&request);
         Ok(())
     }

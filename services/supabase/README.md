@@ -1,6 +1,6 @@
-# TrackMesh Supabase backend (M5d-server)
+# TrackMesh Supabase backend (M5d)
 
-This directory contains the Supabase server side for signed endpoint metadata. It does not contain the Rust client, invite-drop endpoints, or a deployed project. Project UUIDs are opaque routes, not project content. Endpoint ciphertext is the only endpoint payload stored; plaintext addresses, project keys, and invite contents never go to Supabase.
+This directory contains the Supabase server side for signed endpoint metadata and its Rust client contract. The client implementation lives in `crates/mailbox`, `crates/crypto`, `crates/core`, and the Windows Desktop adapter. Invite-drop endpoints are out of scope and this backend has not been deployed. Project UUIDs are opaque routes, not project content. Endpoint ciphertext is the only endpoint payload stored; plaintext addresses, project keys, and invite contents never go to Supabase.
 
 ## Before deployment
 
@@ -53,6 +53,10 @@ Initial fixed-window limits are:
 | `endpoint-list` | 60/minute | 180/minute |
 
 `project-claim` additionally has one global limit of 60/hour across all routes in this Supabase project. We do not use per-IP limiting: Supabase documents request header and log field names, but the documents inspected do not establish that the Edge Function receives a spoof-resistant client-IP header. The source remains `[V]`; global claim throttling limits random-route/key churn meanwhile.
+
+The global limit is shared by every user of the Supabase project. An attacker can consume it and delay legitimate claims until the hourly window resets. This denial-of-service tradeoff is accepted for the expected small user base; per-IP limiting remains `[V]` until a trusted client-IP source is established.
+
+The Rust client stores endpoint data as an XChaCha20-Poly1305 wrapper encrypted with the project key and AAD `trackmesh-endpoint-mailbox-v1`. Its JSON shape is `{version, project_route, writer_device_id, seq, expires_at, nonce, ciphertext}`. `seq` is a canonical decimal string; `expires_at` is UTC RFC3339 with exactly millisecond precision; `nonce` is 24 random bytes encoded base64url without padding; `ciphertext` is the encrypted serialized signed `EndpointRecord`, also base64url without padding. The client base64url-encodes the complete wrapper JSON into the `ciphertext` field sent to `endpoint-publish`. The outer `seq` and `expires_at` request fields must exactly match the wrapper and inner record. On receipt, the client checks all duplicated metadata before calling the shared trusted endpoint validation path.
 
 These are abuse-control starting limits, not a Supabase platform quota. Failed/expired requests are generic. The cleanup batch removes at most 500 expired endpoint rows, 1,000 old nonces, and 1,000 old rate buckets per accepted operation. It runs inside the RPC transaction; repeated activity drains backlog. There is no `pg_cron` dependency.
 

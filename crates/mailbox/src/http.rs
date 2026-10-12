@@ -44,6 +44,26 @@ pub fn validate_mailbox_url(base: &str) -> Result<()> {
     Ok(())
 }
 
+/// Supabase project URLs use the hosted HTTPS origin; custom domains require a
+/// separately configured origin and are intentionally not accepted in M5d.
+pub fn validate_supabase_project_url(base: &str) -> Result<()> {
+    let url = Url::parse(base).context("invalid Supabase project URL")?;
+    let host = url.host_str().unwrap_or_default();
+    ensure!(
+        url.scheme() == "https"
+            && host.ends_with(".supabase.co")
+            && host.len() > ".supabase.co".len()
+            && url.username().is_empty()
+            && url.password().is_none()
+            && url.port_or_known_default() == Some(443)
+            && (url.path().is_empty() || url.path() == "/")
+            && url.query().is_none()
+            && url.fragment().is_none(),
+        "Supabase project URL must be an HTTPS *.supabase.co origin"
+    );
+    Ok(())
+}
+
 impl MailboxClient {
     pub fn new(base: &str, project: Uuid, allow_loopback_http: bool) -> Result<Self> {
         let mut url = parse_url(base, allow_loopback_http)?;
