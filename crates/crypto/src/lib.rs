@@ -5,7 +5,9 @@ use chacha20poly1305::{
     KeyInit, XChaCha20Poly1305, XNonce,
 };
 use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
-use protocol::{Announcement, DeviceCard, Envelope, Manifest, SignedSnapshot, PROTOCOL_VERSION};
+use protocol::{
+    Announcement, DeviceCard, EndpointRecord, Envelope, Manifest, SignedSnapshot, PROTOCOL_VERSION,
+};
 use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use std::{fs, path::Path};
@@ -75,6 +77,14 @@ impl Identity {
         card.signature = self.sign(&card.signing_bytes()?);
         Ok(card)
     }
+    pub fn sign_endpoint(&self, mut record: EndpointRecord) -> Result<EndpointRecord> {
+        ensure!(
+            record.device_id == self.device_id,
+            "endpoint device id does not match identity"
+        );
+        record.signature = self.sign(&record.signing_bytes()?);
+        Ok(record)
+    }
     pub fn sign_snapshot(&self, manifest: Manifest) -> Result<SignedSnapshot> {
         manifest.validate()?;
         let mut snapshot = SignedSnapshot {
@@ -137,6 +147,18 @@ pub fn verify(public_key: &str, message: &[u8], signature: &str) -> Result<()> {
     VerifyingKey::from_bytes(&key)?
         .verify_strict(message, &Signature::from_bytes(&sig))
         .context("signature verification failed")
+}
+
+pub fn verify_endpoint(
+    record: &EndpointRecord,
+    public_key: &str,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<()> {
+    record.validate(now)?;
+    verify(public_key, &record.signing_bytes()?, &record.signature)
+}
+pub fn verify_endpoint_current(record: &EndpointRecord, public_key: &str) -> Result<()> {
+    verify_endpoint(record, public_key, chrono::Utc::now())
 }
 pub fn verify_snapshot(snapshot: &SignedSnapshot) -> Result<()> {
     snapshot.validate_structure()?;

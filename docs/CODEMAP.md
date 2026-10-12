@@ -62,7 +62,7 @@ Paths are relative to repository root. A crate's `src/lib.rs` lists its public A
 | Device/project keys, signatures, mailbox encryption, DPAPI | `crates/crypto/src/lib.rs` | Protocol signing bytes/AAD |
 | Scanner, chunk store, safe paths, Windows file/project locks | `crates/snapshot/src/lib.rs` | Manifest model and transfer disk operations |
 | Event-triggered inventory quiet period and writer-lock settlement | `crates/snapshot/src/settlement.rs` | Existing guarded scanner; no watcher |
-| Manifest/path validation, signing serialization, peer/IPC/mailbox types | `shared/protocol/src/lib.rs` | All crates |
+| Manifest/path validation, signing serialization, peer/IPC/mailbox types | `shared/protocol/src/lib.rs`, `shared/protocol/src/endpoint.rs` | Endpoint record domain, bounds, time/sequence and IP Multiaddr validation; all crates |
 | Signed HTTP request scope, timestamp, nonce and body binding | `shared/protocol/src/mailbox.rs`, `crates/crypto/src/mailbox.rs` | Existing envelope signing/AAD unchanged |
 
 ## Public call paths
