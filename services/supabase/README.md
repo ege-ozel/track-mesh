@@ -39,7 +39,7 @@ supabase functions deploy endpoint-list --no-verify-jwt
 
 ## API contract and limits
 
-All five routes accept POST and the `x-trackmesh-auth` header. The body hash is SHA-256 over the exact request body bytes. The signed tuple is the documented `serde_json` tuple with domain `trackmesh-supabase-request-v1`; timestamps use UTC RFC3339 with exactly millisecond precision. Each route checks the expected operation scope, Ed25519 signature, ±2 minute timestamp window, nonce format, bounded body, and strict JSON fields. `endpoint-publish` has a 64 KiB request cap; endpoint pages contain at most 8 rows and use the endpoint-only monotonic cursor.
+All five routes accept POST and the `x-trackmesh-auth` header. The body hash is SHA-256 over the exact request body bytes. The signed tuple is the documented `serde_json` tuple with domain `trackmesh-supabase-request-v1`; timestamps must use UTC `YYYY-MM-DDTHH:mm:ss.SSSZ` with exactly three millisecond digits, and nonce must be a lowercase canonical UUIDv4. Each route checks the expected operation scope, Ed25519 signature, ±2 minute timestamp window, nonce format, bounded body, and strict JSON fields. `endpoint-publish` has a 64 KiB request cap; endpoint pages contain at most 8 rows and use the endpoint-only monotonic cursor.
 
 Database state changes happen in one `trackmesh_dispatch` Postgres function invocation. That transaction serializes per-project operations, validates active membership and ACL rules, consumes the request nonce, updates the per-device and per-project fixed-window rate counters, then writes the claim/grant/revocation/endpoint row. `project_members.last_endpoint_seq` retains each device's endpoint replay watermark after short-lived ciphertext rows are deleted. Errors return a generic response without the database error text. Functions do not log headers, bodies, ciphertext, public keys, signatures, API keys, or SQL errors.
 
@@ -52,6 +52,8 @@ Initial fixed-window limits are:
 | `endpoint-publish` | 30/minute | 120/minute |
 | `endpoint-list` | 60/minute | 180/minute |
 
+`project-claim` additionally has one global limit of 60/hour across all routes in this Supabase project. We do not use per-IP limiting: Supabase documents request header and log field names, but the documents inspected do not establish that the Edge Function receives a spoof-resistant client-IP header. The source remains `[V]`; global claim throttling limits random-route/key churn meanwhile.
+
 These are abuse-control starting limits, not a Supabase platform quota. Failed/expired requests are generic. The cleanup batch removes at most 500 expired endpoint rows, 1,000 old nonces, and 1,000 old rate buckets per accepted operation. It runs inside the RPC transaction; repeated activity drains backlog. There is no `pg_cron` dependency.
 
 ## Current boundaries and remaining validation
@@ -59,6 +61,6 @@ These are abuse-control starting limits, not a Supabase platform quota. Failed/e
 - `project-claim` is trust-on-first-use. A first claimant of a project UUID becomes owner. If another device claims the route first, the real device gets the same generic failure; continue with direct peer/manual invite-file setup. There is no remote reset/recovery operation.
 - Any active member may grant a paired device as a member after local pairing proof and explicit inviter approval. At most three project devices may be active. Any active member may revoke itself; only the owner can revoke another device. If the owner revokes itself, no owner remains and the route cannot be claimed again. Owner recovery/transfer is not implemented.
 - M6 invite drops and their IP/ID limits are deliberately absent from this migration and Functions. They are a separate milestone.
-- This work has not been deployed. Live RLS/grants, Edge Function secrets/JWT settings, simultaneous claim and revoke races, WebCrypto Ed25519 behavior in Supabase's runtime, rate limits, expiry cleanup, and endpoint pagination still require staging validation. Real Supabase availability is not assumed; the client must keep direct connections and the manual invitation file workflow available.
+- This work has not been deployed. Live RLS/grants, Edge Function secrets/JWT settings, simultaneous claim and revoke races, WebCrypto Ed25519 equivalence to Rust `verify_strict`, rate limits, expiry cleanup, endpoint pagination, and a trusted client-IP header still require staging validation. Real Supabase availability is not assumed; the client must keep direct connections and the manual invitation file workflow available.
 
 No tests or benchmarks are added or run by this package.

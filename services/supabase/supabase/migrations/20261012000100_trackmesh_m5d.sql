@@ -55,7 +55,7 @@ create index request_nonces_created_at on public.request_nonces (created_at);
 create table public.rate_limits (
   project_route uuid not null,
   operation text not null check (operation in ('project-claim','member-grant','member-revoke','endpoint-publish','endpoint-list')),
-  subject_kind text not null check (subject_kind in ('device','project')),
+  subject_kind text not null check (subject_kind in ('device','project','global')),
   subject_id text not null,
   bucket_start timestamptz not null,
   request_count integer not null check (request_count >= 1),
@@ -168,6 +168,12 @@ begin
          when p_operation = 'endpoint-list' then 180
          when p_operation = 'project-claim' then 10 else 30 end
   );
+  if p_operation = 'project-claim' then
+    perform public.trackmesh_rate_limit(
+      '00000000-0000-0000-0000-000000000000'::uuid,
+      p_operation, 'global', 'all-projects', interval '1 hour', 60
+    );
+  end if;
 
   if p_operation <> 'project-claim' and v_member.status <> 'active' then
     return jsonb_build_object('accepted',false);
@@ -178,7 +184,8 @@ begin
   if not found then return jsonb_build_object('accepted',false); end if;
 
   if p_operation = 'project-claim' then
-    if jsonb_object_length(p_body) <> 1 or not (p_body ? 'actor_seq') or p_body->>'actor_seq' <> '1'
+    if (select count(*) from jsonb_object_keys(p_body)) <> 1
+      or not (p_body ? 'actor_seq') or p_body->>'actor_seq' <> '1'
     then raise exception using errcode = 'P0001', message = 'request rejected'; end if;
     if exists (select 1 from public.project_members where project_route = p_project_route)
     then return jsonb_build_object('accepted',false); end if;
@@ -198,7 +205,7 @@ begin
       where project_route = p_project_route and device_id = p_device_id;
 
     if p_operation = 'member-grant' then
-      if jsonb_object_length(p_body) <> 3
+      if (select count(*) from jsonb_object_keys(p_body)) <> 3
         or not (p_body ?& array['actor_seq','target_device_id','target_public_key'])
         or (p_body->>'target_device_id') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
         or (p_body->>'target_public_key') !~ '^[0-9a-f]{64}$'
@@ -229,7 +236,7 @@ begin
         revoked_by_device_id=null, revoke_seq=null, revocation_signature=null, revoked_at=null;
       return jsonb_build_object('accepted',true);
     else
-      if jsonb_object_length(p_body) <> 2
+      if (select count(*) from jsonb_object_keys(p_body)) <> 2
         or not (p_body ?& array['actor_seq','target_device_id'])
         or (p_body->>'target_device_id') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
       then raise exception using errcode = 'P0001', message = 'request rejected'; end if;
@@ -248,7 +255,8 @@ begin
   end if;
 
   if p_operation = 'endpoint-publish' then
-    if jsonb_object_length(p_body) <> 3 or not (p_body ?& array['seq','expires_at','ciphertext'])
+    if (select count(*) from jsonb_object_keys(p_body)) <> 3
+      or not (p_body ?& array['seq','expires_at','ciphertext'])
       or jsonb_typeof(p_body->'seq') <> 'string' or p_body->>'seq' !~ '^[1-9][0-9]{0,19}$'
       or jsonb_typeof(p_body->'expires_at') <> 'string'
       or jsonb_typeof(p_body->'ciphertext') <> 'string'
@@ -269,7 +277,7 @@ begin
   end if;
 
   if p_operation = 'endpoint-list' then
-    if jsonb_object_length(p_body) <> 1 or not (p_body ? 'after_cursor')
+    if (select count(*) from jsonb_object_keys(p_body)) <> 1 or not (p_body ? 'after_cursor')
       or (p_body->'after_cursor' <> 'null'::jsonb and p_body->>'after_cursor' !~ '^(0|[1-9][0-9]{0,18})$')
     then raise exception using errcode = 'P0001', message = 'request rejected'; end if;
     v_cursor := coalesce(nullif(p_body->>'after_cursor','null')::bigint,0);
@@ -279,8 +287,8 @@ begin
       select cursor_id,jsonb_build_object(
         'cursor',cursor_id::text,'writer_device_id',writer_device_id,'seq',seq::text,
         'ciphertext',ciphertext,
-        'expires_at',to_char(expires_at at time zone 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
-        'created_at',to_char(created_at at time zone 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+        'expires_at',to_char(expires_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+        'created_at',to_char(created_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
       ) as row_json
       from public.endpoint_records
       where project_route=p_project_route and expires_at>clock_timestamp() and cursor_id>v_cursor

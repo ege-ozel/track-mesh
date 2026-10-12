@@ -58,7 +58,7 @@ serde_json::to_vec((
 ))
 ```
 
-Bu, mevcut `MailboxAuth::signing_bytes`'ın ordered `serde_json` tuple modelini korur; Supabase için yeni domain kullanır. `scope` operation adıdır; operation adı tek bir sabit HTTP POST function path'ine karşılık gelir. UUID'ler lowercase canonical, key/hash/signature hex değerleri lowercase; `issued_at` tam üç fractional digit ile `YYYY-MM-DDTHH:mm:ss.SSSZ` biçiminde olmalıdır. Timestamp yerel saatle ±120 saniye içinde değilse reddedilir. Body gövdesi 64 KiB üstünde olamaz; auth header 4 KiB üstünde olamaz. Zarf bilinmeyen/eksik alan kabul etmez. İstemci nonce'ı kriptografik güvenli UUIDv4 üretir.
+Bu, mevcut `MailboxAuth::signing_bytes`'ın ordered `serde_json` tuple modelini korur; Supabase için yeni domain kullanır. `scope` operation adıdır; operation adı tek bir sabit HTTP POST function path'ine karşılık gelir. UUID'ler lowercase canonical, key/hash/signature hex değerleri lowercase; `nonce` küçük harfli, canonical UUID v4 olmalıdır. `issued_at` tam üç fractional digit ile `YYYY-MM-DDTHH:mm:ss.SSSZ` biçiminde olmalıdır; Rust istemci bu iki biçimi birebir üretmelidir. Timestamp yerel saatle ±120 saniye içinde değilse reddedilir. Body gövdesi 64 KiB üstünde olamaz; auth header 4 KiB üstünde olamaz. Zarf bilinmeyen/eksik alan kabul etmez.
 
 `request_nonces` benzersiz anahtarı `(project_route, device_id, nonce)` olur. Başarılı transaction'da nonce tüketimi ACL kontrolü ve iş değişikliğiyle aynı DB çağrısındadır; en az 10 dakika tutulur (±2 dakika timestamp skew için güvenli replay retention). Aynı nonce farklı operation için de tekrar kullanılamaz. Endpoint payload body alanları: publish `{ "seq": "decimal-u64", "expires_at": "UTC timestamp", "ciphertext": "base64url-no-pad" }`; list `{ "after_cursor": null | "decimal-bigint" }`. Cursor DB'nin monotonik `cursor_id` değeridir; sayfa başına 8 satır. ACL body'leri §2.2'de belirtilir.
 
@@ -72,6 +72,8 @@ Başlangıç fixed-window limitleri hem cihaz hem proje bazında uygulanır; cih
 | `member-grant`, `member-revoke` | 10/saat | 30/saat |
 | `endpoint-publish` | 30/dakika | 120/dakika |
 | `endpoint-list` | 60/dakika | 180/dakika |
+
+Ek olarak `project-claim` için Supabase projesinin tüm route'ları boyunca tek bir **global 60/saat** limiti vardır. Supabase resmi belgeleri PostgREST `request.headers` içinden `X-Forwarded-For` okunabildiğini ve Edge loglarında `x-real-ip`/`cf-connecting-ip` header'larının kaydedildiğini gösteriyor; ancak Edge Function handler'ına gelen bu header'ın gateway tarafından client-controlled değerden arındırıldığına dair güvenilirlik garantisi bulamadım. Bu nedenle M5d-server IP başına limit veya IP depolaması yapmaz. Doğrulanmış Edge header kaynağı için `[V]` açık kalır; global claim limiti rastgele anahtar/route ile per-device ve per-project claim limitlerini aşmayı sınırlar.
 
 Bu uygulama limitleri ilk abuse-control değerleridir; Supabase platform kotası değildir. Limit aşımı, route doluluğu ve diğer iş kuralı reddi aynı generic yanıtı üretir.
 
@@ -154,7 +156,7 @@ Kurulum ya Supabase Dashboard'da yeni proje açıp SQL Editor / Edge Function de
 | Proje 7 gün sonra duraklar | Client manuel dosya ve direkt bağlantı yollarına düşer; UNKNOWN/OFFLINE, eski endpoint yok. | Free inactivity ölçütü sabit değil; restore Dashboard/owner gerektirir ve uzun duraklamada 1 yıl sınırı var. |
 | Kötü niyetli veya yanlış yönetilen ACL | Project route + public key binding; aktif üye onay sonrası grant edebilir; yalnız owner başka üyeyi revoke eder. | Owner kendini revoke ederse başka üyeyi çıkaracak admin kalmayabilir; owner recovery/transfer kararı yok. |
 
-Uygulama/deployment doğrulaması `[V]`: (1) `anon`/`authenticated` SQL grants, RLS deny-all ve Edge Function privilege yolunun canlı Supabase project'te doğrulanması; (2) M5d-client Rust kanonik tuple/signature çıktısının Ed25519 WebCrypto doğrulamasıyla byte-byte eşleşmesi; (3) Postgres claim/grant/revoke, nonce/rate-limit transaction yarışları ve üç cihaz sınırı; (4) Supabase project claim TOFU yarışı ve generic conflict; (5) M5d-client URL/key configuration ve secret rotation; (6) Supabase quota/idle pause güncel davranışı; (7) gerçek Windows network outage, fallback UI ve doğrudan kanal davranışı; (8) privacy review, retention, account/billing ownership ve bölge seçimi. Invite/IP rate-limit, pg_cron ve invite-drop ayrıntıları M6 öncesi ayrıca doğrulanır.
+Uygulama/deployment doğrulaması `[V]`: (1) `anon`/`authenticated` SQL grants, RLS deny-all ve Edge Function privilege yolunun canlı Supabase project'te doğrulanması; (2) M5d-client Rust kanonik tuple/signature çıktısının Ed25519 WebCrypto doğrulamasıyla byte-byte eşleşmesi; WebCrypto Ed25519 doğrulamasının Rust `ed25519_dalek::verify_strict` ile aynı canonicality/strictness koşullarını sağladığı ayrıca kanıtlanmadı; malformed/noncanonical imza davranışı staging'de doğrulanmalı; (3) Postgres claim/grant/revoke, nonce/rate-limit transaction yarışları ve üç cihaz sınırı; (4) Supabase project claim TOFU yarışı ve generic conflict; (5) M5d-client URL/key configuration ve secret rotation; (6) Supabase quota/idle pause güncel davranışı; (7) gerçek Windows network outage, fallback UI ve doğrudan kanal davranışı; (8) privacy review, retention, account/billing ownership ve bölge seçimi; (9) Edge Function'a gelen client-IP header'ın spoof edilmeyen kaynağını Supabase resmi doküman/gerçek deployment ile belirleme. Invite/IP rate-limit, pg_cron ve invite-drop ayrıntıları M6 öncesi ayrıca doğrulanır.
 
 ## 9. Kilometre taşları ve onay kapıları
 
@@ -179,4 +181,7 @@ Uygulama/deployment doğrulaması `[V]`: (1) `anon`/`authenticated` SQL grants, 
 - [Supabase CLI local development](https://supabase.com/docs/guides/cli/local-development) — `supabase init`, local workflow ve migration/deployment başlangıcı.
 - [Supabase CLI reference](https://supabase.com/docs/reference/cli) — `db push`, function deploy ve `--no-verify-jwt` seçenekleri.
 - [Web Crypto Ed25519 importKey](https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/importKey) — raw Ed25519 public key formatı; Supabase Deno runtime'da ayrıca doğrulanmalıdır.
+- [PostgreSQL JSON functions](https://www.postgresql.org/docs/current/functions-json.html) — `jsonb_object_keys` set-returning function; body key-count SQL'i bu fonksiyonla yapılır.
+- [Supabase Securing your API](https://supabase.com/docs/guides/api/securing-your-api) — `request.headers` içindeki `X-Forwarded-For` erişim örneği (PostgREST bağlamı; Edge handler header güvenilirliğini tek başına kanıtlamaz).
+- [Supabase log field reference](https://supabase.com/docs/guides/observability/log-field-reference) — Gateway loglarına alınabilen `x-real-ip`/`cf-connecting-ip` header adları; spoof-resistant Edge header garantisi vermez.
 - [Project backups](https://supabase.com/docs/guides/platform/backups) — plan/backup farkları; Free plan'de backup sınırları.
