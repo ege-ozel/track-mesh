@@ -156,8 +156,7 @@ fn ipv6_endpoint_candidate(ip: Ipv6Addr) -> bool {
     }
     let s = ip.segments();
     let global = (s[0] & 0xe000) == 0x2000;
-    let protocol_special =
-        (s[0] == 0x2001 && ((s[1] & 0xfe00) == 0 || s[1] == 0x0db8))
+    let protocol_special = (s[0] == 0x2001 && ((s[1] & 0xfe00) == 0 || s[1] == 0x0db8))
         || s[0] == 0x2002
         || (s[0] == 0x2620 && s[1] == 0x004f && s[2] == 0x8000)
         || (s[0] == 0x3fff && (s[1] & 0xfff0) == 0)

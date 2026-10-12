@@ -40,8 +40,9 @@ Paths are relative to repository root. A crate's `src/lib.rs` lists its public A
 | Backup originals, install files, verify final folder/commit head | `crates/transfer/src/installation.rs` | Snapshot path/file helpers |
 | Journal format and atomic persistence | `crates/transfer/src/journal.rs` | Snapshot atomic replacement |
 | Explicit interrupted-apply recovery | `crates/transfer/src/recovery.rs` | Apply and trusted target validation |
-| SQLite open/schema migration/mutex | `crates/storage/src/lib.rs`, `src/schema.sql` | Domain storage modules |
-| Persisted structs and row decoding | `crates/storage/src/models.rs` | `transfer_state.rs` |
+| SQLite open/schema migration/mutex | `crates/storage/src/lib.rs`, `src/schema.sql` | Domain storage modules; additive schema v3 endpoint migration is transactional |
+| Persisted structs and row decoding | `crates/storage/src/models.rs` | `transfer_state.rs`, `endpoints.rs` |
+| Durable local endpoint sequence and peer endpoint watermark/expiry | `crates/storage/src/endpoints.rs` | Schema v3 tables; no trust or network authorization |
 | Six transfer labels and SQLite/JSON conversion | `crates/storage/src/transfer_state.rs` | Transfers and receiver/recovery |
 | Project links and errors | `crates/storage/src/projects.rs` | Core |
 | Device identity bindings and per-project authorization | `crates/storage/src/trust.rs` | Network/transfer requests |
