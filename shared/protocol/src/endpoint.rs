@@ -137,8 +137,7 @@ pub fn validate_endpoint_address(address: &str) -> Result<()> {
 fn ipv4_endpoint_candidate(ip: Ipv4Addr) -> bool {
     let [a, b, c, _] = ip.octets();
     ip.is_private()
-        || (a >= 1
-            && a <= 223
+        || ((1..=223).contains(&a)
             && !ip.is_loopback()
             && !ip.is_link_local()
             && !ip.is_broadcast()
@@ -157,9 +156,10 @@ fn ipv6_endpoint_candidate(ip: Ipv6Addr) -> bool {
     }
     let s = ip.segments();
     let global = (s[0] & 0xe000) == 0x2000;
-    let protocol_special = (s[0] == 0x2001 && (s[1] & 0xfe00) == 0)
+    let protocol_special =
+        (s[0] == 0x2001 && ((s[1] & 0xfe00) == 0 || s[1] == 0x0db8))
         || s[0] == 0x2002
-        || (s[0] == 0x2620 && s[1] == 0x004f && (s[2] & 0x8000) != 0)
+        || (s[0] == 0x2620 && s[1] == 0x004f && s[2] == 0x8000)
         || (s[0] == 0x3fff && (s[1] & 0xfff0) == 0)
         || s[0] == 0x5f00;
     global
