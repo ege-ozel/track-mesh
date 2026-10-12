@@ -66,12 +66,21 @@ impl Store {
         let highest_seq = parse_sequence(&highest_seq)?;
         let record: EndpointRecord =
             serde_json::from_str(&record_json).context("invalid stored peer endpoint record")?;
-        ensure!(record.device_id == device_id, "stored peer endpoint device mismatch");
-        ensure!(record.seq == highest_seq, "stored peer endpoint watermark mismatch");
+        ensure!(
+            record.device_id == device_id,
+            "stored peer endpoint device mismatch"
+        );
+        ensure!(
+            record.seq == highest_seq,
+            "stored peer endpoint watermark mismatch"
+        );
         let stored_expiry = DateTime::parse_from_rfc3339(&expires_at)
             .context("invalid stored peer endpoint expiry")?
             .with_timezone(&Utc);
-        ensure!(stored_expiry == record.expires_at, "stored peer endpoint expiry mismatch");
+        ensure!(
+            stored_expiry == record.expires_at,
+            "stored peer endpoint expiry mismatch"
+        );
         Ok(Some(PeerEndpointState {
             record: (now < stored_expiry).then_some(record),
             highest_seq,
@@ -93,14 +102,23 @@ impl Store {
             .optional()?;
         let outcome = if let Some((highest_seq, record_json, expires_at)) = existing {
             let highest_seq = parse_sequence(&highest_seq)?;
-            let previous: EndpointRecord =
-                serde_json::from_str(&record_json).context("invalid stored peer endpoint record")?;
-            ensure!(previous.device_id == record.device_id, "stored peer endpoint device mismatch");
-            ensure!(previous.seq == highest_seq, "stored peer endpoint watermark mismatch");
+            let previous: EndpointRecord = serde_json::from_str(&record_json)
+                .context("invalid stored peer endpoint record")?;
+            ensure!(
+                previous.device_id == record.device_id,
+                "stored peer endpoint device mismatch"
+            );
+            ensure!(
+                previous.seq == highest_seq,
+                "stored peer endpoint watermark mismatch"
+            );
             let stored_expiry = DateTime::parse_from_rfc3339(&expires_at)
                 .context("invalid stored peer endpoint expiry")?
                 .with_timezone(&Utc);
-            ensure!(stored_expiry == previous.expires_at, "stored peer endpoint expiry mismatch");
+            ensure!(
+                stored_expiry == previous.expires_at,
+                "stored peer endpoint expiry mismatch"
+            );
             match record.compare_sequence(&previous)? {
                 EndpointSequence::Duplicate => EndpointWriteOutcome::Duplicate,
                 EndpointSequence::Newer => {
@@ -139,7 +157,12 @@ fn write_endpoint(
          VALUES(?1,?2,?3,?4)
          ON CONFLICT(device_id) DO UPDATE SET highest_seq=excluded.highest_seq,
              record_json=excluded.record_json,expires_at=excluded.expires_at",
-        params![device, record.seq.to_string(), record_json, record.expires_at.to_rfc3339()],
+        params![
+            device,
+            record.seq.to_string(),
+            record_json,
+            record.expires_at.to_rfc3339()
+        ],
     )?;
     Ok(())
 }

@@ -1,7 +1,7 @@
 //! SQLite connection ownership, schema initialization, and public storage API.
 //! Domain modules implement `Store`; transactions never cross module boundaries.
-mod mailbox;
 mod endpoints;
+mod mailbox;
 mod models;
 mod projects;
 mod snapshots;
@@ -9,7 +9,9 @@ mod transfer_state;
 mod transfers;
 mod trust;
 
-pub use models::{EndpointWriteOutcome, Lineage, PeerEndpointState, Project, SnapshotInfo, TransferInfo};
+pub use models::{
+    EndpointWriteOutcome, Lineage, PeerEndpointState, Project, SnapshotInfo, TransferInfo,
+};
 pub use transfer_state::TransferState;
 
 use anyhow::{ensure, Result};
@@ -37,7 +39,8 @@ impl Store {
             tx.commit()?;
         }
         if version < 3 {
-            let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+            let tx =
+                connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
             tx.execute_batch(
                 "CREATE TABLE endpoint_local_sequence (
                     device_id TEXT PRIMARY KEY,
