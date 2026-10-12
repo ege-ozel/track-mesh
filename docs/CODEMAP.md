@@ -53,6 +53,7 @@ Paths are relative to repository root. A crate's `src/lib.rs` lists its public A
 | Announcements, immutable envelopes, ACK state, transactional page/cursor | `crates/storage/src/mailbox.rs` | Core publication/refresh workflows |
 | Bounded HTTPS requests and response validation | `crates/mailbox/src/http.rs` | Request auth; no project decisions |
 | Mailbox listener, authenticated project ACL, opaque SQLite records | `services/mailbox/src/main.rs`, `src/api.rs`, `src/store.rs` | Separate service database; HTTPS proxy |
+| Supabase endpoint mailbox server and signed request verification | `services/supabase/README.md`, `services/supabase/supabase/migrations/`, `services/supabase/supabase/functions/` | M5d-server only; Rust signer/client is M5d-client; M6 invite-drop endpoints are separate |
 | Private relay/rendezvous actor, allow-list, resource bounds | `services/relay/src/main.rs`, `src/actor.rs`, `src/behaviour.rs` | Existing pinned client protocols |
 | QUIC/TCP/Noise/Yamux and behavior configuration | `crates/network/src/behaviour.rs` | Config, codec, discovery |
 | Swarm ownership, request authorization, preferred connections | `crates/network/src/actor.rs` | Discovery and status |
