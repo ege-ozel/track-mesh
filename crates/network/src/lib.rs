@@ -15,4 +15,4 @@ pub use config::NetworkConfig;
 pub use handle::{Incoming, IncomingRequest, Network};
 pub use identity::{keypair, peer_id, validate_card};
 pub use portmap::{PortMappingRuntime, UpnpTarget};
-pub use status::{ConnectionStatus, NetworkStatus, PortMappingStatus};
+pub use status::{ConnectionStatus, NetworkStatus, PortMappingStatus, ReachabilityStatus};

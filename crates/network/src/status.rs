@@ -11,6 +11,24 @@ pub struct NetworkStatus {
     pub peers: HashMap<String, ConnectionStatus>,
     pub error: Option<String>,
     pub port_mapping: PortMappingStatus,
+    pub reachability: ReachabilityStatus,
+}
+#[derive(Clone, Debug, Serialize)]
+pub struct ReachabilityStatus {
+    pub state: String,
+    pub peer: Option<String>,
+    pub transport: Option<String>,
+    pub at_unix_seconds: Option<u64>,
+}
+impl Default for ReachabilityStatus {
+    fn default() -> Self {
+        Self {
+            state: "UNVERIFIED".into(),
+            peer: None,
+            transport: None,
+            at_unix_seconds: None,
+        }
+    }
 }
 #[derive(Clone, Debug, Serialize)]
 pub struct PortMappingStatus {

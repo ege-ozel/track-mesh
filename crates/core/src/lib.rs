@@ -11,8 +11,10 @@ use std::{
 use storage::Store;
 use uuid::Uuid;
 mod connection;
+mod firewall_observation;
 mod network_observation;
 mod settings;
+pub use firewall_observation::{observe_firewall, FirewallObservation};
 pub use network_observation::{observe_network, NetworkObservation};
 mod pairing;
 pub use pairing::{PairingCandidate, PairingStatus, PAIRING_WINDOW};
