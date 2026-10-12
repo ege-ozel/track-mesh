@@ -38,6 +38,17 @@ pub async fn submit_action(
 }
 
 #[tauri::command]
+pub async fn set_upnp_mapping(
+    desktop: State<'_, Arc<Desktop>>,
+    enabled: bool,
+) -> Result<(), String> {
+    desktop
+        .set_upnp_mapping(enabled)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub async fn close_app(app: AppHandle, desktop: State<'_, Arc<Desktop>>) -> Result<(), String> {
     desktop.begin_close(app);
     Ok(())

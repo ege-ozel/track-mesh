@@ -4,6 +4,7 @@ fn main() {
             "get_status",
             "choose_folder",
             "submit_action",
+            "set_upnp_mapping",
             "close_app",
         ]),
     ))

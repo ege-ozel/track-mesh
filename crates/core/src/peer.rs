@@ -1,9 +1,11 @@
 use crate::Engine;
 use anyhow::{ensure, Context, Result};
 use network::{Network, NetworkConfig};
+use network::{PortMappingRuntime, UpnpTarget};
 use protocol::{PeerRequest, PeerResponse, SignedSnapshot};
 use std::{
     collections::HashSet,
+    net::{IpAddr, Ipv4Addr},
     sync::{
         atomic::{AtomicU64, AtomicUsize, Ordering},
         Arc,
@@ -20,6 +22,7 @@ pub struct PeerRuntime {
     // Windows closes this exclusive handle only after this runtime is drained.
     _lease: Arc<std::fs::File>,
     activity: Arc<ResponderActivity>,
+    mapping: PortMappingRuntime,
 }
 #[derive(Default)]
 struct ResponderActivity {
@@ -33,11 +36,21 @@ impl Drop for ResponderWork {
     }
 }
 impl PeerRuntime {
-    pub fn start(engine: Arc<Engine>, mut config: NetworkConfig) -> Result<Self> {
+    pub fn start(
+        engine: Arc<Engine>,
+        mut config: NetworkConfig,
+        observation: crate::NetworkObservation,
+    ) -> Result<Self> {
         let lease = Arc::new(runtime_lease(&engine.directory)?);
         config.rendezvous = engine.namespaces()?;
         let (network, mut incoming, actor) =
             network::start(engine.identity.clone(), engine.store.clone(), config)?;
+        network.set_mapping_consent(engine.upnp_mapping_enabled());
+        let mapping = PortMappingRuntime::start(
+            network.clone(),
+            upnp_target(&observation),
+            engine.identity.device_id.to_string(),
+        );
         // The lease outlives an accidentally dropped adapter handle as well.
         let actor_lease = lease.clone();
         let actor = tokio::spawn(async move {
@@ -90,6 +103,7 @@ impl PeerRuntime {
             responder,
             _lease: lease,
             activity,
+            mapping,
         })
     }
     pub fn is_finished(&self) -> bool {
@@ -115,11 +129,38 @@ impl PeerRuntime {
         Ok(())
     }
     pub async fn stop(self) -> Result<()> {
+        self.mapping.stop(&self.network).await;
         self.network.shutdown().await;
         let actor = self.actor.await.context("network actor panicked")?;
         self.responder.await.context("peer responder panicked")??;
         actor
     }
+}
+
+fn upnp_target(observation: &crate::NetworkObservation) -> Option<UpnpTarget> {
+    let mut routes = observation.default_gateways.iter().collect::<Vec<_>>();
+    routes.sort_by_key(|route| (route.interface_index, route.address.clone()));
+    routes.dedup_by_key(|route| (route.interface_index, route.address.clone()));
+    let [route] = routes.as_slice() else {
+        return None;
+    };
+    let gateway = route.address.parse::<IpAddr>().ok()?;
+    let interface = observation
+        .interfaces
+        .iter()
+        .find(|item| item.interface_index == route.interface_index)?;
+    let mut addresses = interface
+        .ipv4
+        .iter()
+        .filter_map(|value| value.parse::<Ipv4Addr>().ok())
+        .filter(|ip| {
+            !ip.is_unspecified() && !ip.is_loopback() && !ip.is_link_local() && !ip.is_multicast()
+        });
+    let local = addresses.next()?;
+    addresses
+        .next()
+        .is_none()
+        .then_some(UpnpTarget { gateway, local })
 }
 
 fn runtime_lease(directory: &std::path::Path) -> Result<std::fs::File> {

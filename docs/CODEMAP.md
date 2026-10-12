@@ -13,6 +13,7 @@ Paths are relative to repository root. A crate's `src/lib.rs` lists its public A
 | Additive pairing messages and empty-message AEAD proof | `shared/protocol/src/pairing.rs`, `crates/crypto/src/pairing.rs` | Existing signed invite/card/transfer formats preserved |
 | Public IPv4 endpoint validation/construction for adapters | `crates/core/src/connection.rs` | Native desktop invitation export; no swarm restart |
 | Read-only Windows IPv4 interface, gateway, and route observation | `crates/core/src/network_observation.rs` | IP Helper calls run during Desktop startup in `spawn_blocking`; no router/firewall requests |
+| Versioned local opt-in and finite UPnP IGD mapping worker | `crates/core/src/settings.rs`, `crates/network/src/portmap.rs` | `PeerRuntime` owns worker shutdown; the network actor stays unblocked; no endpoint advertisement |
 | Manual/settled snapshot creation, unchanged-content reuse and commit | `crates/core/src/snapshots.rs` | Project lock, snapshot scanner and transactional storage |
 | Local status, compare with online peer, receive from peer, recover | `crates/core/src/workflows.rs` | `peer.rs`, transfer API |
 | Bounded project/peer metadata cards, remote history and known lineage | `crates/core/src/status.rs` | Narrow bounded storage queries; existing CLI status unchanged |

@@ -7,10 +7,12 @@ mod discovery;
 mod gate;
 mod handle;
 mod identity;
+mod portmap;
 mod status;
 
 pub use actor::start;
 pub use config::NetworkConfig;
 pub use handle::{Incoming, IncomingRequest, Network};
 pub use identity::{keypair, peer_id, validate_card};
-pub use status::{ConnectionStatus, NetworkStatus};
+pub use portmap::{PortMappingRuntime, UpnpTarget};
+pub use status::{ConnectionStatus, NetworkStatus, PortMappingStatus};

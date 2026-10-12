@@ -10,6 +10,28 @@ pub struct NetworkStatus {
     pub addresses: Vec<String>,
     pub peers: HashMap<String, ConnectionStatus>,
     pub error: Option<String>,
+    pub port_mapping: PortMappingStatus,
+}
+#[derive(Clone, Debug, Serialize)]
+pub struct PortMappingStatus {
+    pub consent_enabled: bool,
+    pub state: String,
+    pub tcp: String,
+    pub udp: String,
+    pub detail: Option<String>,
+    pub external_ip_state: String,
+}
+impl Default for PortMappingStatus {
+    fn default() -> Self {
+        Self {
+            consent_enabled: false,
+            state: "NOT_ATTEMPTED".into(),
+            tcp: "NOT_ATTEMPTED".into(),
+            udp: "NOT_ATTEMPTED".into(),
+            detail: None,
+            external_ip_state: "UNKNOWN".into(),
+        }
+    }
 }
 #[derive(Clone, Debug, Serialize)]
 pub struct ConnectionStatus {

@@ -43,7 +43,7 @@ export interface DesktopStatus {
   ready: boolean; closing: boolean; error: string | null;
   device: { device_id: string; name: string; peer_id: string } | null;
   data_directory: string | null;
-  network: { addresses: string[]; error: string | null; peers: Record<string, Connection> } | null;
+  network: { addresses: string[]; error: string | null; peers: Record<string, Connection>; port_mapping: { consent_enabled: boolean; state: string; tcp: string; udp: string; detail: string | null; external_ip_state: string } } | null;
   network_observation: NetworkObservation;
   page: { projects: ProjectCard[]; offset: number; has_more: boolean } | null;
   jobs: Job[]; checks: CheckView[];
@@ -64,4 +64,5 @@ export type Action =
 export const getStatus = (offset: number) => invoke<DesktopStatus>('get_status', { offset });
 export const chooseFolder = () => invoke<string | null>('choose_folder');
 export const submitAction = (action: Action) => invoke<string>('submit_action', { action });
+export const setUpnpMapping = (enabled: boolean) => invoke<void>('set_upnp_mapping', { enabled });
 export const closeApp = () => invoke<void>('close_app');

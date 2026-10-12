@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { chooseFolder, closeApp, getStatus, submitAction } from './api';
+import { chooseFolder, closeApp, getStatus, setUpnpMapping, submitAction } from './api';
 import type { Action, CheckView, DesktopStatus, ProjectCard, SnapshotInfo } from './api';
 
 const short = (id: string | null | undefined) => id ? id.slice(0, 8) : '—';
@@ -28,6 +28,15 @@ function publicIpv4(value: string) {
 function ConnectionSetup({ status, projectId, busy, act }: { status: DesktopStatus; projectId: string; busy: boolean; act: (action: Action) => Promise<void> }) {
   const [ip, setIp] = useState('');
   const [port, setPort] = useState(String(status.listen_port));
+  const [mappingSaving, setMappingSaving] = useState(false);
+  const [mappingError, setMappingError] = useState<string | null>(null);
+  async function changeMappingConsent(enabled: boolean) {
+    setMappingSaving(true);
+    setMappingError(null);
+    try { await setUpnpMapping(enabled); }
+    catch (error) { setMappingError(String(error)); }
+    finally { setMappingSaving(false); }
+  }
   const publicIp = ip.trim();
   const validPort = /^\d{1,5}$/.test(port) && Number(port) > 0 && Number(port) <= 65535;
   const valid = publicIpv4(publicIp) && validPort;
@@ -41,6 +50,12 @@ function ConnectionSetup({ status, projectId, busy, act }: { status: DesktopStat
     <p>Observed default gateway(s): {gateways.length ? gateways.map(gateway => <span key={`${gateway.interface_index}-${gateway.address}`}>{gateway.address} (interface {gateway.interface_index}; {gateway.source}); </span>) : 'UNKNOWN'}</p>
     <p>WAN IP = visible IP? {observation.wan_visible_ip.state} (source: {observation.wan_visible_ip.source})</p>
     <p>Port mapping observation: {observation.mappings.map(mapping => `${mapping.method} ${mapping.transport}: ${mapping.state}`).join('; ')}</p>
+    <p><strong>UPnP IGD (observation)</strong>: {status.network?.port_mapping.state ?? 'NOT_ATTEMPTED'}; TCP {status.network?.port_mapping.tcp ?? 'NOT_ATTEMPTED'}; UDP {status.network?.port_mapping.udp ?? 'NOT_ATTEMPTED'}; router external IPv4 {status.network?.port_mapping.external_ip_state ?? 'UNKNOWN'}</p>
+    <label><input type="checkbox" checked={status.network?.port_mapping.consent_enabled ?? false} disabled={busy || mappingSaving || !status.ready || status.closing}
+      onChange={event => { void changeMappingConsent(event.currentTarget.checked); }} />
+      Request time-limited UPnP port mappings on my router (explicit consent). Inbound reachability remains unverified.</label>
+    {mappingError && <p className="error">Could not save UPnP preference: {mappingError}</p>}
+    {status.network?.port_mapping.detail && <p>{status.network.port_mapping.detail}</p>}
     <p>Local listen port: <strong>{status.listen_port}</strong> (default 43101). This session keeps its listen port; a different local port requires reopening with that startup port after the current owner exits.</p>
     <p>Local IPv4 / destination port: {localIps.length ? localIps.map(localIp => <code key={localIp}>{localIp}:{status.listen_port} </code>) : 'Waiting for a local IPv4 listen address. Do not use 0.0.0.0 as the router destination.'}</p>
     <p>Select the IP on the network connected to your router. Reserve that PC address in the router DHCP settings.</p>
