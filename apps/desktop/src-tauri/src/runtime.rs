@@ -492,7 +492,11 @@ impl Desktop {
             data_directory,
             error: state.error.clone().or(runtime_error),
             network,
-            network_observation: state.network_observation.clone(),
+            network_observation: state
+                .peer
+                .as_ref()
+                .map(PeerRuntime::network_observation)
+                .unwrap_or_else(|| state.network_observation.clone()),
             page,
             jobs: state.jobs.clone(),
             checks,

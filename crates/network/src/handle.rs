@@ -35,6 +35,7 @@ pub(super) enum Command {
     PairingWindow(Duration),
     Reload(Vec<(Multiaddr, String)>),
     SetExternalAddresses(Vec<Multiaddr>),
+    NetworkChanged,
     Shutdown,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -50,6 +51,13 @@ pub struct Network {
     pub(super) mapping_consent: Arc<watch::Sender<bool>>,
 }
 impl Network {
+    pub async fn network_changed(&self) -> Result<()> {
+        self.command
+            .send(Command::NetworkChanged)
+            .await
+            .context("network stopped")
+    }
+
     pub async fn set_external_addresses(&self, addresses: Vec<Multiaddr>) -> Result<()> {
         self.command
             .send(Command::SetExternalAddresses(addresses))

@@ -215,6 +215,7 @@ impl Actor {
                     self.add_external_source(address.clone(), ExternalAddressSource::Gateway);
                 }
             }
+            Some(Command::NetworkChanged) => self.discovery.network_changed(),
             Some(Command::Shutdown) | None => return Ok(false),
         }
         Ok(true)

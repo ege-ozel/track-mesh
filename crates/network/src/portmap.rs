@@ -33,7 +33,15 @@ impl PortMappingRuntime {
         Self { task, cancel }
     }
     pub async fn stop(mut self, network: &Network) {
-        network.set_mapping_consent(false);
+        self.stop_inner(network, true).await;
+    }
+    pub async fn stop_for_target_change(mut self, network: &Network) {
+        self.stop_inner(network, false).await;
+    }
+    async fn stop_inner(&mut self, network: &Network, revoke_consent: bool) {
+        if revoke_consent {
+            network.set_mapping_consent(false);
+        }
         self.cancel.send_replace(true);
         let deadline = Instant::now() + Duration::from_secs(15);
         let mut worker_stopped = timeout(Duration::from_secs(10), &mut self.task)
@@ -112,13 +120,13 @@ async fn run(
                 _ => None,
             }
         };
-        let external_ip_state = match router_external_ip {
+        let mut external_ip_state = match router_external_ip {
             Some(ip) if is_public_ipv4(ip) => "PUBLIC",
             Some(ip) if is_private_or_cgnat_ipv4(ip) => "PRIVATE_OR_CGNAT",
             None => "UNKNOWN",
             Some(_) => "UNKNOWN",
         };
-        let external_ip = router_external_ip.filter(|ip| is_public_ipv4(*ip));
+        let mut external_ip = router_external_ip.filter(|ip| is_public_ipv4(*ip));
         let description = format!(
             "TrackMesh {}",
             device_id.chars().take(8).collect::<String>()
@@ -231,19 +239,34 @@ async fn run(
                     _ = cancel.changed() => break,
                     _ = consent.changed() => break,
                     _ = tokio::time::sleep_until(renew_at) => {
+                        match timeout(Duration::from_secs(5), gateway.get_external_ip()).await {
+                            Ok(Ok(std::net::IpAddr::V4(ip))) if is_public_ipv4(ip) => {
+                                external_ip = Some(ip);
+                                external_ip_state = "PUBLIC";
+                            }
+                            Ok(Ok(std::net::IpAddr::V4(ip))) if is_private_or_cgnat_ipv4(ip) => {
+                                external_ip = None;
+                                external_ip_state = "PRIVATE_OR_CGNAT";
+                            }
+                            _ => {
+                                external_ip = None;
+                                external_ip_state = "UNKNOWN";
+                            }
+                        }
                         for (protocol, port) in &owned {
                             let addr = SocketAddr::new(IpAddr::V4(target.local), *port);
                             let check = tokio::time::timeout(Duration::from_secs(5), mapping_state(&gateway, *protocol, *port, target.local, &description)).await.unwrap_or(MappingPresence::Unknown);
                             if *consent.borrow() && !*cancel.borrow() && matches!(check, MappingPresence::Vacant | MappingPresence::Owned) {
                                 let state = timeout(Duration::from_secs(5), gateway.add_port(*protocol, *port, addr, 3600, &description)).await;
-                                let protocol_state = if matches!(state, Ok(Ok(()))) { "MAPPED" } else { "FAILED" };
+                                let protocol_state = if matches!(state, Ok(Ok(()))) { "MAPPED" } else { "EXPIRED" };
                                 if *protocol == PortMappingProtocol::TCP { tcp_state = protocol_state; } else { udp_state = protocol_state; }
                             } else {
-                                if *protocol == PortMappingProtocol::TCP { tcp_state = "FAILED"; } else { udp_state = "FAILED"; }
+                                if *protocol == PortMappingProtocol::TCP { tcp_state = "EXPIRED"; } else { udp_state = "EXPIRED"; }
                             }
                         }
-                        let state = if tcp_state == "MAPPED" || udp_state == "MAPPED" { "MAPPED" } else { "FAILED" };
-                        let mut renewed = status(state, tcp_state, udp_state, Some("UPnP mapping lease renewal status"));
+                        let state = if tcp_state == "MAPPED" || udp_state == "MAPPED" { "MAPPED" } else if tcp_state == "EXPIRED" || udp_state == "EXPIRED" { "EXPIRED" } else { "FAILED" };
+                        let reason = if tcp_state == "EXPIRED" && udp_state == "EXPIRED" { "TCP and UDP mapping lease renewal failed; mappings are EXPIRED" } else if tcp_state == "EXPIRED" { "TCP mapping lease renewal failed; TCP is EXPIRED" } else if udp_state == "EXPIRED" { "UDP mapping lease renewal failed; UDP is EXPIRED" } else { "UPnP mapping lease renewal status" };
+                        let mut renewed = status(state, tcp_state, udp_state, Some(reason));
                         renewed.external_ip_state = external_ip_state.into();
                         set_status(&network, renewed);
                         let addresses = if *consent.borrow() && !*cancel.borrow() {
