@@ -1,8 +1,8 @@
 # Aşama 1 — Supabase arka ucu tasarımı
 
-**Durum:** Tasarım eki; kod, şema, servis veya çalışan Supabase projesi değildir. Gerçek deployment ve operasyon doğrulanmadı. Kotalar 2026-10-12 tarihinde Supabase'in resmi belgelerinden okunmuştur ve değişebilir; kurulumdan önce yeniden kontrol edilmelidir. Aşamaların ilerleme ve gerçek kontrolleri yalnızca [IMPLEMENTATION.md](../IMPLEMENTATION.md) içinde tutulur.
+**Durum (2026-10-12):** M5d-server SQL migration ve Edge Function kaynakları `services/supabase/` altında hazırlandı. Supabase'e deploy edilmedi; canlı RLS/ACL, Deno/WebCrypto ve runtime davranışı doğrulanmadı. M5d-client henüz uygulanmadı. Kotalar 2026-10-12 tarihinde Supabase'in resmi belgelerinden okunmuştur ve değişebilir; kurulumdan önce yeniden kontrol edilmelidir. Aşamaların ilerlemesi ve gerçek kontroller yalnızca [IMPLEMENTATION.md](../IMPLEMENTATION.md) içinde tutulur.
 
-Bu ek, ürün sahibinin 2026-10-12 tarihli kararıyla Aşama 1 M5d (endpoint mailbox) ve M6 (şifreli davet bırakma) için Supabase'i seçilen arka uç yapar. Mevcut yerel davet dosyası ve isteğe bağlı kendi mailbox servisi geçerliliğini korur. Relay 1.0.0 kapsamı dışındadır ve ertelenmiştir. Bu ek yalnız tasarımdır; yeni wire, servis API'si, SQL şeması veya bağımlılık uygulanmasına izin vermez.
+Bu ek, ürün sahibinin 2026-10-12 tarihli kararıyla Aşama 1 M5d endpoint mailbox ve M6 şifreli davet bırakma için Supabase'i seçilen arka uç yapar. Mevcut yerel davet dosyası ve isteğe bağlı kendi mailbox servisi geçerliliğini korur. Relay 1.0.0 kapsamı dışındadır ve ertelenmiştir. Görev #26 açıkça M5d-server SQL/Edge Function kaynaklarını ve istek imzası spesifikasyonunu onaylamıştır; istemci, M6 invite-drop API ve deployment ayrı iş kapsamındadır.
 
 ## 1. Veri modeli ve gizlilik sınırı
 
@@ -22,19 +22,72 @@ Sunucuda plaintext adres, proje anahtarı veya imza doğrulamasında kullanılan
 
 İstemciye yalnız Supabase Project URL ve publishable/legacy anon key dağıtılabilir. Bunlar gizli kabul edilmez; API anahtarı kimlik veya proje üyeliği kanıtı değildir. İki tablo için doğrudan `anon` ve `authenticated` erişim grant'leri kaldırılır, RLS açılır ve hiçbir istemci politikası tanımlanmaz (deny-all). Edge Function dışında tabloya doğrudan erişim kapalıdır. Function'ın kullandığı secret/service-role anahtarı RLS'yi atlar; yalnız Edge Function ortamında tutulur, hiçbir TrackMesh binary'sine, depoya, dağıtım paketine, loga veya istemci yanıtına girmez. SQL erişimi kullanılıyorsa yalnız dar yetkili, kontrollü DB işlemleri tercih edilir; service-role kullanımı kaçınılmazsa Function içindeki doğrulanmış işlemlerden sonra çalıştırılır.
 
-`endpoint_publish`, `endpoint_list` ve `invite_create` için cihaz Ed25519 imzalı istek zarfı tasarlanır. Zarf en az `device_id`, `project_route` (invite upload için route kapsamı), method/operation, canonical path, UTC timestamp, random nonce, body hash ve signature taşır. İmza baytları ayrı ve domain-separated scope kullanır; örneğin `trackmesh-supabase-endpoint-request-v1` ve `trackmesh-supabase-invite-request-v1`. İstek gövdesi ve route/path kanonik biçimde hash'e bağlanır. Function saat skew sınırı uygular ve nonce'ı kısa replay penceresi boyunca atomik olarak bir kez kabul eder. Aynı imza farklı body, route, method veya zaman damgası için geçerli olmaz. HTTPS zorunludur. Her Function auth gateway'inin davranışına körü körüne güvenmek yerine uygulama imzasını ayrıca doğrular.
+`project-claim`, `member-grant`, `member-revoke`, `endpoint-publish` ve `endpoint-list` için cihaz Ed25519 imzalı istek zarfı kullanılır. Kesin wire/signing biçimi §2.1'de tanımlıdır. Project URL + publishable/anon key yalnız API projesini seçer; üyelik/kimlik kanıtı değildir. Edge Function JWT doğrulaması kapalıdır çünkü kullanıcı JWT akışı yoktur; tüm işlevler uygulama Ed25519 imzası, ACL ve replay kontrollerini kendileri yapar. HTTPS zorunludur.
 
-### Sunucu ACL temsili ve pairing sonrası provisioning
+### 2.1 İmzalı istek wire biçimi
 
-Mevcut pairing/trust state cihazların yerel SQLite depolarındadır; Supabase bunu kendiliğinden bilemez. Tasarım, her Supabase TrackMesh projesi için `project_members(project_route, device_id, ed25519_public_key, role, status, granted_at, grant_signature)` gibi bir sunucu ACL'si gerektirir. Function, isteğin imza anahtarının aynı proje route'unda `active` üye olduğunu kontrol eder. `device_id` ve public key eşleşmesi TrackMesh kimlik bağlamından doğrulanır. Revoke edilmiş cihaz eski endpoint kayıtlarını yayımlayamaz veya okuyamaz. Bu ACL, yalnız metadata servisine erişim iznidir; dosya transfer yetkisi sağlamaz.
+İstemci istekleri yalnız `POST /functions/v1/<operation>` kullanır. İşlem adları tam olarak `project-claim`, `member-grant`, `member-revoke`, `endpoint-publish`, `endpoint-list` olur; URL'deki function adı auth `scope` alanıyla birebir eşleşir. İstek gövdesi UTF-8 JSON'dur ve `x-trackmesh-auth` header'ı mevcut `MailboxAuth` gibi standart padded Base64 ile kodlanmış JSON zarfıdır:
 
-Seçenekler:
+```json
+{
+  "version": 1,
+  "project_route": "lowercase-canonical-uuid",
+  "device_id": "lowercase-canonical-uuid",
+  "public_key": "64 lowercase hex chars",
+  "issued_at": "2026-10-12T12:34:56.789Z",
+  "nonce": "lowercase UUIDv4",
+  "scope": "endpoint-publish",
+  "body_hash": "64 lowercase hex chars",
+  "signature": "128 lowercase hex chars"
+}
+```
 
-1. **Dashboard/SQL ile elle ACL ekleme:** en az protokol değişikliği, fakat proje sahibi her eşleşmede güvenilir cihazın public key'ini ayrıca kopyalar; ölçeklenmez ve kullanıcı hatasına açık.
-2. **Ürün sahibi imzalı üyelik grant'i (öneri):** proje sahibi cihazı ilk kez Supabase ACL yöneticisi olarak güvenli bir bootstrap adımıyla kaydeder. Bootstrap için tek seferlik SQL/Dashboard işlemi ya da ayrı ve kısa ömürlü, gizli tutulması gereken enrollment kodu gerekir. Sonrasında pairing isteği tek başına üyelik yaratmaz. Davet alan peer, mevcut challenge/proof ile cihaz anahtarının sahipliğini kanıtlar; inviter kullanıcı adayı inceler ve mevcut açık onay düğmesiyle eşleştirmeyi onaylar. Onaydan sonra owner cihaz `project_route + yeni device_id + public key + role + expiry/seq + action` kapsamlı grant'i kendi Ed25519 anahtarıyla imzalar ve Edge Function'a yollar. Function grant imzasını kayıtlı proje yöneticisi anahtarına göre doğrular, challenge/proof sonucunu ve yazar üyeliğini doğrular, ardından `project_members` güncellemesini tek DB transaction'ında yapar. Revocation da imzalı ve monotonic sequence'li olur. Bu protokol ve UI, ayrıca wire/service API onayı almadan uygulanmaz.
-3. **Invite linki veya proje anahtarıyla otomatik üyelik:** önerilmez. Bearer linkin çalınması veya yalnız proje anahtarını bilen birinin isteği sunucu ACL'sine dönüşür; mevcut açık inviter onayı ve güvenilir device binding atlanmış olur.
+`body_hash`, HTTP gövdesinin boşluklar dâhil **ham byte'ları** üzerinde SHA-256'nın küçük harfli hex kodlamasıdır. Mevcut `protocol::hash` BLAKE3 kullandığından bu yeni backend scope'unda BLAKE3 tekrar kullanılmaz. İmza girdisi, UTF-8 ve compact JSON olarak aşağıdaki sıralı tuple'dır; sıra, tip ve tarih gösterimi protokolün parçasıdır:
 
-Önerilen yöntemde de sahibin cihaz anahtarı/DB yedeği kaybı, ilk bootstrap ve cihaz iptali için kurtarma planı gerekir. Çoklu admin/delegasyon, owner cihaz offline iken yeni üyelik ve ACL'nin başka bir cihaza aktarımı henüz kararlaştırılmamıştır `[V]`. Açıkça belirtmek gerekir: “automatic service ACL update yok” önceki ürün sınırı bu karar ile değişmiştir. Otomatik güncelleme yalnız cihaz anahtarıyla imzalı, explicit local approval sonrası üretilen sınırlı ACL grant'i anlamında kabul edilebilir; invite import, proje anahtarı veya Supabase anon key tek başına ACL yazamaz.
+```text
+serde_json::to_vec((
+  "trackmesh-supabase-request-v1",
+  1_u32,
+  project_route,      // UUID, lowercase canonical string
+  device_id,          // UUID, lowercase canonical string
+  public_key,         // lowercase hex string
+  issued_at,          // fixed UTC RFC3339 milliseconds as a string, ending in Z
+  nonce,              // lowercase canonical UUIDv4 string
+  scope,              // exact function/operation name
+  body_hash           // SHA-256 lowercase hex string
+))
+```
+
+Bu, mevcut `MailboxAuth::signing_bytes`'ın ordered `serde_json` tuple modelini korur; Supabase için yeni domain kullanır. `scope` operation adıdır; operation adı tek bir sabit HTTP POST function path'ine karşılık gelir. UUID'ler lowercase canonical, key/hash/signature hex değerleri lowercase; `nonce` küçük harfli, canonical UUID v4 olmalıdır. `issued_at` tam üç fractional digit ile `YYYY-MM-DDTHH:mm:ss.SSSZ` biçiminde olmalıdır; Rust istemci bu iki biçimi birebir üretmelidir. Timestamp yerel saatle ±120 saniye içinde değilse reddedilir. Body gövdesi 64 KiB üstünde olamaz; auth header 4 KiB üstünde olamaz. Zarf bilinmeyen/eksik alan kabul etmez.
+
+`request_nonces` benzersiz anahtarı `(project_route, device_id, nonce)` olur. Başarılı transaction'da nonce tüketimi ACL kontrolü ve iş değişikliğiyle aynı DB çağrısındadır; en az 10 dakika tutulur (±2 dakika timestamp skew için güvenli replay retention). Aynı nonce farklı operation için de tekrar kullanılamaz. Endpoint payload body alanları: publish `{ "seq": "decimal-u64", "expires_at": "UTC timestamp", "ciphertext": "base64url-no-pad" }`; list `{ "after_cursor": null | "decimal-bigint" }`. Cursor DB'nin monotonik `cursor_id` değeridir; sayfa başına 8 satır. ACL body'leri §2.2'de belirtilir.
+
+İşlem gövdeleri: claim `{ "actor_seq": "1" }`; grant `{ "actor_seq": "decimal-u64", "target_device_id": "uuid", "target_public_key": "64 lowercase hex chars" }`; revoke `{ "actor_seq": "decimal-u64", "target_device_id": "uuid" }`. Grant/revoke sequence'i auth imzasının body hash'iyle imzalanır ve `project_members.last_action_seq` ile artan sırada karşılaştırılır. `project_members.last_endpoint_seq` endpoint satırları TTL nedeniyle silindikten sonra da her üyenin en yüksek kabul edilmiş endpoint sıra numarasını saklar; replay watermark retention'dan bağımsızdır. Başarılı ya da iş kuralı nedeniyle reddedilen imzalı istekte nonce/rate state transaction içinde tutulur; auth, replay, ACL ve yazım ayrıdır/parsiyel değildir.
+
+Başlangıç fixed-window limitleri hem cihaz hem proje bazında uygulanır; cihaz anahtarı imzalı `device_id`, proje anahtarı `project_route`'tur:
+
+| İşlem | Cihaz | Proje |
+| --- | ---: | ---: |
+| `project-claim` | 3/saat | 10/saat |
+| `member-grant`, `member-revoke` | 10/saat | 30/saat |
+| `endpoint-publish` | 30/dakika | 120/dakika |
+| `endpoint-list` | 60/dakika | 180/dakika |
+
+Ek olarak `project-claim` için Supabase projesinin tüm route'ları boyunca tek bir **global 60/saat** limiti vardır. Supabase resmi belgeleri PostgREST `request.headers` içinden `X-Forwarded-For` okunabildiğini ve Edge loglarında `x-real-ip`/`cf-connecting-ip` header'larının kaydedildiğini gösteriyor; ancak Edge Function handler'ına gelen bu header'ın gateway tarafından client-controlled değerden arındırıldığına dair güvenilirlik garantisi bulamadım. Bu nedenle M5d-server IP başına limit veya IP depolaması yapmaz. Doğrulanmış Edge header kaynağı için `[V]` açık kalır; global claim limiti rastgele anahtar/route ile per-device ve per-project claim limitlerini aşmayı sınırlar.
+
+Bu uygulama limitleri ilk abuse-control değerleridir; Supabase platform kotası değildir. Limit aşımı, route doluluğu ve diğer iş kuralı reddi aynı generic yanıtı üretir.
+
+### 2.2 Sunucu ACL temsili ve pairing sonrası provisioning
+
+Mevcut pairing/trust state cihazların yerel SQLite depolarındadır; Supabase bunu kendiliğinden bilemez. `project_members(project_route, device_id, public_key, role, status, grant_seq, grant_signature, granted_at, revoke_seq, revocation_signature, revoked_at, last_action_seq, last_endpoint_seq)` sunucu ACL'si olur. Function, isteğin imza anahtarının aynı proje route'unda `active` üye olduğunu kontrol eder. Bir projede en fazla üç aktif cihaz vardır. Revoke edilmiş cihaz yeni endpoint yayımlayamaz veya endpoint listesini okuyamaz. Bu ACL, yalnız metadata servisine erişim iznidir; dosya transfer yetkisi sağlamaz.
+
+**Bootstrap (kullanıcı kararı): TOFU project claim.** Projede Supabase'i ilk etkinleştiren cihaz `project-claim` isteğini kendi Ed25519 imzasıyla gönderir. Function/DB atomik olarak route'ta hiçbir üyelik satırı bulunmadığını kontrol eder ve claim'i yapan device/key çiftini ilk aktif `owner` yapar. Route'ta geçmişte revoke edilmiş satır bile varsa yeni claim reddedilir. Çakışma generic hata döndürür; route varlığını açığa çıkarmaz. Enrollment kodu yoktur. Risk: proje UUID'sini gerçek cihazdan önce öğrenen biri route'u claim edebilir. Gerçek cihaz da aynı generic hata alır; bu durumda ACL kurtarma/route reset tasarlanana kadar elle davet dosyası ve doğrudan peer bağlantısı kullanılabilir. Supabase arka ucu için owner identity reset akışı bu işte yoktur. M5d-server uygulamasındaki SQL `trackmesh_dispatch` bu TOFU claim'i route bazında transaction lock'u altında uygular.
+
+**Üyelik grant/revoke (kullanıcı kararı):** mevcut, aktif herhangi bir üye, yerel pairing challenge/proof ve inviter'ın açık onayından sonra yeni cihaz için `member-grant` imzalı isteği gönderebilir. Grant body'si `actor_seq`, `target_device_id`, `target_public_key` taşır; onaylayan aktif üyenin auth imzası bu body hash'ini kapsar. Bu grant onaylayan cihazın mevcut yerel pairing sonucunu beyan etmesidir; Supabase doğrudan pairing transport'ına bakmaz. Yeni kayıt `member` olur; owner yetkisi grant ile devredilmez. `member-revoke` body'si `actor_seq`, `target_device_id` taşır. Her aktif üye kendini çıkarabilir; başka cihazı yalnız aktif owner çıkarabilir. Her imza sahibinin `actor_seq` değeri proje başına monotonik artmalı ve tabloda kalıcı `last_action_seq` ile atomik olarak ilerlemelidir. Grant/revoke imzası ve signer kimliği üyelik satırında kanıt olarak tutulur. Üçüncü aktif üye sonrası yeni grant reddedilir.
+
+Her SQL/Edge hata yanıtı genel `request rejected` gövdesi döndürür; var olmayan route, dolu route, yanlış key, revoked member, quota ve geçersiz claim ayrıştırılmaz. Claim, grant/revoke, endpoint publish ve endpoint list aynı imzalı istek/replay modelini kullanır. Uygulama onayı artık verilmiştir: M5d-server SQL şeması/migration, Edge Function API, yeni imza scope'ları, ACL modeli ve deploy edilecek servis kaynakları onay kapsamındadır; Rust istemci M5d-client işidir. “automatic service ACL update yok” eski sınırı bu karar ile değişmiştir; yalnız imzalı request ve yerel pairing sonrası üye imzalı grant üzerinden güncellenir.
+
+Owner da dahil bir üyenin kendini revoke etmesine izin verilir. Owner kendini revoke ederse aktif member'lar metadata işlemlerini sürdürebilir ve grant edebilir; owner rolü olan aktif cihaz kalmadığından başka üyeyi revoke edemez ve route yeniden claim edilemez. Bu kurtarma sınırı kullanıcıya gösterilmelidir; transfer-owner / owner recovery ayrı tasarım ister `[V]`. M5d-server bu kararı uygular, otomatik owner recovery içermez.
 
 ## 3. Endpoint mailbox akışı
 
@@ -95,22 +148,23 @@ Kurulum ya Supabase Dashboard'da yeni proje açıp SQL Editor / Edge Function de
 | --- | --- | --- |
 | Anon key veya doğrudan REST ile tablo erişimi | Grant kaldırma + RLS deny-all; tek giriş Function. | SQL role/grant, exposed schema ve Data API ayarı canlı projede doğrulanmalı. |
 | Supabase secret/service-role sızıntısı | Yalnız Function secret; istemci/binary/depoya/loga koymama, rotation prosedürü. | Supabase Function güvenlik/operasyon hesabı ele geçirilirse ciphertext silinebilir/değiştirilebilir ve ACL manipüle olabilir; imzalı iç endpoint kaydı bunu sahte adres olarak kabul etmeyi engeller. |
-| Sahte cihaz/proje üyeliği | Body hash/time/nonce imzalı isteği ve cihaz/project ACL kontrolü; explicit owner onayı ile imzalı grant. | Bootstrap/admin kaybı, key rotation, revoke gecikmesi ve cihaz saat skew politikası tasarlanmalı. |
+| Sahte cihaz/proje üyeliği | Body hash/time/nonce imzalı isteği ve cihaz/project ACL kontrolü; mevcut aktif üyenin yerel pairing onayı sonrası imzalı grant. | TOFU claim öncesi proje UUID'sini öğrenen kişi route'u claim ederek hizmeti engelleyebilir; owner/admin kurtarma ve key rotation yok. |
 | Replay/equivocation | Scope/path/body hash, dar zaman penceresi ve atomik nonce tüketimi; record seq alıcıda kalıcı. | Nonce table cleanup/kota, yedekten restore ve eşzamanlı transaction semantiği doğrulanmalı. |
 | Mailbox/DB operatörünün endpoint içeriğini görmesi | Proje anahtarlı AEAD; iç imza ve `Engine::apply_endpoint_record` doğrulaması. | Route, device ID, seq, zaman, boyut, IP ve erişim paterni metadata'sı görünür; servis kaydı silerek/erteleyerek availability'yi etkiler. |
 | Invite drop ID'nin tüketilmesi / link sızıntısı | 256-bit key fragment'te, ciphertext-only, kısa TTL, generic response, one-read transaction ve rate-limit. | ID'yi bilen saldırgan key'i bilmeden de tüketerek denial of service yapabilir; clipboard/link capture tamamen engellenemez. |
 | Spam/kota tüketme | Device/project/IP limitleri, maksimum body, pagination, retry backoff, TTL cleanup. | Supabase Free sabit request kotası yayımlamıyor; maliyet/availability ve güvenilir IP kaynağı deploymentta yeniden doğrulanmalı. |
 | Proje 7 gün sonra duraklar | Client manuel dosya ve direkt bağlantı yollarına düşer; UNKNOWN/OFFLINE, eski endpoint yok. | Free inactivity ölçütü sabit değil; restore Dashboard/owner gerektirir ve uzun duraklamada 1 yıl sınırı var. |
-| Kötü niyetli veya yanlış yönetilen ACL | Project route + public key binding; sadece owner imzalı explicit grant/revoke. | Owner cihaz/private key kaybı için recovery/rekey kararı yok. |
+| Kötü niyetli veya yanlış yönetilen ACL | Project route + public key binding; aktif üye onay sonrası grant edebilir; yalnız owner başka üyeyi revoke eder. | Owner kendini revoke ederse başka üyeyi çıkaracak admin kalmayabilir; owner recovery/transfer kararı yok. |
 
-Uygulama öncesi `[V]`: (1) `anon`/`authenticated` SQL grants, RLS deny-all ve Edge Function privilege yolunun canlı Supabase project'te doğrulanması; (2) Rust `MailboxAuth` kanonik imza formatını yeni scope ile tekrar kullanma/ayırma kararı; (3) TypeScript Ed25519 verify API; (4) Postgres conditional consume/nonce/rate-limit transaction yarışları; (5) IP'nin Edge gateway'den güvenilir biçimde alınması ve per-IP quota; (6) pg_cron plan/extension/free-tier davranışı ve cleanup; (7) Supabase quota/idle pause güncel davranışı; (8) URL/key project configuration, secret rotation ve local owner bootstrap; (9) gerçek Windows network outage, fallback UI ve doğrudan kanal davranışı; (10) privacy review, retention, account/billing ownership ve bölge seçimi.
+Uygulama/deployment doğrulaması `[V]`: (1) `anon`/`authenticated` SQL grants, RLS deny-all ve Edge Function privilege yolunun canlı Supabase project'te doğrulanması; (2) M5d-client Rust kanonik tuple/signature çıktısının Ed25519 WebCrypto doğrulamasıyla byte-byte eşleşmesi; WebCrypto Ed25519 doğrulamasının Rust `ed25519_dalek::verify_strict` ile aynı canonicality/strictness koşullarını sağladığı ayrıca kanıtlanmadı; malformed/noncanonical imza davranışı staging'de doğrulanmalı; (3) Postgres claim/grant/revoke, nonce/rate-limit transaction yarışları ve üç cihaz sınırı; (4) Supabase project claim TOFU yarışı ve generic conflict; (5) M5d-client URL/key configuration ve secret rotation; (6) Supabase quota/idle pause güncel davranışı; (7) gerçek Windows network outage, fallback UI ve doğrudan kanal davranışı; (8) privacy review, retention, account/billing ownership ve bölge seçimi; (9) Edge Function'a gelen client-IP header'ın spoof edilmeyen kaynağını Supabase resmi doküman/gerçek deployment ile belirleme. Invite/IP rate-limit, pg_cron ve invite-drop ayrıntıları M6 öncesi ayrıca doğrulanır.
 
 ## 9. Kilometre taşları ve onay kapıları
 
-1. **M5d — Supabase endpoint mailbox tasarımı/uygulaması:** Bu belge API/ACL/SQL detaylarının tasarım incelemesi için hazırlar. Uygulama öncesi ayrıca onay: endpoint Function API'si ve imza scope/wire, Supabase tablosu/migration/retention, project ACL bootstrap ve imzalı grant/revoke, Supabase provider hesabı/bölgesi ve deployment. Onaydan sonra ciphertext-only publish/list, ayrı cursor, nonce/replay sınırı, rate-limit, cleanup ve alıcı M5c ortak Core doğrulaması uygulanır. Kontroller ve iki Windows peer elle doğrulaması ayrıca raporlanır.
-2. **M5e — Core apply/expiry:** `Engine::apply_endpoint_record` zaten M5c ortak yoludur. Mailbox taşıması sonrası kaynak işaretleme, fetch pagination, dedupe/retry ve expiry tetikleme detayları için API onayı gerekir; tüm imza/trust/seq/time/address kontrolleri ve atomik store sırası aynen korunur. Supabase ACL onayı yerel trust onayının yerine geçmez.
-3. **M6 — Supabase invite drop:** Ayrı uygulama onayı gerekir: public route davranışı, Postgres tabloları/atomik one-read, upload membership, 15 dakika hard TTL, 64 KiB limit, ID/IP abuse limitleri, cleanup, link/URI handling, clipboard API/flags ve privacy-retention kararı. Mevcut native dosya import/export kalır. Supabase'e invite plaintext/proje key hiçbir aşamada gönderilmez.
-4. **Her aşama:** Otomatik test veya benchmark eklenmez/çalıştırılmaz. Statik kontroller ve deployment/manuel kontroller yalnız ilgili iş tamamlanıp gerçekten çalıştırıldığında kaydedilir. Bu ek hiçbir uygulama kontrolünün geçtiğini iddia etmez.
+1. **M5d-server — Supabase sunucu yüzeyi:** Görev #26 onayı ile uygulanmıştır: SQL tabloları/RLS deny-all, tek transaction dispatch RPC, beş Ed25519 doğrulamalı Edge Function ve signed tuple spec. Deno/Supabase CLI ortamda yoksa kontroller çalıştırılamaz; staging deploy, canlı ACL/RLS, concurrency ve WebCrypto runtime doğrulaması kalır.
+2. **M5d-client — Rust istemci ve config:** Ayrı sonraki görev. Gövde SHA-256, `trackmesh-supabase-request-v1` serde tuple, UTC milis timestamp, operation scope, UUIDv4 nonce, Function çağrıları ve Supabase URL/publishable key config'i server spec ile eşleşmeli. Proje başına backend seçimi, hata/fallback ve UNKNOWN/OFFLINE UI korunmalı. Cargo/wire/config değişiklikleri kendi task onayına göre yapılır.
+3. **M5e — Core apply/expiry:** `Engine::apply_endpoint_record` zaten M5c ortak yoludur. Mailbox taşıması sonrası kaynak işaretleme, fetch pagination, dedupe/retry ve expiry tetikleme detayları için client-side görev gerekir; tüm imza/trust/seq/time/address kontrolleri ve atomik store sırası aynen korunur. Supabase ACL'si yerel trust onayının yerine geçmez.
+4. **M6 — Supabase invite drop:** `invite_drops` table/Function bu migration'a bilerek eklenmedi. Ayrı görevde signed uploader, 256-bit fragment key, `trackmesh-invite-drop-v1`, 15 dakika hard TTL, 64 KiB limit, ID/IP abuse limitleri, atomik one-read, cleanup, URI/clipboard ve privacy-retention uygulanır. Mevcut native dosya import/export kalır. Supabase'e invite plaintext/proje key hiçbir aşamada gönderilmez.
+5. **Her aşama:** Otomatik test veya benchmark eklenmez/çalıştırılmaz. Statik kontroller ve deployment/manuel kontroller yalnız ilgili iş tamamlanıp gerçekten çalıştırıldığında kaydedilir.
 
 ## 10. Kaynaklar (resmi Supabase; erişim 2026-10-12)
 
@@ -123,5 +177,11 @@ Uygulama öncesi `[V]`: (1) `anon`/`authenticated` SQL grants, RLS deny-all ve E
 - [Row Level Security](https://supabase.com/docs/guides/database/postgres/row-level-security) — RLS ve service role'un RLS bypass özelliği.
 - [Edge Function secrets](https://supabase.com/docs/guides/functions/secrets) — production secret'larını Dashboard/CLI ile ayarlama.
 - [Edge Functions overview](https://supabase.com/docs/guides/functions) — TypeScript/Deno runtime, CLI ve deployment yolları.
+- [Edge Functions Dashboard quickstart](https://supabase.com/docs/guides/functions/quickstart-dashboard) — Dashboard editor ile function oluşturma/deploy etme.
 - [Supabase CLI local development](https://supabase.com/docs/guides/cli/local-development) — `supabase init`, local workflow ve migration/deployment başlangıcı.
+- [Supabase CLI reference](https://supabase.com/docs/reference/cli) — `db push`, function deploy ve `--no-verify-jwt` seçenekleri.
+- [Web Crypto Ed25519 importKey](https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/importKey) — raw Ed25519 public key formatı; Supabase Deno runtime'da ayrıca doğrulanmalıdır.
+- [PostgreSQL JSON functions](https://www.postgresql.org/docs/current/functions-json.html) — `jsonb_object_keys` set-returning function; body key-count SQL'i bu fonksiyonla yapılır.
+- [Supabase Securing your API](https://supabase.com/docs/guides/api/securing-your-api) — `request.headers` içindeki `X-Forwarded-For` erişim örneği (PostgREST bağlamı; Edge handler header güvenilirliğini tek başına kanıtlamaz).
+- [Supabase log field reference](https://supabase.com/docs/guides/observability/log-field-reference) — Gateway loglarına alınabilen `x-real-ip`/`cf-connecting-ip` header adları; spoof-resistant Edge header garantisi vermez.
 - [Project backups](https://supabase.com/docs/guides/platform/backups) — plan/backup farkları; Free plan'de backup sınırları.
