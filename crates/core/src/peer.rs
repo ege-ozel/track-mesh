@@ -22,7 +22,7 @@ pub struct PeerRuntime {
     // Windows closes this exclusive handle only after this runtime is drained.
     _lease: Arc<std::fs::File>,
     activity: Arc<ResponderActivity>,
-    mapping: PortMappingRuntime,
+    mapping: Option<PortMappingRuntime>,
 }
 #[derive(Default)]
 struct ResponderActivity {
@@ -40,17 +40,22 @@ impl PeerRuntime {
         engine: Arc<Engine>,
         mut config: NetworkConfig,
         observation: crate::NetworkObservation,
+        start_mapping: bool,
     ) -> Result<Self> {
         let lease = Arc::new(runtime_lease(&engine.directory)?);
         config.rendezvous = engine.namespaces()?;
         let (network, mut incoming, actor) =
             network::start(engine.identity.clone(), engine.store.clone(), config)?;
-        network.set_mapping_consent(engine.upnp_mapping_enabled());
-        let mapping = PortMappingRuntime::start(
-            network.clone(),
-            upnp_target(&observation),
-            engine.identity.device_id.to_string(),
-        );
+        let mapping = if start_mapping {
+            network.set_mapping_consent(engine.upnp_mapping_enabled());
+            Some(PortMappingRuntime::start(
+                network.clone(),
+                upnp_target(&observation),
+                engine.identity.device_id.to_string(),
+            ))
+        } else {
+            None
+        };
         // The lease outlives an accidentally dropped adapter handle as well.
         let actor_lease = lease.clone();
         let actor = tokio::spawn(async move {
@@ -129,7 +134,9 @@ impl PeerRuntime {
         Ok(())
     }
     pub async fn stop(self) -> Result<()> {
-        self.mapping.stop(&self.network).await;
+        if let Some(mapping) = self.mapping {
+            mapping.stop(&self.network).await;
+        }
         self.network.shutdown().await;
         let actor = self.actor.await.context("network actor panicked")?;
         self.responder.await.context("peer responder panicked")??;

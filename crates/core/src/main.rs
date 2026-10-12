@@ -268,7 +268,7 @@ async fn main() -> Result<()> {
             );
             let peer = engine.paired_peer(project_id, device_id)?;
             let observation = tokio::task::spawn_blocking(observe_network).await?;
-            let runtime = PeerRuntime::start(engine.clone(), network.config(), observation)?;
+            let runtime = PeerRuntime::start(engine.clone(), network.config(), observation, false)?;
             let operation = async {
                 runtime.wait_for_peer(&peer.peer_id, Duration::from_secs(connect_timeout)).await?;
                 let addresses = runtime.network.status().addresses.into_iter()
@@ -295,7 +295,7 @@ async fn main() -> Result<()> {
             ipc_suffix,
         } => {
             let observation = tokio::task::spawn_blocking(observe_network).await?;
-            let runtime = PeerRuntime::start(engine.clone(), network.config(), observation)?;
+            let runtime = PeerRuntime::start(engine.clone(), network.config(), observation, true)?;
             let plugin = match PluginRuntime::start(
                 engine.clone(),
                 runtime.network.clone(),
@@ -332,7 +332,7 @@ async fn main() -> Result<()> {
         }
         Command::Serve { network, mailbox } => {
             let observation = tokio::task::spawn_blocking(observe_network).await?;
-            let runtime = PeerRuntime::start(engine.clone(), network.config(), observation)?;
+            let runtime = PeerRuntime::start(engine.clone(), network.config(), observation, true)?;
             let metadata = MailboxRuntime::start(engine.clone(), mailbox.allow_loopback_http);
             println!("PeerId: {}", runtime.network.status().peer_id);
             let mut heartbeat = tokio::time::interval(Duration::from_secs(1));
@@ -355,7 +355,7 @@ async fn main() -> Result<()> {
         } => {
             let peer = engine.paired_peer(project_id, device_id)?;
             let observation = tokio::task::spawn_blocking(observe_network).await?;
-            let runtime = PeerRuntime::start(engine.clone(), network.config(), observation)?;
+            let runtime = PeerRuntime::start(engine.clone(), network.config(), observation, false)?;
             let operation = async {
                 runtime
                     .wait_for_peer(&peer.peer_id, Duration::from_secs(connect_timeout))
@@ -381,7 +381,7 @@ async fn main() -> Result<()> {
         } => {
             let peer = engine.paired_peer(project_id, device_id)?;
             let observation = tokio::task::spawn_blocking(observe_network).await?;
-            let runtime = PeerRuntime::start(engine.clone(), network.config(), observation)?;
+            let runtime = PeerRuntime::start(engine.clone(), network.config(), observation, false)?;
             let result = {
                 let receive = async {
                     runtime

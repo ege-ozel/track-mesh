@@ -8,7 +8,10 @@ use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     time::Duration,
 };
-use tokio::{task::JoinHandle, time::Instant};
+use tokio::{
+    task::JoinHandle,
+    time::{timeout, Instant},
+};
 
 #[derive(Clone, Copy)]
 pub struct UpnpTarget {
@@ -29,10 +32,16 @@ impl PortMappingRuntime {
         });
         Self { task, cancel }
     }
-    pub async fn stop(self, network: &Network) {
+    pub async fn stop(mut self, network: &Network) {
         network.set_mapping_consent(false);
         self.cancel.send_replace(true);
-        let _ = self.task.await;
+        if timeout(Duration::from_secs(15), &mut self.task)
+            .await
+            .is_err()
+        {
+            self.task.abort();
+            tracing::warn!("cleanup could not be confirmed; finite lease will expire");
+        }
     }
 }
 
@@ -91,10 +100,13 @@ async fn run(
         };
         let external_ip_state = tokio::select! {
             _ = cancel.changed() => return,
-            result = gateway.get_external_ip() => match result {
+            result = timeout(Duration::from_secs(5), gateway.get_external_ip()) => match result {
+            Ok(result) => match result {
             Ok(std::net::IpAddr::V4(ip)) if is_public_ipv4(ip) => "PUBLIC",
             Ok(std::net::IpAddr::V4(_)) => "PRIVATE_OR_CGNAT",
             _ => "UNKNOWN",
+            },
+            Err(_) => "UNKNOWN",
             }
         };
         let description = format!(
@@ -133,15 +145,17 @@ async fn run(
             .await
             .unwrap_or(false)
             {
-                true if *consent.borrow() && !*cancel.borrow() => match gateway
-                    .add_port(PortMappingProtocol::TCP, port, addr, 3600, &description)
-                    .await
+                true if *consent.borrow() && !*cancel.borrow() => match timeout(
+                    Duration::from_secs(5),
+                    gateway.add_port(PortMappingProtocol::TCP, port, addr, 3600, &description),
+                )
+                .await
                 {
-                    Ok(()) => {
+                    Ok(Ok(())) => {
                         tcp_state = "MAPPED";
                         owned.push((PortMappingProtocol::TCP, port));
                     }
-                    Err(_) => tcp_state = "DENIED",
+                    _ => tcp_state = "DENIED",
                 },
                 true => tcp_state = "NOT_ATTEMPTED",
                 false => tcp_state = "DENIED",
@@ -163,15 +177,17 @@ async fn run(
                 .await
                 .unwrap_or(false)
                 {
-                    true if *consent.borrow() && !*cancel.borrow() => match gateway
-                        .add_port(PortMappingProtocol::UDP, port, addr, 3600, &description)
-                        .await
+                    true if *consent.borrow() && !*cancel.borrow() => match timeout(
+                        Duration::from_secs(5),
+                        gateway.add_port(PortMappingProtocol::UDP, port, addr, 3600, &description),
+                    )
+                    .await
                     {
-                        Ok(()) => {
+                        Ok(Ok(())) => {
                             udp_state = "MAPPED";
                             owned.push((PortMappingProtocol::UDP, port));
                         }
-                        Err(_) => udp_state = "DENIED",
+                        _ => udp_state = "DENIED",
                     },
                     true => udp_state = "NOT_ATTEMPTED",
                     false => udp_state = "DENIED",
@@ -203,13 +219,17 @@ async fn run(
                             let addr = SocketAddr::new(IpAddr::V4(target.local), *port);
                             let check = tokio::time::timeout(Duration::from_secs(5), mapping_state(&gateway, *protocol, *port, target.local, &description)).await.unwrap_or(MappingPresence::Unknown);
                             if *consent.borrow() && !*cancel.borrow() && matches!(check, MappingPresence::Vacant | MappingPresence::Owned) {
-                                if gateway.add_port(*protocol, *port, addr, 3600, &description).await.is_err() {
-                                    set_status(&network, status("FAILED", "FAILED", "FAILED", Some("UPnP lease renewal failed")));
-                                }
+                                let state = timeout(Duration::from_secs(5), gateway.add_port(*protocol, *port, addr, 3600, &description)).await;
+                                let protocol_state = if matches!(state, Ok(Ok(()))) { "MAPPED" } else { "FAILED" };
+                                if *protocol == PortMappingProtocol::TCP { tcp_state = protocol_state; } else { udp_state = protocol_state; }
                             } else {
-                                set_status(&network, status("FAILED", "FAILED", "FAILED", Some("UPnP mapping ownership could not be confirmed for renewal")));
+                                if *protocol == PortMappingProtocol::TCP { tcp_state = "FAILED"; } else { udp_state = "FAILED"; }
                             }
                         }
+                        let state = if tcp_state == "MAPPED" || udp_state == "MAPPED" { "MAPPED" } else { "FAILED" };
+                        let mut renewed = status(state, tcp_state, udp_state, Some("UPnP mapping lease renewal status"));
+                        renewed.external_ip_state = external_ip_state.into();
+                        set_status(&network, renewed);
                         renew_at = Instant::now() + Duration::from_secs(1800);
                     }
                 }
@@ -222,7 +242,10 @@ async fn run(
                 .await
                 .unwrap_or(MappingPresence::Unknown);
                 if matches!(check, MappingPresence::Owned) {
-                    if gateway.remove_port(protocol, port).await.is_err() {
+                    if !matches!(
+                        timeout(Duration::from_secs(5), gateway.remove_port(protocol, port)).await,
+                        Ok(Ok(()))
+                    ) {
                         cleanup_failed = true;
                     }
                 } else if matches!(check, MappingPresence::Unknown) {

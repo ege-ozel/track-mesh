@@ -374,7 +374,7 @@ impl Desktop {
                 ..Default::default()
             };
             Ok::<_, anyhow::Error>((
-                PeerRuntime::start(engine_for_network, config, observation.clone())?,
+                PeerRuntime::start(engine_for_network, config, observation.clone(), true)?,
                 observation,
             ))
         })
