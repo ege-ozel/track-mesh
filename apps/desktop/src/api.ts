@@ -23,6 +23,13 @@ export interface ProjectCard {
   local_snapshot: SnapshotInfo | null; peers: Peer[]; pending_publications: number; transfer: Transfer | null;
 }
 export interface Connection { online: boolean; route: 'DIRECT' | 'RELAYED' | 'OFFLINE'; transport: string }
+export interface FirewallObservation {
+  state: string;
+  profiles: { name: string; enabled: boolean | null; block_all_inbound: boolean | null; default_inbound: string | null }[];
+  tcp_rules: { allow: string; block: string };
+  udp_rules: { allow: string; block: string };
+  third_party_products: string;
+}
 export type Lineage = 'EQUAL' | 'REMOTE_AHEAD' | 'LOCAL_AHEAD' | 'DIVERGED' | 'UNKNOWN';
 export interface Job { job_id: string; project_id: string | null; label: string; running: boolean; outcome: Record<string, unknown> | null; error: string | null }
 export interface CheckView { device_id: string; fresh: boolean; current_known: boolean; age_seconds: number; result: {
@@ -43,8 +50,9 @@ export interface DesktopStatus {
   ready: boolean; closing: boolean; error: string | null;
   device: { device_id: string; name: string; peer_id: string } | null;
   data_directory: string | null;
-  network: { addresses: string[]; error: string | null; peers: Record<string, Connection>; port_mapping: { consent_enabled: boolean; state: string; tcp: string; udp: string; detail: string | null; external_ip_state: string } } | null;
+  network: { addresses: string[]; error: string | null; peers: Record<string, Connection>; port_mapping: { consent_enabled: boolean; state: string; tcp: string; udp: string; detail: string | null; external_ip_state: string }; reachability: { state: string; peer: string | null; transport: string | null; at_unix_seconds: number | null } } | null;
   network_observation: NetworkObservation;
+  firewall_observation: FirewallObservation;
   page: { projects: ProjectCard[]; offset: number; has_more: boolean } | null;
   jobs: Job[]; checks: CheckView[];
 }

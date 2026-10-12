@@ -13,8 +13,9 @@ use std::{
 };
 use tauri::{AppHandle, Manager};
 use trackmesh_core::{
-    default_data_directory, observe_network, peer::PeerRuntime, Engine, MailboxRuntime,
-    NetworkObservation, PairingStatus, PeerCheck, PluginRuntime, SessionGrace, SummaryPage,
+    default_data_directory, observe_firewall, observe_network, peer::PeerRuntime, Engine,
+    FirewallObservation, MailboxRuntime, NetworkObservation, PairingStatus, PeerCheck,
+    PluginRuntime, SessionGrace, SummaryPage,
 };
 use uuid::Uuid;
 
@@ -203,6 +204,7 @@ pub struct DesktopStatus {
     pub error: Option<String>,
     pub network: Option<NetworkStatus>,
     pub network_observation: NetworkObservation,
+    pub firewall_observation: FirewallObservation,
     pub page: Option<SummaryPage>,
     pub jobs: Vec<Job>,
     pub checks: Vec<CheckView>,
@@ -225,6 +227,7 @@ struct Session {
     peer: Option<PeerRuntime>,
     network: Option<Network>,
     network_observation: NetworkObservation,
+    firewall_observation: FirewallObservation,
     metadata: Option<MailboxRuntime>,
     plugin: Option<PluginRuntime>,
     tasks: Vec<tauri::async_runtime::JoinHandle<()>>,
@@ -362,27 +365,31 @@ impl Desktop {
         }
         let engine_for_network = engine.clone();
         let options = self.options.clone();
-        let (peer, network_observation) = tauri::async_runtime::spawn_blocking(move || {
-            let observation = observe_network();
-            let config = NetworkConfig {
-                port: options.port,
-                external_addresses: options
-                    .external_address
-                    .iter()
-                    .map(|v| v.parse())
-                    .collect::<std::result::Result<_, _>>()?,
-                ..Default::default()
-            };
-            Ok::<_, anyhow::Error>((
-                PeerRuntime::start(engine_for_network, config, observation.clone(), true)?,
-                observation,
-            ))
-        })
-        .await??;
+        let (peer, network_observation, firewall_observation) =
+            tauri::async_runtime::spawn_blocking(move || {
+                let observation = observe_network();
+                let firewall = observe_firewall(options.port);
+                let config = NetworkConfig {
+                    port: options.port,
+                    external_addresses: options
+                        .external_address
+                        .iter()
+                        .map(|v| v.parse())
+                        .collect::<std::result::Result<_, _>>()?,
+                    ..Default::default()
+                };
+                Ok::<_, anyhow::Error>((
+                    PeerRuntime::start(engine_for_network, config, observation.clone(), true)?,
+                    observation,
+                    firewall,
+                ))
+            })
+            .await??;
         let metadata = MailboxRuntime::start(engine.clone(), self.options.allow_loopback_http);
         let mut state = self.lock()?;
         state.network = Some(peer.network.clone());
         state.network_observation = network_observation;
+        state.firewall_observation = firewall_observation;
         state.peer = Some(peer);
         state.metadata = Some(metadata);
         state.plugin = Some(PluginRuntime::start(
@@ -497,6 +504,7 @@ impl Desktop {
                 .as_ref()
                 .map(PeerRuntime::network_observation)
                 .unwrap_or_else(|| state.network_observation.clone()),
+            firewall_observation: state.firewall_observation.clone(),
             page,
             jobs: state.jobs.clone(),
             checks,

@@ -10,6 +10,7 @@ use anyhow::Result;
 use crypto::Identity;
 use futures::StreamExt;
 use libp2p::{
+    core::ConnectedPoint,
     identify,
     multiaddr::Protocol,
     ping, request_response,
@@ -64,6 +65,7 @@ pub fn start(
         pairing_pending: HashMap::new(),
         pairing_rates: HashMap::new(),
         connections: HashMap::new(),
+        inbound_connections: HashMap::new(),
         discovery: Discovery::default(),
         ip_source: manual_external_addresses
             .into_iter()
@@ -87,9 +89,16 @@ struct Actor {
         HashMap<request_response::OutboundRequestId, oneshot::Sender<Result<PairingResponse>>>,
     pairing_rates: HashMap<PeerId, (Instant, u8)>,
     connections: Connections,
+    inbound_connections: HashMap<ConnectionId, InboundConnection>,
     discovery: Discovery,
     ip_source: HashMap<Multiaddr, HashSet<ExternalAddressSource>>,
     gateway_external_addresses: HashSet<Multiaddr>,
+}
+
+struct InboundConnection {
+    peer: PeerId,
+    transport: String,
+    local_addr: Multiaddr,
 }
 
 impl Actor {
@@ -109,6 +118,7 @@ impl Actor {
         if let Ok(mut state) = self.status.write() {
             state.error = result.as_ref().err().map(|e| format!("{e:#}"));
             state.addresses.clear();
+            state.reachability = crate::ReachabilityStatus::default();
             for peer in state.peers.values_mut() {
                 peer.online = false;
                 peer.route = "OFFLINE".into();
@@ -214,8 +224,14 @@ impl Actor {
                 for address in new.difference(&previous) {
                     self.add_external_source(address.clone(), ExternalAddressSource::Gateway);
                 }
+                self.inbound_connections.clear();
+                self.reset_reachability();
             }
-            Some(Command::NetworkChanged) => self.discovery.network_changed(),
+            Some(Command::NetworkChanged) => {
+                self.inbound_connections.clear();
+                self.reset_reachability();
+                self.discovery.network_changed();
+            }
             Some(Command::Shutdown) | None => return Ok(false),
         }
         Ok(true)
@@ -268,13 +284,41 @@ impl Actor {
                 connection_id,
                 endpoint,
                 ..
-            } => self.connected(peer_id, connection_id, endpoint.get_remote_address()),
+            } => {
+                if let ConnectedPoint::Listener {
+                    local_addr,
+                    send_back_addr,
+                } = &endpoint
+                {
+                    let relayed = send_back_addr
+                        .iter()
+                        .any(|p| matches!(p, Protocol::P2pCircuit));
+                    let transport = if send_back_addr.iter().any(|p| matches!(p, Protocol::QuicV1))
+                    {
+                        "QUIC"
+                    } else {
+                        "TCP"
+                    };
+                    if !relayed && is_public_remote(send_back_addr) {
+                        self.inbound_connections.insert(
+                            connection_id,
+                            InboundConnection {
+                                peer: peer_id,
+                                transport: transport.into(),
+                                local_addr: local_addr.clone(),
+                            },
+                        );
+                    }
+                }
+                self.connected(peer_id, connection_id, endpoint.get_remote_address())
+            }
             SwarmEvent::ConnectionClosed {
                 connection_id,
                 peer_id,
                 ..
             } => {
                 self.connections.remove(&connection_id);
+                self.inbound_connections.remove(&connection_id);
                 refresh_status(&self.status, &self.connections);
                 self.discovery.disconnected(peer_id, &self.namespaces);
             }
@@ -362,6 +406,7 @@ impl Actor {
             }
             SwarmEvent::Behaviour(BehaviourEvent::Transfer(request_response::Event::Message {
                 peer,
+                connection_id,
                 message,
                 ..
             })) => match message {
@@ -381,6 +426,7 @@ impl Actor {
                         );
                         return Ok(());
                     }
+                    self.record_inbound_observation(peer, connection_id);
                     let incoming = Incoming {
                         peer,
                         request: IncomingRequest::Transfer(request),
@@ -481,4 +527,112 @@ impl Actor {
         }
         refresh_status(&self.status, &self.connections);
     }
+
+    fn record_inbound_observation(&mut self, peer: PeerId, connection: ConnectionId) {
+        let Some(inbound) = self.inbound_connections.get(&connection) else {
+            return;
+        };
+        if inbound.peer != peer
+            || !listener_matches(&self.status, &inbound.local_addr, &inbound.transport)
+        {
+            return;
+        }
+        let Ok(mut status) = self.status.write() else {
+            return;
+        };
+        status.reachability = crate::ReachabilityStatus {
+            state: "UNVERIFIED".into(),
+            peer: Some(
+                peer.to_string()
+                    .chars()
+                    .rev()
+                    .take(8)
+                    .collect::<String>()
+                    .chars()
+                    .rev()
+                    .collect(),
+            ),
+            transport: Some(inbound.transport.clone()),
+            at_unix_seconds: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .ok()
+                .map(|value| value.as_secs()),
+        };
+    }
+
+    fn reset_reachability(&mut self) {
+        if let Ok(mut status) = self.status.write() {
+            status.reachability = crate::ReachabilityStatus::default();
+        }
+    }
+}
+
+fn listener_matches(status: &RwLock<NetworkStatus>, local: &Multiaddr, transport: &str) -> bool {
+    let Some(port) = multiaddr_transport_port(local, transport) else {
+        return false;
+    };
+    status.read().ok().is_some_and(|state| {
+        state.addresses.iter().any(|address| {
+            address
+                .parse::<Multiaddr>()
+                .ok()
+                .and_then(|value| multiaddr_transport_port(&value, transport))
+                == Some(port)
+        })
+    })
+}
+
+fn multiaddr_transport_port(address: &Multiaddr, transport: &str) -> Option<u16> {
+    let mut protocols = address.iter();
+    while let Some(protocol) = protocols.next() {
+        match (transport, protocol) {
+            ("TCP", Protocol::Tcp(port)) => return Some(port),
+            ("QUIC", Protocol::Udp(port)) if matches!(protocols.next(), Some(Protocol::QuicV1)) => {
+                return Some(port)
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn is_public_remote(address: &Multiaddr) -> bool {
+    if address
+        .iter()
+        .any(|protocol| matches!(protocol, Protocol::P2pCircuit))
+    {
+        return false;
+    }
+    address
+        .iter()
+        .find_map(|protocol| match protocol {
+            Protocol::Ip4(ip) => Some(is_public_ipv4(ip)),
+            Protocol::Ip6(ip) => Some(is_public_ipv6(ip)),
+            _ => None,
+        })
+        .unwrap_or(false)
+}
+
+fn is_public_ipv4(ip: std::net::Ipv4Addr) -> bool {
+    let [a, b, c, _] = ip.octets();
+    !ip.is_private()
+        && !ip.is_loopback()
+        && !ip.is_link_local()
+        && !ip.is_documentation()
+        && !ip.is_broadcast()
+        && a != 0
+        && a < 224
+        && !(a == 100 && (64..=127).contains(&b))
+        && !(a == 198 && (b == 18 || b == 19))
+        && !(a == 192 && ((b == 0 && c == 0) || (b == 88 && c == 99)))
+}
+
+fn is_public_ipv6(ip: std::net::Ipv6Addr) -> bool {
+    let segments = ip.segments();
+    (segments[0] & 0xe000) == 0x2000
+        && !(segments[0] == 0x2001 && segments[1] <= 0x01ff)
+        && !(segments[0] == 0x2001 && segments[1] == 0x0db8)
+        && !(segments[0] == 0x2002)
+        && !(segments[0] == 0x3fff && (segments[1] & 0xf000) == 0x0000)
+        && ip.to_ipv4_mapped().is_none_or(is_public_ipv4)
 }

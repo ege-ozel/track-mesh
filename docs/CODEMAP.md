@@ -13,6 +13,7 @@ Paths are relative to repository root. A crate's `src/lib.rs` lists its public A
 | Additive pairing messages and empty-message AEAD proof | `shared/protocol/src/pairing.rs`, `crates/crypto/src/pairing.rs` | Existing signed invite/card/transfer formats preserved |
 | Public IPv4 endpoint validation/construction for adapters | `crates/core/src/connection.rs` | Native desktop invitation export; no swarm restart |
 | Read-only Windows IPv4 interface, gateway, and route observation | `crates/core/src/network_observation.rs` | IP Helper calls run during Desktop startup in `spawn_blocking`; no router/firewall requests |
+| Read-only Windows Firewall profile and candidate rule observation | `crates/core/src/firewall_observation.rs` | COM runs during long-lived Desktop startup in `spawn_blocking`; candidate rules do not prove effective permission |
 | Versioned local opt-in and finite UPnP IGD mapping worker | `crates/core/src/settings.rs`, `crates/network/src/portmap.rs` | `PeerRuntime` owns worker shutdown; the network actor stays unblocked; no endpoint advertisement |
 | Manual/settled snapshot creation, unchanged-content reuse and commit | `crates/core/src/snapshots.rs` | Project lock, snapshot scanner and transactional storage |
 | Local status, compare with online peer, receive from peer, recover | `crates/core/src/workflows.rs` | `peer.rs`, transfer API |
@@ -56,7 +57,7 @@ Paths are relative to repository root. A crate's `src/lib.rs` lists its public A
 | Private rendezvous, relay reservation, QUIC/TCP/circuit retry | `crates/network/src/discovery.rs` | Pinned infrastructure and trusted cards |
 | Bounded command/RPC interface | `crates/network/src/handle.rs` | Actor |
 | PeerId/card key binding | `crates/network/src/identity.rs` | Crypto signatures |
-| Online/route/transport reporting | `crates/network/src/status.rs` | Actor; equality is a core decision |
+| Online/route/transport and authorized inbound event observation | `crates/network/src/status.rs`, `actor.rs` | Actor correlates a direct listener connection with an authorized transfer request; reachability stays `UNVERIFIED` without cross-network provenance; no remote IP is serialized |
 | Binary chunk and bounded JSON frames | `crates/network/src/codec.rs` | Peer message types |
 | Device/project keys, signatures, mailbox encryption, DPAPI | `crates/crypto/src/lib.rs` | Protocol signing bytes/AAD |
 | Scanner, chunk store, safe paths, Windows file/project locks | `crates/snapshot/src/lib.rs` | Manifest model and transfer disk operations |
