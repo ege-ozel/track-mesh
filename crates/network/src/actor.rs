@@ -129,6 +129,7 @@ impl Actor {
     }
 
     async fn run_loop(&mut self) -> Result<()> {
+        // Tokio's first interval tick is immediate; Discovery starts existing trusted-peer dials at startup.
         let mut retry = tokio::time::interval(Duration::from_secs(6));
         loop {
             tokio::select! {

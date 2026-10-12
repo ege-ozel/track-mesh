@@ -23,7 +23,10 @@ pub use connection::public_ipv4_addresses;
 pub mod peer;
 pub use mailbox::{MailboxRuntime, PublicationStatus, RefreshStatus};
 mod workflows;
-pub use workflows::{LocalStatus, PeerCheck, ProjectStatus};
+pub use workflows::{
+    peer_connection_state, port_observation_status, LocalStatus, PeerCheck, PeerConnectionState,
+    PeerSnapshotStatus, PortObservationStatus, ProjectStatus,
+};
 mod status;
 pub use status::{PeerSummary, ProjectSummary, SummaryPage};
 mod sending;

@@ -2,11 +2,55 @@
 //! Callers own network/session lifetime; this module owns project decisions.
 use crate::Engine;
 use anyhow::{Context, Result};
-use network::{ConnectionStatus, Network};
+use network::{ConnectionStatus, Network, NetworkStatus};
 use protocol::{DeviceCard, PeerRequest, PeerResponse};
 use serde::Serialize;
 use storage::{Lineage, Project, SnapshotInfo, TransferInfo};
 use uuid::Uuid;
+
+#[derive(Clone, Copy, Debug, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum PeerConnectionState {
+    Connected,
+    Offline,
+}
+
+#[derive(Clone, Copy, Debug, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum PortObservationStatus {
+    Unverified,
+    VerifiedInbound,
+}
+
+pub fn peer_connection_state(network: &NetworkStatus, peer: &str) -> PeerConnectionState {
+    if network
+        .peers
+        .get(peer)
+        .is_some_and(|connection| connection.online)
+    {
+        PeerConnectionState::Connected
+    } else {
+        PeerConnectionState::Offline
+    }
+}
+
+pub fn port_observation_status(network: &NetworkStatus) -> PortObservationStatus {
+    if network.reachability.state == "VERIFIED_INBOUND" {
+        PortObservationStatus::VerifiedInbound
+    } else {
+        PortObservationStatus::Unverified
+    }
+}
+
+#[derive(Clone, Copy, Debug, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum PeerSnapshotStatus {
+    RemoteAhead,
+    UpToDate,
+    Diverged,
+    LocalAhead,
+    Unknown,
+}
 
 #[derive(Serialize)]
 pub struct ProjectStatus {
@@ -31,6 +75,10 @@ pub struct PeerCheck {
     pub lineage: Option<Lineage>,
     pub verified_equal: bool,
     pub connection: Option<ConnectionStatus>,
+    /// Based only on the current network actor connection table.
+    pub connection_state: PeerConnectionState,
+    /// Based on this connected peer's fetched head; equality additionally requires its ACK.
+    pub snapshot_status: PeerSnapshotStatus,
     pub last_verified_at: Option<String>,
 }
 
@@ -102,6 +150,26 @@ impl Engine {
                     .mark_verified(project, snapshot.manifest.snapshot_id, peer)?;
             }
         }
+        let connection = network.status().peers.get(peer).cloned();
+        let connected = connection
+            .as_ref()
+            .is_some_and(|connection| connection.online);
+        let connection_state = if connected {
+            PeerConnectionState::Connected
+        } else {
+            PeerConnectionState::Offline
+        };
+        let snapshot_status = if !connected {
+            PeerSnapshotStatus::Unknown
+        } else {
+            match (&lineage, verified) {
+                (Some(Lineage::RemoteAhead), _) => PeerSnapshotStatus::RemoteAhead,
+                (Some(Lineage::Diverged), _) => PeerSnapshotStatus::Diverged,
+                (Some(Lineage::LocalAhead), _) => PeerSnapshotStatus::LocalAhead,
+                (Some(Lineage::Equal), true) => PeerSnapshotStatus::UpToDate,
+                _ => PeerSnapshotStatus::Unknown,
+            }
+        };
         Ok(PeerCheck {
             project_id: project,
             local_snapshot: local,
@@ -110,7 +178,9 @@ impl Engine {
                 .map(|snapshot| snapshot.manifest.snapshot_id),
             lineage,
             verified_equal: verified,
-            connection: network.status().peers.get(peer).cloned(),
+            connection,
+            connection_state,
+            snapshot_status,
             last_verified_at: self.store.project(project)?.last_verified_at,
         })
     }

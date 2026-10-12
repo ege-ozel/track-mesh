@@ -88,6 +88,7 @@ function jobStatus(job: DesktopStatus['jobs'][number], startedAt: number | undef
   if (!job.running) {
     return job.error ? `${job.label}: ${job.error}`
       : job.outcome?.publication_error ? `Snapshot committed locally. Publication pending: ${String(job.outcome.publication_error)}`
+      : typeof job.outcome?.snapshot_id === 'string' ? `Snapshot ${short(String(job.outcome.snapshot_id))} committed locally; metadata publication was attempted. Project files are delivered only after an explicit Receive.`
       : job.outcome?.message ? String(job.outcome.message) : `${job.label} completed`;
   }
   if (job.label !== 'Check peer') return `${job.label}…`;
@@ -127,10 +128,10 @@ function ConnectionAssistant({ card, status, peer, check, busy, act }: {
   else if (peer && !connection?.online) next = 'Run the connection check. If the invitation was imported but approval is still pending, open the sender’s pairing window and retry automatic pairing here.';
   else if (peer && !check?.fresh) next = 'The peer is connected. Run the connection check to verify project access and compare current snapshots.';
   else if (card.project.recovery_required) next = 'Local installation needs recovery. Close the DAW project and use Recover locally before another Receive.';
-  else if (check?.result.lineage === 'DIVERGED') next = 'Both folders changed independently. Resolve the difference manually before receiving; TrackMesh does not merge projects.';
-  else if (check?.result.verified_equal) next = 'Both snapshot heads are equal on this live connection.';
-  else if (check?.result.lineage === 'LOCAL_AHEAD') next = 'Your local snapshot is ahead. The other PC should Check peer and Receive from this PC.';
-  else if (check?.result.lineage === 'UNKNOWN') next = 'Snapshot ancestry is unknown. Review the current project warning before receiving.';
+  else if (check?.fresh && check.result.snapshot_status === 'DIVERGED') next = 'Both folders changed independently. Resolve the difference manually before receiving; TrackMesh does not merge projects.';
+  else if (check?.fresh && check.result.snapshot_status === 'UP_TO_DATE') next = 'Both snapshot heads are equal on this live connection.';
+  else if (check?.fresh && check.result.snapshot_status === 'LOCAL_AHEAD') next = 'Your local snapshot is ahead. The other PC should Check peer and Receive from this PC.';
+  else if (check?.fresh && check.result.snapshot_status === 'UNKNOWN') next = 'Snapshot ancestry is unknown. Review the current project warning before receiving.';
   else if (check?.result.remote_snapshot) next = 'A source snapshot is available. Close the DAW project, then use Receive when the button is enabled.';
   else if (card.local_snapshot) next = 'Your local snapshot is ready. The other PC should run Check peer and Receive.';
   else if (peer) next = 'No source snapshot is available yet. Create one with Send Snapshot on the source PC.';
@@ -142,7 +143,9 @@ function ConnectionAssistant({ card, status, peer, check, busy, act }: {
       <p><strong>Local address:</strong> {localIps.length ? localIps.map(ip => `${ip}:${status.listen_port}`).join(', ') : `No Wi-Fi IPv4 address shown yet · listen port ${status.listen_port}`}</p>
       <p><strong>Device:</strong> {candidates.length ? `${candidates.length} request awaiting your approval` : peer ? `${peer.device.name} recorded locally; remote approval is verified by Check peer` : status.pairing.project_id === projectId ? 'Pairing window open; waiting for the other PC' : 'No collaborator recorded yet'}</p>
       <p><strong>Connection:</strong> {connection?.online ? `${connection.route} · ${connection.transport}` : checkJob?.running ? 'Checking now' : checkJob?.error ? 'Last check failed' : 'No active peer connection'}</p>
-      <p><strong>Snapshot:</strong> {check?.fresh ? check.result.verified_equal ? 'Fresh equality verified' : check.result.remote_snapshot ? `Source snapshot ${short(check.result.remote_snapshot)} available` : 'No remote snapshot on the fresh check' : 'Not freshly verified'}</p>
+      <p><strong>Peer status:</strong> {peer ? status.peer_states[peer.device.peer_id] ?? 'UNKNOWN' : 'UNKNOWN'}</p>
+      <p><strong>Snapshot status:</strong> {check?.fresh ? check.result.snapshot_status.replaceAll('_', ' ') : 'No live comparison · mailbox metadata is last-known only'}</p>
+      <p><strong>Port status:</strong> {status.port_status === 'VERIFIED_INBOUND' ? 'Inbound reachability verified' : status.port_status === 'UNVERIFIED' ? 'PORT_UNVERIFIED' : 'UNKNOWN'}</p>
     </div>
     <p className="diagnostic-next"><strong>Next:</strong> {next}</p>
     {peer && <div className="actions"><button disabled={busy} onClick={() => act({ kind: 'check', project_id: projectId, device_id: peer.device.device_id })}>{checkJob?.running ? 'Checking…' : 'Run connection check'}</button>
@@ -163,9 +166,8 @@ function Card({ card, status, jobStartedAt, act }: { card: ProjectCard; status: 
   const busy = !status.ready || status.closing || status.jobs.some(j => j.running && (!j.project_id || j.project_id === project.project_id));
   const check = status.checks.find(c => c.result.project_id === project.project_id && c.device_id === peerId);
   const fresh = !busy && (check?.fresh ?? false);
-  const checkedLineage = check?.current_known ? check.result.lineage : null;
-  const lineage = checkedLineage ?? peer?.known_lineage ?? null;
-  const divergence = lineage === 'DIVERGED';
+  const snapshotStatus = check?.fresh ? check.result.snapshot_status : null;
+  const divergence = snapshotStatus === 'DIVERGED';
   const verifiedForPeer = project.verified_peer_id === peer?.device.peer_id
     && project.verified_snapshot_id === project.latest_local_snapshot;
   const transfer = card.transfer;
@@ -175,7 +177,7 @@ function Card({ card, status, jobStartedAt, act }: { card: ProjectCard; status: 
   const request = (kind: 'send' | 'publish' | 'refresh' | 'pair' | 'export_invite') => act({ kind, project_id: project.project_id });
   return <article className="project-card">
     <header className="card-title"><div><h2>{project.name}</h2><p title={project.root}>{project.root}</p></div>
-      <span className={`badge ${online ? 'online' : ''}`}>{online ? connection?.route : 'OFFLINE'}</span></header>
+      <span className={`badge ${online ? 'online' : ''}`}>{peer ? status.peer_states[peer.device.peer_id] ?? 'UNKNOWN' : 'UNKNOWN'}</span></header>
     <div className="card-meta"><span>PROJECT {short(project.project_id)}</span><span>{card.pending_publications ? `${card.pending_publications} publication pending` : 'No publication pending'}</span></div>
     <div className="snapshots"><section><h3>LOCAL SNAPSHOT</h3><Snapshot value={card.local_snapshot} empty="Create your first snapshot with Send Snapshot." /></section>
       <section><h3>KNOWN REMOTE METADATA</h3><Snapshot value={peer?.announcement ?? null} empty="Pair a collaborator, then refresh or check." />
@@ -188,9 +190,8 @@ function Card({ card, status, jobStartedAt, act }: { card: ProjectCard; status: 
       <span className="muted">{online ? connection?.transport.toUpperCase() : 'Last-known status · Check peer may take up to 30s'}</span>
       <button className="text-button" disabled={busy || !peer} onClick={() => peer && act({ kind: 'check', project_id: project.project_id, device_id: peer.device.device_id })}>Check peer</button></div>
     <div className={`verification ${divergence ? 'danger' : ''}`}>
-      {fresh && check?.result.verified_equal ? `UP TO DATE · verified ${check.age_seconds}s ago`
-        : check?.current_known && check.result.lineage && check.result.lineage !== 'EQUAL' ? `${check.result.lineage.replaceAll('_', ' ')} · ${fresh ? 'checked' : 'last checked'} ${check.age_seconds}s ago`
-        : lineage && lineage !== 'EQUAL' ? `${lineage.replaceAll('_', ' ')} · last-known metadata, Check peer before receiving`
+      {check && fresh && snapshotStatus === 'UP_TO_DATE' ? `UP TO DATE · peer ACK verified ${check.age_seconds}s ago`
+        : check && fresh && snapshotStatus && snapshotStatus !== 'UNKNOWN' ? `${snapshotStatus.replaceAll('_', ' ')} · checked ${check.age_seconds}s ago`
         : `${verifiedForPeer ? `Last verified: ${time(project.last_verified_at)}` : 'No current verification for this collaborator'} · Check peer for a fresh comparison`}
     </div>
     <ConnectionAssistant card={card} status={status} peer={peer} check={check} busy={busy} act={act} />
@@ -204,6 +205,7 @@ function Card({ card, status, jobStartedAt, act }: { card: ProjectCard; status: 
       {project.recovery_required && <button disabled={busy || !dawClosed} onClick={() => act({ kind: 'recover', project_id: project.project_id, daw_closed: dawClosed })}>Recover locally</button>}
       <button disabled={busy || !project.mailbox_url} onClick={() => request('refresh')}>Refresh metadata</button>
       <button disabled={busy || !project.mailbox_url || !card.pending_publications} onClick={() => request('publish')}>Retry publication</button></div>
+    <p className="muted">Send Snapshot commits the local snapshot and publishes metadata. It does not deliver project files; use Receive on the other PC for an explicit file transfer.</p>
     {job && <JobNotice job={job} startedAt={jobStartedAt[job.job_id]} />}
     <details className="setup" open={status.pairing.project_id === project.project_id && status.pairing.requests.length > 0}><summary>Collaboration & connection details</summary>
       <details className="pairing-setup" open={status.pairing.project_id === project.project_id}><summary>Pair collaborator</summary>

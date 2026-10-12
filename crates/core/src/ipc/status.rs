@@ -85,15 +85,16 @@ pub fn summarize(
     let history_message = match (remote, known_lineage, route) {
         (None, _, _) => "No remote history. Refresh metadata in TRACKMESH desktop.".into(),
         (Some(_), Some(Lineage::RemoteAhead), Some(_)) => {
-            "Newer remote snapshot available. Close this DAW project, then use desktop Receive."
+            "A last-known newer remote snapshot was announced. Close this DAW project, then use desktop Receive."
                 .into()
         }
         (Some(_), Some(Lineage::RemoteAhead), None) => {
-            "Newer snapshot announced; project files become available when its source is online."
+            "A newer snapshot was announced; project files become available when its source is online."
                 .into()
         }
         (Some(_), Some(Lineage::Diverged), _) => {
-            "Histories diverged. Receive is blocked; inspect both histories in desktop.".into()
+            "Last-known histories diverged. Receive is blocked; inspect both histories in desktop."
+                .into()
         }
         (Some(_), Some(Lineage::LocalAhead), _) => {
             "Local history is ahead of the last-known remote snapshot.".into()

@@ -13,9 +13,10 @@ use std::{
 };
 use tauri::{AppHandle, Manager};
 use trackmesh_core::{
-    default_data_directory, observe_firewall, observe_network, peer::PeerRuntime, Engine,
-    FirewallObservation, MailboxRuntime, NetworkObservation, PairingStatus, PeerCheck,
-    PluginRuntime, SessionGrace, SummaryPage,
+    default_data_directory, observe_firewall, observe_network, peer::PeerRuntime,
+    peer_connection_state, port_observation_status, Engine, FirewallObservation, MailboxRuntime,
+    NetworkObservation, PairingStatus, PeerCheck, PeerConnectionState, PluginRuntime,
+    PortObservationStatus, SessionGrace, SummaryPage,
 };
 use uuid::Uuid;
 
@@ -203,6 +204,8 @@ pub struct DesktopStatus {
     pub data_directory: Option<String>,
     pub error: Option<String>,
     pub network: Option<NetworkStatus>,
+    pub peer_states: HashMap<String, PeerConnectionState>,
+    pub port_status: Option<PortObservationStatus>,
     pub network_observation: NetworkObservation,
     pub firewall_observation: FirewallObservation,
     pub page: Option<SummaryPage>,
@@ -489,6 +492,23 @@ impl Desktop {
                     .filter(|worker| worker.is_finished())
                     .map(|_| "Metadata worker stopped; reopen the desktop to retry".to_owned())
             });
+        let peer_states = page
+            .as_ref()
+            .zip(network.as_ref())
+            .map(|(page, network)| {
+                page.projects
+                    .iter()
+                    .flat_map(|project| project.peers.iter())
+                    .map(|peer| {
+                        (
+                            peer.device.peer_id.clone(),
+                            peer_connection_state(network, &peer.device.peer_id),
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let port_status = network.as_ref().map(port_observation_status);
         Ok(DesktopStatus {
             pairing,
             listen_port: self.options.port,
@@ -499,6 +519,8 @@ impl Desktop {
             data_directory,
             error: state.error.clone().or(runtime_error),
             network,
+            peer_states,
+            port_status,
             network_observation: state
                 .peer
                 .as_ref()
