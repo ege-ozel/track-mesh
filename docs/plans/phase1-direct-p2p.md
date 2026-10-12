@@ -162,3 +162,35 @@ En az bir cihaz erişilebilirken **relay olmadan** doğrulanmış doğrudan tran
 2. Onay tercihinin saklanacağı yer; şema değişikliği gerekip gerekmediği (M2, M5).
 3. Endpoint kaydının mailbox'ta ayrı `kind` mı yoksa ayrı uç mu olacağı (M5) — `services/mailbox/AGENTS.md` ile uyumlu.
 4. Sürekli kısa kod çözücü sunucu (M6) — Aşama 1'de uygulanmaz, yalnız tasarlanır.
+
+## 9. Codex yürütme protokolü (alt-ajan destekli)
+
+**Bu bölüm bir operatör istemidir; ilerleme kanıtı değildir.** Codex'in alt-ajan (sub-agent) desteği olup olmadığı bu planı yazarken doğrulanmadı `[V]`. Önce Codex'e sorulur; destek yoksa aynı iş sırayla, tek ajanla yürütülür. Model adları kullanıcının Codex hesabına bağlıdır; `<GÜÇLÜ>` ve `<HAFİF>` yerine Codex model seçicisindeki gerçek adlar yazılır.
+
+### 9.1 Başlatma sorusu (önce bunu yapıştır)
+
+> Bu repoda `AGENTS.md` ve `docs/plans/phase1-direct-p2p.md` dosyalarını oku. Kod yazma. Önce şunu yanıtla: (1) Bu oturumda alt-ajan başlatabiliyor musun, bunları hangi modelle ve hangi akıl yürütme seviyesiyle çalıştırabiliyorsun? (2) Alt-ajanlar aynı çalışma ağacını mı paylaşıyor yoksa ayrı worktree mi alıyor? (3) Alt-ajan çıktısını nasıl geri alıyorsun? Varsayma; yalnızca gerçekten yapabildiğini söyle. Yapamıyorsan "alt-ajan yok, sıralı yürütürüm" de.
+
+Yanıta göre 9.2 (destek var) veya 9.3 (yok) kullanılır.
+
+### 9.2 Alt-ajan destekli yürütme istemi
+
+> `AGENTS.md`, ilgili crate-local `AGENTS.md` dosyaları ve `docs/plans/phase1-direct-p2p.md` dosyalarını oku. Sen orkestratörsün; **en yüksek akıl yürütme seviyesinde** çalış. Planı **tek seferde değil, bir kilometre taşı (M) bir seferde** uygula; sıradaki M'yi bitirip raporlamadan sonrakine geçme. Her M için:
+>
+> 1. **Dal:** `AGENTS.md` kuralı: yerel `codex/phase-N-description` dalı; doğrulama sonrası `master`'a `--no-ff` yerel merge; force push yok; faz dalları yerel kalır.
+> 2. **Keşif alt-ajanları (salt-okunur, paralel olabilir):** ilgili dosyaları/`[V]` maddelerini ayrı alt-ajanlara dağıt (ör. kütüphane Windows desteği, mevcut çağrı yolları). Alt-ajan **dosya yazmaz**; bulgu + dosya:satır döndürür.
+> 3. **Uygulama:** değişikliği **tek yazıcı** yapar (sen veya tek bir `<GÜÇLÜ>` alt-ajan). Aynı dosyalara paralel yazan iki ajan olmasın. M1, M6 ve M7 aynı `App.tsx`/`runtime.rs` dosyalarına dokunur; bunları paralel yürütme.
+> 4. **Bağımsız inceleme:** uygulayıcıdan farklı bir alt-ajan (`<GÜÇLÜ>`, yüksek akıl yürütme), diff'i `AGENTS.md` değişmezlerine karşı eleştirel okur: imzalı kimlik, `authorized`, gate penceresi, snapshot/transfer kilit ve journal sırası, SQLite, sır/davet loglama, `SAVE_OBSERVED` dışı izleme yok, otomatik test/benchmark eklenmedi. Bulguları düzelt, sonra tekrar incelet.
+> 5. **Kontroller (yalnız statik):** `cargo fmt --all -- --check`, `cargo check … --locked --offline`, `cargo clippy … -D warnings`, `npm run typecheck && npm run build`. **Test veya benchmark ekleme/çalıştırma yok.** Çalışmayan veya çalıştıramadığın kontrolü "geçti" diye yazma.
+> 6. **Kayıt:** `docs/IMPLEMENTATION.md`'ye yalnız gerçekten yaptığın kontrolleri `verified/unverified` ile ekle. `docs/CODEMAP.md`'yi modül değiştiyse güncelle. Rakip durum belgesi oluşturma.
+> 7. **Rapor:** görev, değişen dosyalar, korunan değişmezler, çalışan kontroller, **Windows/router olmadan doğrulanamayanlar**, benim elle yapacağım adımlar, kalan riskler, sonraki somut adım.
+>
+> **Dur ve sor** (varsayma): şema/migration gerekiyorsa (M2, M5), protokol/imza biçimi değişiyorsa, bağımlılık eklenecekse, beklenmedik şekilde ağ davranışı doğrulanamıyorsa. Ağ/NAT/Firewall davranışını doğrulanmış gibi sunma.
+
+Model/seviye eşlemesi (öneri): M0, M2, M3, M4, M5, M8 ve **bağımsız inceleme** → `<GÜÇLÜ>`, en yüksek akıl yürütme. M1, M6, M7, M9 uygulaması → `<HAFİF>` olabilir, ama **inceleme yine `<GÜÇLÜ>`**.
+
+Sıra ve bağımlılık: M0 → M1 → M2 → M3 → M4 → M8; M5 M1'den sonra başlayabilir; M6 ve M7 M1'den sonra, ancak birbirleriyle sıralı. M9/M10 sonda.
+
+### 9.3 Alt-ajan yoksa
+
+Aynı 9.2 adımları tek ajanla sırayla uygulanır: önce keşif, sonra uygulama, sonra **ayrı bir oturumda** (yeni sohbet, `<GÜÇLÜ>`) diff incelemesi. Aynı bağlamın kendi işini onaylaması bağımsız inceleme sayılmaz.
