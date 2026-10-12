@@ -57,6 +57,8 @@ impl SupabaseClient {
         super::validate_supabase_project_url(project_url)?;
         super::validate_supabase_publishable_key(anon_key)?;
         let project_url = Url::parse(project_url)?;
+        // All TLS dependencies use ring; do not disable certificate/hostname validation.
+        let _ = rustls::crypto::ring::default_provider().install_default();
         let client = Client::builder()
             .redirect(redirect::Policy::none())
             .no_proxy()
@@ -121,6 +123,7 @@ impl SupabaseClient {
                 return Err(SupabaseError::Rejected);
             }
             let project_url = Url::parse(project_url).map_err(|_| SupabaseError::Rejected)?;
+            let _ = rustls::crypto::ring::default_provider().install_default();
             let client = Client::builder()
                 .redirect(redirect::Policy::none())
                 .no_proxy()
