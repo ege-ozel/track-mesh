@@ -191,6 +191,7 @@ impl MailboxRuntime {
     pub fn start(engine: Arc<Engine>, allow_loopback_http: bool) -> Self {
         let (stop, mut stopped) = tokio::sync::oneshot::channel();
         let task = tokio::spawn(async move {
+            // The first interval tick is immediate, so configured mailboxes get a startup pass.
             let mut interval = tokio::time::interval(Duration::from_secs(30));
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {

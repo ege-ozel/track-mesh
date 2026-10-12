@@ -35,6 +35,8 @@ export interface Job { job_id: string; project_id: string | null; label: string;
 export interface CheckView { device_id: string; fresh: boolean; current_known: boolean; age_seconds: number; result: {
   project_id: string; local_snapshot: string | null; remote_snapshot: string | null;
   lineage: Lineage | null;
+  connection_state: 'CONNECTED' | 'OFFLINE';
+  snapshot_status: 'REMOTE_AHEAD' | 'UP_TO_DATE' | 'DIVERGED' | 'LOCAL_AHEAD' | 'UNKNOWN';
   verified_equal: boolean; connection: Connection | null; last_verified_at: string | null;
 } }
 export interface NetworkObservation {
@@ -51,6 +53,8 @@ export interface DesktopStatus {
   device: { device_id: string; name: string; peer_id: string } | null;
   data_directory: string | null;
   network: { addresses: string[]; error: string | null; peers: Record<string, Connection>; port_mapping: { consent_enabled: boolean; state: string; tcp: string; udp: string; detail: string | null; external_ip_state: string }; reachability: { state: string; peer: string | null; transport: string | null; at_unix_seconds: number | null } } | null;
+  peer_states: Record<string, 'CONNECTED' | 'OFFLINE'>;
+  port_status: 'UNVERIFIED' | 'VERIFIED_INBOUND' | null;
   network_observation: NetworkObservation;
   firewall_observation: FirewallObservation;
   page: { projects: ProjectCard[]; offset: number; has_more: boolean } | null;
