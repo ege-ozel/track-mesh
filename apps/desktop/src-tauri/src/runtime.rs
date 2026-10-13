@@ -261,6 +261,7 @@ pub struct DesktopStatus {
     pub default_supabase: Option<SupabaseDefaultConfig>,
     pub supabase_states: HashMap<Uuid, SupabaseProjectState>,
     pub invite_pending: bool,
+    pub upnp_mapping_asked: bool,
 }
 
 struct Checked {
@@ -518,7 +519,7 @@ impl Desktop {
             None => (None, PairingStatus::default(), HashMap::new(), None),
         };
         let state_engine = { self.lock()?.engine.clone() };
-        let supabase_states = match state_engine {
+        let supabase_states = match state_engine.clone() {
             Some(engine) => {
                 let ids = project_backends.keys().copied().collect::<Vec<_>>();
                 tauri::async_runtime::spawn_blocking(move || {
@@ -529,6 +530,12 @@ impl Desktop {
                 .await??
             }
             None => HashMap::new(),
+        };
+        let upnp_mapping_asked = match state_engine {
+            Some(engine) => {
+                tauri::async_runtime::spawn_blocking(move || engine.upnp_mapping_asked()).await??
+            }
+            None => false,
         };
         let mut state = self.lock()?;
         let mut network = state.network.as_ref().map(Network::status);
@@ -657,6 +664,7 @@ impl Desktop {
             default_supabase,
             supabase_states,
             invite_pending: state.pending_invite.is_some(),
+            upnp_mapping_asked,
         })
     }
 

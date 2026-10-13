@@ -14,6 +14,15 @@ pub struct PeerSummary {
     pub history: Vec<SnapshotInfo>,
     /// Conservative relationship from stored ancestry; never a live equality claim.
     pub known_lineage: Option<Lineage>,
+    pub offline_head: Option<OfflineHead>,
+}
+
+#[derive(Serialize)]
+pub struct OfflineHead {
+    pub snapshot_id: uuid::Uuid,
+    pub created_at: String,
+    pub total_size: u64,
+    pub file_count: u32,
 }
 
 #[derive(Serialize)]
@@ -53,6 +62,29 @@ impl Engine {
                     .store
                     .author_history(project.project_id, device.device_id)?;
                 let announcement = history.first().cloned();
+                let offline_head = self
+                    .offline_heads
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("offline head lock poisoned"))?
+                    .get(&(project.project_id, device.device_id))
+                    .filter(|head| {
+                        Some(head.snapshot_id) != project.latest_local_snapshot
+                            && !history
+                                .iter()
+                                .any(|known| known.snapshot_id == head.snapshot_id)
+                            && self
+                                .store
+                                .snapshot(head.snapshot_id)
+                                .ok()
+                                .flatten()
+                                .is_none()
+                    })
+                    .map(|head| OfflineHead {
+                        snapshot_id: head.snapshot_id,
+                        created_at: head.created_at.to_rfc3339(),
+                        total_size: head.total_size,
+                        file_count: head.file_count,
+                    });
                 Ok(PeerSummary {
                     known_lineage: announcement
                         .as_ref()
@@ -66,6 +98,7 @@ impl Engine {
                         .transpose()?,
                     announcement,
                     history,
+                    offline_head,
                     device,
                 })
             })

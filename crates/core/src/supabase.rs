@@ -2,7 +2,7 @@
 use crate::{Engine, ProjectBackend, SupabaseProjectState};
 use anyhow::{Context, Result};
 use network::Network;
-use protocol::{DeviceCard, SupabaseEndpointRow};
+use protocol::{DeviceCard, HeadRecord, SupabaseEndpointRow};
 use std::{
     collections::HashMap,
     sync::Arc,
@@ -21,6 +21,12 @@ struct ProjectSession {
     grant_retry_at: Instant,
     project_url: String,
     anon_key: String,
+    head_list_at: Instant,
+    head_snapshot: Option<Uuid>,
+    head_published: Option<Uuid>,
+    head_seq: Option<u64>,
+    head_ciphertext: Option<String>,
+    head_attempt_at: Instant,
 }
 
 impl Default for ProjectSession {
@@ -35,6 +41,12 @@ impl Default for ProjectSession {
             grant_retry_at: Instant::now(),
             project_url: String::new(),
             anon_key: String::new(),
+            head_list_at: Instant::now(),
+            head_snapshot: None,
+            head_published: None,
+            head_seq: None,
+            head_ciphertext: None,
+            head_attempt_at: Instant::now(),
         }
     }
 }
@@ -211,6 +223,70 @@ impl SupabaseRuntime {
                         session.retry_at = Instant::now() + backoff(session.failures);
                         continue;
                     }
+                    if session.head_list_at <= Instant::now() {
+                        session.head_list_at = Instant::now() + Duration::from_secs(30);
+                        if let Ok(rows) = client.head_list(&engine.identity).await {
+                            apply_head_rows(engine.clone(), project, rows).await;
+                        }
+                    }
+                    if let Some(snapshot) = latest_local_head(engine.clone(), project).await {
+                        if session.head_snapshot != Some(snapshot.manifest.snapshot_id) {
+                            let head = head_record(&snapshot);
+                            let engine_for_seq = engine.clone();
+                            let seq = tokio::task::spawn_blocking(move || {
+                                engine_for_seq.next_supabase_sequence(project)
+                            })
+                            .await;
+                            if let Ok(Ok(seq)) = seq {
+                                let key_engine = engine.clone();
+                                let identity = engine.identity.clone();
+                                let key_record = head.clone();
+                                if let Ok(Ok((ciphertext, _))) =
+                                    tokio::task::spawn_blocking(move || -> Result<_> {
+                                        let key = crypto::project_key(
+                                            &key_engine.directory.join("secrets/projects"),
+                                            project,
+                                            None,
+                                        )?;
+                                        let ciphertext = crypto::wrap_head_record(
+                                            project,
+                                            &identity,
+                                            &key_record,
+                                            seq,
+                                            &key,
+                                        )?;
+                                        Ok((ciphertext, seq))
+                                    })
+                                    .await
+                                {
+                                    session.head_snapshot = Some(snapshot.manifest.snapshot_id);
+                                    session.head_seq = Some(seq);
+                                    session.head_ciphertext = Some(ciphertext);
+                                    session.head_attempt_at = Instant::now();
+                                }
+                            }
+                        }
+                    }
+                    if session.head_published != session.head_snapshot
+                        && session.head_attempt_at.elapsed() >= Duration::from_secs(5)
+                    {
+                        if let (Some(seq), Some(ciphertext)) =
+                            (session.head_seq, session.head_ciphertext.as_deref())
+                        {
+                            session.head_attempt_at = Instant::now();
+                            match client.publish_head(&engine.identity, seq, ciphertext).await {
+                                Ok(true) => session.head_published = session.head_snapshot,
+                                Ok(false) => {
+                                    // The service may have accepted an earlier request whose
+                                    // response was lost. Reissue with a fresh monotonic seq.
+                                    session.head_snapshot = None;
+                                    session.head_seq = None;
+                                    session.head_ciphertext = None;
+                                }
+                                Err(_) => {}
+                            }
+                        }
+                    }
                     if session.grant_retry_at <= Instant::now()
                         && !flush_grants(&engine, &client, project).await
                     {
@@ -290,6 +366,72 @@ impl SupabaseRuntime {
             }
         }
         Ok(())
+    }
+}
+
+async fn latest_local_head(engine: Arc<Engine>, project: Uuid) -> Option<protocol::SignedSnapshot> {
+    tokio::task::spawn_blocking(move || {
+        let authored = engine
+            .store
+            .author_history(project, engine.identity.device_id)
+            .ok()?;
+        authored
+            .first()
+            .and_then(|info| engine.store.snapshot(info.snapshot_id).ok().flatten())
+    })
+    .await
+    .ok()
+    .flatten()
+}
+
+fn head_record(snapshot: &protocol::SignedSnapshot) -> HeadRecord {
+    let manifest = &snapshot.manifest;
+    HeadRecord {
+        snapshot_id: manifest.snapshot_id,
+        parent_id: manifest.parent_snapshot_id,
+        created_at: manifest.created_at,
+        author_device_id: manifest.author_device_id,
+        total_size: manifest.total_size,
+        file_count: manifest.files.len() as u32,
+        manifest_hash: snapshot.manifest_hash.clone(),
+        signature: String::new(),
+    }
+}
+
+async fn apply_head_rows(engine: Arc<Engine>, project: Uuid, rows: Vec<protocol::SupabaseHeadRow>) {
+    let peers = engine.clone();
+    let cards = tokio::task::spawn_blocking(move || peers.store.peers(Some(project))).await;
+    let Ok(Ok(cards)) = cards else {
+        return;
+    };
+    for row in rows {
+        let Ok(writer) = Uuid::parse_str(&row.writer_device_id) else {
+            continue;
+        };
+        if writer.to_string() != row.writer_device_id || writer == engine.identity.device_id {
+            continue;
+        }
+        let Some(card) = cards.iter().find(|card| card.device_id == writer) else {
+            continue;
+        };
+        let encrypted = row.ciphertext;
+        let seq = row.seq;
+        let public_key = card.public_key.clone();
+        let key_engine = engine.clone();
+        let decoded = tokio::task::spawn_blocking(move || -> Result<_> {
+            let key = crypto::project_key(
+                &key_engine.directory.join("secrets/projects"),
+                project,
+                None,
+            )?;
+            let record = crypto::unwrap_head_record(&encrypted, project, writer, &seq, &key)?;
+            crypto::verify_head_record(&record, &public_key)?;
+            Ok(record)
+        })
+        .await;
+        if let Ok(Ok(record)) = decoded {
+            let _ = engine.remember_offline_head(project, record);
+        }
     }
 }
 

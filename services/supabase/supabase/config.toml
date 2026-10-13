@@ -20,6 +20,12 @@ verify_jwt = false
 [functions.endpoint-list]
 verify_jwt = false
 
+[functions.head-publish]
+verify_jwt = false
+
+[functions.head-list]
+verify_jwt = false
+
 [functions.invite-create]
 verify_jwt = false
 

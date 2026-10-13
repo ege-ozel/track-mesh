@@ -2,7 +2,7 @@
 use anyhow::{ensure, Context, Result};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use crypto::Identity;
-use protocol::{SupabaseAccepted, SupabaseEndpointRow, MAX_MAILBOX_AUTH_BYTES};
+use protocol::{SupabaseAccepted, SupabaseEndpointRow, SupabaseHeadRow, MAX_MAILBOX_AUTH_BYTES};
 use reqwest::{redirect, Client, Response, StatusCode, Url};
 use serde::{de::DeserializeOwned, Serialize};
 use std::time::Duration;
@@ -246,6 +246,80 @@ impl SupabaseClient {
                 return Err(SupabaseError::Rejected);
             }
             previous = sequence;
+        }
+        Ok(rows)
+    }
+
+    pub async fn publish_head(
+        &self,
+        identity: &Identity,
+        seq: u64,
+        ciphertext: &str,
+    ) -> std::result::Result<bool, SupabaseError> {
+        if ciphertext.is_empty()
+            || ciphertext.len() > 4096
+            || !ciphertext
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+        {
+            return Err(SupabaseError::Rejected);
+        }
+        let response: SupabaseAccepted = self
+            .post(
+                identity,
+                "head-publish",
+                &serde_json::json!({"seq":seq.to_string(),"ciphertext":ciphertext}),
+                4096,
+            )
+            .await?;
+        Ok(response.accepted)
+    }
+
+    pub async fn head_list(
+        &self,
+        identity: &Identity,
+    ) -> std::result::Result<Vec<SupabaseHeadRow>, SupabaseError> {
+        let rows: Vec<SupabaseHeadRow> = self
+            .post(identity, "head-list", &serde_json::json!({}), 160 * 1024)
+            .await?;
+        if rows.len() > 32 {
+            return Err(SupabaseError::Rejected);
+        }
+        let mut writers = std::collections::HashSet::new();
+        for row in &rows {
+            let Ok(writer) = uuid::Uuid::parse_str(&row.writer_device_id) else {
+                return Err(SupabaseError::Rejected);
+            };
+            let Ok(seq) = row.seq.parse::<u64>() else {
+                return Err(SupabaseError::Rejected);
+            };
+            if writer.is_nil()
+                || writer.to_string() != row.writer_device_id
+                || seq == 0
+                || seq.to_string() != row.seq
+                || !writers.insert(writer)
+                || row.ciphertext.is_empty()
+                || row.ciphertext.len() > 4096
+                || !row
+                    .ciphertext
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+            {
+                return Err(SupabaseError::Rejected);
+            }
+            let time = row.updated_at.as_bytes();
+            let valid_time = time.len() == 24
+                && time.iter().enumerate().all(|(index, byte)| match index {
+                    4 | 7 => *byte == b'-',
+                    10 => *byte == b'T',
+                    13 | 16 => *byte == b':',
+                    19 => *byte == b'.',
+                    23 => *byte == b'Z',
+                    _ => byte.is_ascii_digit(),
+                });
+            if !valid_time {
+                return Err(SupabaseError::Rejected);
+            }
         }
         Ok(rows)
     }

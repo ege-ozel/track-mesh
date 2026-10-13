@@ -73,6 +73,8 @@ pub(super) struct Settings {
     version: u32,
     upnp_mapping_enabled: bool,
     #[serde(default)]
+    upnp_mapping_asked: bool,
+    #[serde(default)]
     pub project_backends: HashMap<Uuid, ProjectBackendConfig>,
     #[serde(default)]
     pub actor_sequences: HashMap<Uuid, u64>,
@@ -91,6 +93,7 @@ impl Default for Settings {
         Self {
             version: VERSION,
             upnp_mapping_enabled: false,
+            upnp_mapping_asked: false,
             project_backends: HashMap::new(),
             actor_sequences: HashMap::new(),
             pending_grants: Vec::new(),
@@ -107,6 +110,10 @@ impl Settings {
     }
     pub fn set_upnp_mapping_enabled(&mut self, enabled: bool) {
         self.upnp_mapping_enabled = enabled;
+        self.upnp_mapping_asked = true;
+    }
+    pub fn upnp_mapping_asked(&self) -> bool {
+        self.upnp_mapping_asked
     }
 }
 
@@ -210,21 +217,7 @@ impl SettingsState {
             return Ok(existing.clone());
         }
         let mut candidate = self.value.clone();
-        let previous = candidate
-            .actor_sequences
-            .get(&project_id)
-            .copied()
-            .unwrap_or(0);
-        let next = previous
-            .checked_add(1)
-            .context("Supabase actor sequence exhausted")?;
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis();
-        let now = u64::try_from(now).context("Unix millisecond value exceeds u64")?;
-        let actor_seq = next.max(now);
-        candidate.actor_sequences.insert(project_id, actor_seq);
+        let actor_seq = next_sequence(&mut candidate, project_id)?;
         let grant = PendingGrant {
             project_id,
             target_device_id,
@@ -245,6 +238,13 @@ impl SettingsState {
             .collect()
     }
 
+    pub fn next_sequence(&mut self, directory: &Path, project_id: Uuid) -> Result<u64> {
+        let mut candidate = self.value.clone();
+        let sequence = next_sequence(&mut candidate, project_id)?;
+        self.commit(directory, candidate)?;
+        Ok(sequence)
+    }
+
     pub fn complete_grant(&mut self, directory: &Path, grant: &PendingGrant) -> Result<()> {
         let mut candidate = self.value.clone();
         candidate.pending_grants.retain(|item| {
@@ -254,6 +254,25 @@ impl SettingsState {
         });
         self.commit(directory, candidate)
     }
+}
+
+fn next_sequence(candidate: &mut Settings, project_id: Uuid) -> Result<u64> {
+    let previous = candidate
+        .actor_sequences
+        .get(&project_id)
+        .copied()
+        .unwrap_or(0);
+    let next = previous
+        .checked_add(1)
+        .context("Supabase actor sequence exhausted")?;
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let now = u64::try_from(now).context("Unix millisecond value exceeds u64")?;
+    let sequence = next.max(now);
+    candidate.actor_sequences.insert(project_id, sequence);
+    Ok(sequence)
 }
 
 fn store(directory: &Path, settings: &Settings) -> Result<()> {

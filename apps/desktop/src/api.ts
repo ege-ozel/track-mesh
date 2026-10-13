@@ -10,6 +10,7 @@ export interface Peer {
   announcement: SnapshotInfo | null;
   history: SnapshotInfo[];
   known_lineage: Lineage | null;
+  offline_head: { snapshot_id: string; created_at: string; total_size: number; file_count: number } | null;
 }
 export interface Transfer {
   transfer_id: string; snapshot_id: string; source_device_id: string;
@@ -74,6 +75,7 @@ export interface DesktopStatus {
   default_supabase: SupabaseDefaultConfig | null;
   supabase_states: Record<string, 'NOT_CONFIGURED' | 'UNKNOWN' | 'CLAIMED' | 'MEMBER' | 'ROUTE_TAKEN' | 'WAITING_FOR_GRANT' | 'UNREACHABLE'>;
   invite_pending: boolean;
+  upnp_mapping_asked: boolean;
 }
 export type Action =
   | { kind: 'link'; project_id: string; name: string; folder: string; mailbox_url: string | null; relay_address: string | null }

@@ -12,9 +12,10 @@ pub use endpoint::{
     MAX_ENDPOINT_TTL, PREFERRED_ENDPOINT_TTL,
 };
 pub use mailbox::{
-    mailbox_scope, EndpointMailboxWrapper, MailboxAuth, SupabaseAccepted, SupabaseAuth,
-    SupabaseEndpointRow, ENDPOINT_MAILBOX_AAD, MAX_MAILBOX_AUTH_BYTES, MAX_MAILBOX_ENVELOPE_BYTES,
-    MAX_MAILBOX_PAGE_BYTES, MAX_MAILBOX_PAGE_RECORDS, SUPABASE_REQUEST_DOMAIN,
+    mailbox_scope, EndpointMailboxWrapper, HeadMailboxWrapper, HeadRecord, MailboxAuth,
+    SupabaseAccepted, SupabaseAuth, SupabaseEndpointRow, SupabaseHeadRow, ENDPOINT_MAILBOX_AAD,
+    HEAD_MAILBOX_AAD, MAX_MAILBOX_AUTH_BYTES, MAX_MAILBOX_ENVELOPE_BYTES, MAX_MAILBOX_PAGE_BYTES,
+    MAX_MAILBOX_PAGE_RECORDS, SUPABASE_REQUEST_DOMAIN,
 };
 pub use pairing::{
     pairing_scope, PairingRequest, PairingResponse, MAX_PAIRING_BYTES, PAIRING_PROTOCOL,

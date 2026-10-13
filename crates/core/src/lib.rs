@@ -34,7 +34,7 @@ pub use workflows::{
     PeerSnapshotStatus, PortObservationStatus, ProjectStatus,
 };
 mod status;
-pub use status::{PeerSummary, ProjectSummary, SummaryPage};
+pub use status::{OfflineHead, PeerSummary, ProjectSummary, SummaryPage};
 mod sending;
 pub use sending::SendStatus;
 #[cfg(windows)]
@@ -57,6 +57,7 @@ pub struct Engine {
     settings: Mutex<settings::SettingsState>,
     supabase_states: Mutex<std::collections::HashMap<Uuid, SupabaseProjectState>>,
     upnp_mapping_enabled: AtomicBool,
+    offline_heads: Mutex<std::collections::HashMap<(Uuid, Uuid), protocol::HeadRecord>>,
 }
 impl Engine {
     pub fn open(directory: PathBuf, name: &str) -> Result<Self> {
@@ -87,6 +88,7 @@ impl Engine {
             settings: Mutex::new(settings),
             supabase_states: Mutex::new(std::collections::HashMap::new()),
             upnp_mapping_enabled: AtomicBool::new(upnp_mapping_enabled),
+            offline_heads: Mutex::new(std::collections::HashMap::new()),
         })
     }
     pub fn link(
@@ -182,6 +184,38 @@ impl Engine {
             .map_err(|_| anyhow::anyhow!("settings lock poisoned"))?;
         settings.set_upnp_mapping(&self.directory, enabled)?;
         self.upnp_mapping_enabled.store(enabled, Ordering::SeqCst);
+        Ok(())
+    }
+    pub fn upnp_mapping_asked(&self) -> Result<bool> {
+        Ok(self
+            .settings
+            .lock()
+            .map_err(|_| anyhow::anyhow!("settings lock poisoned"))?
+            .value
+            .upnp_mapping_asked())
+    }
+    pub(crate) fn next_supabase_sequence(&self, project: Uuid) -> Result<u64> {
+        self.settings
+            .lock()
+            .map_err(|_| anyhow::anyhow!("settings lock poisoned"))?
+            .next_sequence(&self.directory, project)
+    }
+    pub(crate) fn remember_offline_head(
+        &self,
+        project: Uuid,
+        record: protocol::HeadRecord,
+    ) -> Result<()> {
+        let mut heads = self
+            .offline_heads
+            .lock()
+            .map_err(|_| anyhow::anyhow!("offline head lock poisoned"))?;
+        let key = (project, record.author_device_id);
+        if heads
+            .get(&key)
+            .is_none_or(|old| old.created_at <= record.created_at)
+        {
+            heads.insert(key, record);
+        }
         Ok(())
     }
 
