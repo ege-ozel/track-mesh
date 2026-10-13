@@ -29,6 +29,8 @@ Paths are relative to repository root. A crate's `src/lib.rs` lists its public A
 | Native invitation/legacy card files and folder dialogs | `apps/desktop/src-tauri/src/documents.rs` | Automatic return uses pairing RPC; bounded private documents stay in Rust |
 | Main-window command boundary and typed frontend | `apps/desktop/src-tauri/src/commands.rs`, `apps/desktop/src/api.ts` | Narrow invoke API |
 | Desktop project controls and styling | `apps/desktop/src/App.tsx`, `src/styles.css` | Core-derived state, no filesystem watcher |
+| Automatic chunk retention and Storage backup cleanup | `crates/core/src/retention.rs`, `crates/storage/src/retention.rs`, `crates/snapshot/src/retention.rs`, `crates/transfer/src/backups.rs` | Shared Windows cache lease; immutable signed history; DONE-only deletion with newest backup protected; `apps/desktop/src/StorageSettings.tsx` |
+| Get download consent | `crates/transfer/src/download.rs`, `apps/desktop/src-tauri/src/receive.rs` | Verified distinct missing chunks; native confirmation above 1 GB; retry pins the same signed target |
 | Start/stop peer runtime, answer disk requests, fetch signed ancestry | `crates/core/src/peer.rs` | Network actor and transfer serving |
 | Signed endpoint record acceptance and direct-peer publication | `crates/core/src/endpoints.rs` | Shared direct/mailbox validation, M5b storage, network actor learned candidates |
 | CLI arguments, JSON output, Ctrl+C | `crates/core/src/main.rs` | Core workflows; keep decisions out of this adapter |

@@ -14,6 +14,7 @@ pub fn recover_project(
     directory: &Path,
     project: Uuid,
 ) -> Result<()> {
+    let _cache_lease = chunks.lease(false)?;
     let _lock = ProjectLock::acquire(directory, project)?;
     let sessions: Vec<_> = store
         .transfers()?

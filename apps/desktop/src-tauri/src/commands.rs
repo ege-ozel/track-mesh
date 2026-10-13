@@ -8,6 +8,16 @@ use tauri::{AppHandle, State};
 use uuid::Uuid;
 
 #[tauri::command]
+pub async fn get_storage(
+    desktop: State<'_, Arc<Desktop>>,
+) -> Result<trackmesh_core::StorageSummary, String> {
+    desktop
+        .storage_summary()
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub async fn get_status(
     app: AppHandle,
     desktop: State<'_, Arc<Desktop>>,

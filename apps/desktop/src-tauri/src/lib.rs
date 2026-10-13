@@ -4,6 +4,7 @@ compile_error!("TrackMesh desktop MVP supports Windows only");
 mod clipboard;
 mod commands;
 mod documents;
+mod receive;
 mod runtime;
 mod uri;
 
@@ -39,6 +40,7 @@ pub fn run() {
         .manage(desktop.clone())
         .invoke_handler(tauri::generate_handler![
             commands::get_status,
+            commands::get_storage,
             commands::choose_folder,
             commands::open_project_folder,
             commands::open_projects_location,

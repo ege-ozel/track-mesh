@@ -8,6 +8,22 @@ use std::{collections::BTreeMap, sync::Arc};
 use storage::Store;
 use uuid::Uuid;
 
+#[derive(Debug)]
+pub struct DownloadApproval {
+    pub snapshot_id: Uuid,
+    pub new_bytes: u64,
+}
+impl std::fmt::Display for DownloadApproval {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Download of {} new bytes requires confirmation",
+            self.new_bytes
+        )
+    }
+}
+impl std::error::Error for DownloadApproval {}
+
 pub(crate) async fn download(
     store: &Arc<Store>,
     chunks: &ChunkStore,
@@ -15,6 +31,7 @@ pub(crate) async fn download(
     s: &SignedSnapshot,
     id: Uuid,
     peer: &str,
+    download_limit: u64,
 ) -> Result<()> {
     let mut unique = BTreeMap::new();
     for file in &s.manifest.files {
@@ -37,6 +54,13 @@ pub(crate) async fn download(
         }
     }
     tracing::info!(transfer_id=%id, reused_bytes=completed, missing_bytes=total-completed, missing_chunks=missing.len(), "verified resume cache; requesting only missing chunks");
+    if total - completed > download_limit {
+        return Err(DownloadApproval {
+            snapshot_id: s.manifest.snapshot_id,
+            new_bytes: total - completed,
+        }
+        .into());
+    }
     let project = s.manifest.project_id;
     let snapshot = s.manifest.snapshot_id;
     let mut requests = stream::iter(missing.into_iter().map(|(hash, size)| {

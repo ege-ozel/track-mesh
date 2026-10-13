@@ -84,6 +84,7 @@ export interface DesktopStatus {
   manual_public_endpoint: { public_ipv4: string; external_port: number } | null;
 }
 export type Action =
+  | { kind: 'delete_backups'; selected: { transfer_id: string; bytes: number }[] }
   | { kind: 'link'; project_id: string; name: string; folder: string; mailbox_url: string | null; relay_address: string | null }
   | { kind: 'change_project_root'; project_id: string; folder: string }
   | { kind: 'set_project_backend'; project_id: string; backend: ProjectBackend; supabase_url: string | null; supabase_anon_key: string | null }
@@ -106,6 +107,8 @@ export type Action =
   | { kind: 'recover'; project_id: string; daw_closed: boolean };
 
 export const getStatus = (offset: number) => invoke<DesktopStatus>('get_status', { offset });
+export type StorageSummary = { cache_bytes: number | null; backups: { project_id: string; project_name: string; transfer_id: string; path: string; bytes: number; protected: boolean }[]; problems: string[] };
+export const getStorage = () => invoke<StorageSummary>('get_storage');
 export const chooseFolder = () => invoke<string | null>('choose_folder');
 export const openProjectFolder = (projectId: string) => invoke<void>('open_project_folder', { projectId });
 export const openPreviousVersion = (projectId: string, transferId: string) => invoke<void>('open_previous_version', { projectId, transferId });

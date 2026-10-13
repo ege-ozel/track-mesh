@@ -39,6 +39,7 @@ pub struct Receiver {
     pub network: Network,
     pub identity: Arc<Identity>,
     pub directory: PathBuf,
+    pub download_limit: u64,
 }
 impl Receiver {
     pub async fn receive(&self, snapshot: SignedSnapshot, source: DeviceCard) -> Result<Uuid> {
@@ -64,8 +65,11 @@ impl Receiver {
         allow_diverged: bool,
     ) -> Result<Uuid> {
         let project = snapshot.manifest.project_id;
+        let cache_lease = Arc::new(self.chunks.lease(false)?);
         let target = snapshot.manifest.snapshot_id;
-        let result = self.receive_inner(snapshot, source, allow_diverged).await;
+        let result = self
+            .receive_inner(snapshot, source, allow_diverged, cache_lease)
+            .await;
         if let Err(error) = &result {
             if let Some(session) = self.store.transfers()?.into_iter().find(|t| {
                 t.project_id == project
@@ -88,6 +92,7 @@ impl Receiver {
         snapshot: SignedSnapshot,
         source: DeviceCard,
         allow_diverged: bool,
+        cache_lease: Arc<snapshot::CacheLease>,
     ) -> Result<Uuid> {
         let project = snapshot.manifest.project_id;
         validate_snapshot(&self.store, &self.identity, &snapshot, project, None)?;
@@ -149,7 +154,7 @@ impl Receiver {
             .await??;
         } else if current.recovery_required || session.state.requires_recovery() {
             // Local recovery is completed without downloading or regenerating already installed files.
-            self.apply_locked(snapshot.clone(), id, lock.clone())
+            self.apply_locked(snapshot.clone(), id, lock.clone(), cache_lease.clone())
                 .await?;
         } else {
             let store = self.store.clone();
@@ -174,6 +179,7 @@ impl Receiver {
                 &snapshot,
                 id,
                 &source.peer_id,
+                self.download_limit,
             )
             .await
             {
@@ -181,7 +187,7 @@ impl Receiver {
                     .transfer_state(id, TransferState::Paused, Some(&error.to_string()))?;
                 return Err(error);
             }
-            self.apply_locked(snapshot.clone(), id, lock.clone())
+            self.apply_locked(snapshot.clone(), id, lock.clone(), cache_lease.clone())
                 .await?;
         }
         let confirmed = matches!(
@@ -209,11 +215,13 @@ impl Receiver {
         snapshot: SignedSnapshot,
         id: Uuid,
         lock: Arc<ProjectLock>,
+        cache_lease: Arc<snapshot::CacheLease>,
     ) -> Result<()> {
         let store = self.store.clone();
         let chunks = self.chunks.clone();
         let result = tokio::task::spawn_blocking(move || {
             let _guard = lock;
+            let _cache_lease = cache_lease;
             apply(&store, &chunks, &snapshot, id)
         })
         .await?;
