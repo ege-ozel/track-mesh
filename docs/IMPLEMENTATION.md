@@ -677,3 +677,12 @@ Manual checks for the next Windows two-instance trial:
 4. Copy a link for project X, then for project Y. The job message says X's pending approvals were cleared. Re-copying a link for the same project keeps its pending request.
 5. While a long Get runs in one project, Settings changes and Link folder still work, and the other project's notices stay visible.
 6. Labels read Share current version / Check connection / Get collaborator's version everywhere, including errors.
+
+Review follow-up:
+- A pending receiver keeps asking even when the inviter looks offline. An expired or closed approval window drops the connection, so the card now moves from "Waiting for … to approve" to the "hasn't approved" notice with Try again instead of waiting forever. Approved peers are no longer polled, only one status request per peer is in flight, and a late result never downgrades a proven approval.
+- The invite-service rejection notice and the Advanced unreachable line read `grant_problem` from the project card, where the status actually serializes it; before, they never showed.
+- The "Waiting for … to share the first version" box is hidden while approval is not confirmed.
+- Copy invite link keeps its normal "copied" countdown and reports a cleared project in a separate notice.
+- Reopen approval window shows only on cards without a collaborator or with an invite created this session.
+
+Checks: `cargo fmt --all -- --check`; locked/offline `cargo check`, Windows-target check and strict Clippy for core and desktop; Desktop `npm run typecheck` and `npm run build` (Node 22.11.0); `git diff --check`. Live two-instance check not done.

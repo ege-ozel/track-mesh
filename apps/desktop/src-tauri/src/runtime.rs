@@ -280,7 +280,7 @@ fn prune_finished_jobs(jobs: &mut Vec<Job>) {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, Serialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum PairingApprovalState {
     #[default]
@@ -374,6 +374,7 @@ struct Session {
     head_pulled_at: HashMap<(Uuid, Uuid), Instant>,
     pairing_approval_states: HashMap<(Uuid, Uuid), PairingApprovalState>,
     pairing_approval_checked_at: HashMap<(Uuid, Uuid), Instant>,
+    pairing_approval_in_flight: HashSet<(Uuid, Uuid)>,
 }
 
 struct PendingInviteLink {
@@ -914,16 +915,26 @@ impl Desktop {
                 continue;
             }
             for peer in &item.peers {
-                if peer.head_fetched || !network.online(&peer.device.peer_id) {
+                if peer.head_fetched {
                     continue;
                 }
                 let key = (item.project.project_id, peer.device.device_id);
                 {
                     let mut state = self.lock()?;
-                    if state
-                        .jobs
-                        .iter()
-                        .any(|job| job.running && job.project_id == Some(item.project.project_id))
+                    // An expired or closed window drops the connection, so a pending
+                    // receiver must keep asking to learn that approval is no longer coming.
+                    let approval = state
+                        .pairing_approval_states
+                        .get(&key)
+                        .copied()
+                        .unwrap_or_default();
+                    if approval == PairingApprovalState::Approved
+                        || (approval != PairingApprovalState::Pending
+                            && !network.online(&peer.device.peer_id))
+                        || state.pairing_approval_in_flight.contains(&key)
+                        || state.jobs.iter().any(|job| {
+                            job.running && job.project_id == Some(item.project.project_id)
+                        })
                         || state
                             .pairing_approval_checked_at
                             .get(&key)
@@ -931,9 +942,7 @@ impl Desktop {
                     {
                         continue;
                     }
-                    state
-                        .pairing_approval_checked_at
-                        .insert(key, Instant::now());
+                    state.pairing_approval_in_flight.insert(key);
                 }
                 let desktop = self.clone();
                 let engine = engine.clone();
@@ -945,7 +954,20 @@ impl Desktop {
                         Ok(protocol::PairingResponse::Pending) => PairingApprovalState::Pending,
                         _ => PairingApprovalState::NotReachable,
                     };
-                    desktop.set_pairing_approval(project, device, approval);
+                    if let Ok(mut state) = desktop.lock() {
+                        // A Check, head pull or receive may have proven approval meanwhile.
+                        let current = state
+                            .pairing_approval_states
+                            .entry((project, device))
+                            .or_default();
+                        if *current != PairingApprovalState::Approved {
+                            *current = approval;
+                        }
+                        state.pairing_approval_in_flight.remove(&(project, device));
+                        state
+                            .pairing_approval_checked_at
+                            .insert((project, device), Instant::now());
+                    }
                 });
             }
         }
@@ -1413,13 +1435,9 @@ impl Desktop {
                     disk.open_pairing_window(project_id)
                 })
                 .await??;
-                let message = if let Some(other) = replaced {
-                    format!(
-                        "Pending approvals for {} were cleared; only one project can accept new devices at a time.",
-                        engine.store.project(other)?.name
-                    )
-                } else {
-                    "Invite link copied — paste it within 60 s".to_owned()
+                let cleared_pending = match replaced {
+                    Some(other) => Some(engine.store.project(other)?.name),
+                    None => None,
                 };
                 network
                     .pairing_window(trackmesh_core::PAIRING_WINDOW)
@@ -1440,7 +1458,7 @@ impl Desktop {
                 if let Ok(mut state) = self.lock() {
                     state.tasks.push(cleanup);
                 }
-                json!({"message": message, "invite_copied": true})
+                json!({"message": "Invite link copied — paste it within 60 s", "invite_copied": true, "cleared_pending": cleared_pending})
             }
             Action::Publish { project_id } => {
                 serde_json::to_value(engine.publish_metadata(project_id, allow_http).await?)?
@@ -1641,7 +1659,7 @@ impl Desktop {
                             let message = if let Some(other) = replaced {
                                 format!("Pending approvals for {} were cleared; only one project can accept new devices at a time.", disk.store.project(other)?.name)
                             } else {
-                                "Pairing window open for 15 minutes. Ask your collaborator to accept the invitation or retry automatic pairing. Verify the arriving device before approving.".to_owned()
+                                "Approval window open for 15 minutes. Ask your collaborator to press Try again, then verify the arriving device before approving.".to_owned()
                             };
                             Ok(json!({"message": message}))
                         }

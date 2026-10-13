@@ -20,8 +20,8 @@ export interface Transfer {
 export interface ProjectCard {
   project: { project_id: string; name: string; root: string; latest_local_snapshot: string | null;
     last_verified_at: string | null; verified_peer_id: string | null; verified_snapshot_id: string | null;
-    recovery_required: boolean; mailbox_url: string | null; relay_address: string | null; error: string | null;
-    grant_problem: 'REJECTED' | 'UNREACHABLE' | null };
+    recovery_required: boolean; mailbox_url: string | null; relay_address: string | null; error: string | null };
+  grant_problem: 'REJECTED' | 'UNREACHABLE' | null;
   root_available: boolean;
   root_empty: boolean;
   active_transfer: boolean;

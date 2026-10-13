@@ -256,7 +256,7 @@ function Card({ card, status, jobStartedAt, focusProjectId, act }: { card: Proje
     && !project.recovery_required && !peer.announcement
     && (!transfer || transfer.state === 'COMPLETE')
     && !status.jobs.some(item => item.project_id === project.project_id && item.running)
-    && pairingApproval !== 'PENDING';
+    && pairingApproval !== 'PENDING' && pairingApproval !== 'NOT_REACHABLE';
   const disabledReceive = busy || !peer || !online || !dawClosed || project.recovery_required || divergence;
   const rootMissing = !card.root_available;
   const chooseProjectRoot = async () => {
@@ -284,8 +284,7 @@ function Card({ card, status, jobStartedAt, focusProjectId, act }: { card: Proje
         ? 'Set a default Supabase service in Settings to create invite links.'
         : 'Configure Supabase for this project in Advanced settings before creating an invite link.';
   const inviteJob = status.jobs.find(item => item.project_id === project.project_id && item.label === 'Copy invite link');
-  const copyInviteSuccess = !!inviteJob && !inviteJob.running && !inviteJob.error
-    && (inviteJob.outcome?.invite_copied === true || typeof inviteJob.outcome?.message === 'string');
+  const copyInviteSuccess = !!inviteJob && !inviteJob.running && !inviteJob.error && inviteJob.outcome?.invite_copied === true;
   return <article id={`project-${project.project_id}`} className={`project-card${focusProjectId === project.project_id ? ' focus-highlight' : ''}`}>
     <header className="card-title"><div><h2>{project.name}</h2><button className="path-link" title="Open in Explorer" onClick={() => void openProject()}>{displayPath(project.root)}</button></div>
       <span className={`badge ${online ? 'online' : ''}`}>{projectStatus}</span></header>
@@ -298,12 +297,12 @@ function Card({ card, status, jobStartedAt, focusProjectId, act }: { card: Proje
         <button disabled={busy} onClick={() => act({ kind: 'reject_pairing', project_id: project.project_id, request_id: candidate.request_id })}>Reject</button></div></div>)}</section>}
     <section className="invite-flow"><button className={peer ? '' : 'primary'} disabled={busy || !inviteReady} onClick={() => request('copy_invite_link')}>Invite collaborator</button>
       <p className="muted">The link is valid for 15 minutes and can be opened once.</p>{!inviteReady && backendMessage && <p className="error">{backendMessage}</p>}
-      {status.pairing.project_id !== project.project_id && <><button className="text-button" disabled={busy} onClick={() => act({ kind: 'open_pairing', project_id: project.project_id })}>Reopen approval window</button><p className="muted">Use this if your collaborator opened the link but approval timed out.</p></>}</section>
+      {status.pairing.project_id !== project.project_id && (!peer || !!inviteJob) && <><button className="text-button" disabled={busy} onClick={() => act({ kind: 'open_pairing', project_id: project.project_id })}>Reopen approval window</button><p className="muted">Use this if your collaborator opened the link but approval timed out.</p></>}</section>
     {peer && <div className="peer-line"><label>Collaborator <select value={peerId ?? ''} disabled={busy || !card.peers.length} onChange={e => { setSelected(e.target.value); setDawClosed(false); }}>
       {card.peers.map(p => <option key={p.device.device_id} value={p.device.device_id}>{p.device.name}</option>)}</select></label>
       <button className="text-button danger" disabled={busy} onClick={() => window.confirm(`Remove ${peer.device.name}'s access to this project?`) && act({ kind: 'revoke', project_id: project.project_id, device_id: peer.device.device_id })}>Revoke</button>
       <button className="text-button" disabled={busy} onClick={() => act({ kind: 'check', project_id: project.project_id, device_id: peer.device.device_id })}>Check connection</button></div>}
-    {project.grant_problem === 'REJECTED' && peer && <p className="muted">The invite service didn't accept {peer.device.name} (the project may already have 3 devices, or too many requests). Direct sharing still works.</p>}
+    {card.grant_problem === 'REJECTED' && peer && <p className="muted">The invite service didn't accept {peer.device.name} (the project may already have 3 devices, or too many requests). Direct sharing still works.</p>}
     {project.recovery_required && <div className="notice danger">Close the DAW and recover this project before receiving another version.</div>}
     {remoteAhead && peer?.announcement && <div className="new-version-notice" role="status">New version from {peer.device.name} — {time(peer.announcement.created_at)}</div>}
     {showOfflineHead && offlineHead && peer && <div className="new-version-notice" role="status">New version from {peer.device.name} — {time(offlineHead.created_at)} · available when {peer.device.name} is online</div>}
@@ -338,7 +337,7 @@ function Card({ card, status, jobStartedAt, focusProjectId, act }: { card: Proje
       {transfer.error && <p className="error">{transfer.error}</p>}{receiving && <InProgress>Receiving project… {transfer.total_bytes ? Math.min(100, Math.round(transfer.completed_bytes * 100 / transfer.total_bytes)) : 0} %</InProgress>}</div>}
     {inviteJob?.running && <InProgress>Creating invite link…</InProgress>}
     {copyInviteSuccess && inviteJob && <InviteCopiedNotice job={inviteJob} />}
-    {inviteJob?.outcome?.invite_copied === true && typeof inviteJob.outcome.message === 'string' && String(inviteJob.outcome.message).startsWith('Pending approvals for ') && <div className="job" role="status">{String(inviteJob.outcome.message)}</div>}
+    {copyInviteSuccess && typeof inviteJob?.outcome?.cleared_pending === 'string' && <div className="job" role="status">Pending approvals for {inviteJob.outcome.cleared_pending} were cleared; only one project can accept new devices at a time.</div>}
     {job && !(job.label === 'Copy invite link' && (job.running || copyInviteSuccess)) && <JobNotice job={job} startedAt={jobStartedAt[job.job_id]} collaboratorName={peer?.device.name} />}
     <details className="setup advanced-card"><summary>Advanced</summary>
       <section className="advanced-group"><h3>Connection details</h3>
@@ -348,7 +347,7 @@ function Card({ card, status, jobStartedAt, focusProjectId, act }: { card: Proje
       <ConnectionAssistant card={card} status={status} peer={peer} check={check} busy={busy} act={act} />
       {project.recovery_required && <button disabled={busy || !dawClosed} onClick={() => act({ kind: 'recover', project_id: project.project_id, daw_closed: dawClosed })}>Recover locally</button>}
       <ProjectBackendSettings projectId={project.project_id} config={status.project_backends[project.project_id]} defaultSupabase={status.default_supabase} state={status.supabase_states[project.project_id] ?? 'NOT_CONFIGURED'} busy={busy} act={act} />
-      {(project.grant_problem === 'UNREACHABLE' || inviteState === 'UNREACHABLE') && <p className="muted">Invite service is unreachable. Check its URL and network connection in Advanced settings.</p>}
+      {(card.grant_problem === 'UNREACHABLE' || inviteState === 'UNREACHABLE') && <p className="muted">Invite service is unreachable. Check its URL and network connection in Advanced settings.</p>}
       <p>UUID <code>{project.project_id}</code></p><p>Mailbox <code>{project.mailbox_url ?? 'Not configured'}</code></p><p>Relay <code>{project.relay_address ?? 'Not configured'}</code></p>
       <p>Mailbox stores encrypted metadata and snapshot announcements only. A configured private relay provides a peer connection path when direct connection fails; files still transfer directly from an online collaborator.</p>
       <button disabled={busy} onClick={() => void chooseProjectRoot()}>{rootMissing ? 'Locate folder' : 'Change folder'}</button>
