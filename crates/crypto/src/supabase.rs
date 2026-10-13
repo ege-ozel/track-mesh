@@ -17,6 +17,8 @@ use sha2::{Digest, Sha256};
 const WRAPPER_VERSION: u32 = 1;
 const MAX_WRAPPER_BYTES: usize = 64 * 1024;
 const MAX_HEAD_CIPHERTEXT: usize = 4096;
+// A signed record is about 490 bytes; leave room so a valid head is never rejected.
+const MAX_HEAD_PLAINTEXT: usize = 1024;
 
 pub fn endpoint_record_expires_at(record: &EndpointRecord) -> String {
     record
@@ -81,7 +83,10 @@ pub fn wrap_head_record(
     let mut signed = record.clone();
     signed.signature = identity.sign(&signed.signing_bytes()?);
     let plaintext = serde_json::to_vec(&signed)?;
-    ensure!(plaintext.len() <= 512, "head record plaintext too large");
+    ensure!(
+        plaintext.len() <= MAX_HEAD_PLAINTEXT,
+        "head record plaintext too large"
+    );
     let mut nonce = [0u8; 24];
     OsRng.fill_bytes(&mut nonce);
     let ciphertext = XChaCha20Poly1305::new(project_key.into())
@@ -149,7 +154,10 @@ pub fn unwrap_head_record(
             },
         )
         .map_err(|_| anyhow::anyhow!("head wrapper authentication failed"))?;
-    ensure!(plaintext.len() <= 512, "head record plaintext too large");
+    ensure!(
+        plaintext.len() <= MAX_HEAD_PLAINTEXT,
+        "head record plaintext too large"
+    );
     let record: HeadRecord = serde_json::from_slice(&plaintext).context("invalid head record")?;
     ensure!(
         record.author_device_id == writer_device_id

@@ -1,4 +1,4 @@
-﻿begin;
+begin;
 create table public.head_records (
  project_route uuid not null, writer_device_id uuid not null,
  seq numeric(20,0) not null check (seq between 1 and 18446744073709551615),
