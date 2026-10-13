@@ -12,7 +12,9 @@ use std::{
     time::SystemTime,
 };
 use uuid::Uuid;
+mod retention;
 mod settlement;
+pub use retention::CacheLease;
 pub use settlement::scan_after_save;
 
 /// Whether a project-relative file is generated metadata that should not be
@@ -61,6 +63,7 @@ impl ChunkStore {
         Ok(self.root.join(&hash[..2]).join(hash))
     }
     pub fn read(&self, hash: &str, size: u32) -> Result<Vec<u8>> {
+        let _lease = self.lease(false)?;
         let path = self.path(hash)?;
         let file = File::open(&path)?;
         ensure!(
@@ -79,6 +82,7 @@ impl ChunkStore {
         self.read(hash, size).is_ok()
     }
     pub fn put(&self, hash: &str, bytes: &[u8]) -> Result<()> {
+        let _lease = self.lease(false)?;
         ensure!(
             bytes.len() <= protocol::MAX_CHUNK_SIZE as usize && protocol::hash(bytes) == hash,
             "chunk integrity failure"

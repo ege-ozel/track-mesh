@@ -4,6 +4,7 @@ mod endpoints;
 mod mailbox;
 mod models;
 mod projects;
+mod retention;
 mod snapshots;
 mod transfer_state;
 mod transfers;

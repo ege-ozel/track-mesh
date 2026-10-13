@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { StorageSettings } from './StorageSettings';
 import { cancelInviteLink, chooseFolder, chooseInviteParentFolder, chooseProjectsLocation, closeApp, getStatus, openInviteParentFolder, openPreviousVersion, openProjectFolder, openProjectsLocation, pasteInviteLink, setUpnpMapping, submitAction } from './api';
 import type { Action, CheckView, DesktopStatus, ProjectBackend, ProjectBackendConfig, ProjectCard, SnapshotInfo, SupabaseDefaultConfig } from './api';
 
@@ -538,6 +539,7 @@ export default function App() {
       </section></div>}
       {status?.closing && <div className="notice">Work finished. TRACKMESH is shutting down safely.</div>}
       {screen === 'settings' ? <section className="settings-screen"><div className="section-heading"><div><h2>Settings</h2><span className="muted">Device identity and optional connection services.</span></div></div>
+        <StorageSettings busy={busy} act={act} />
         <section className="settings-block"><h3>Connection</h3><label><input type="checkbox" checked={status?.network?.port_mapping.consent_enabled ?? false} disabled={busy} onChange={event => { void setUpnpMapping(event.currentTarget.checked).then(poll).catch(err => setError(String(err))); }} /> Set up router automatically (UPnP)</label><p className="muted">Opens one time-limited router port for TrackMesh. Only paired devices can use it.</p></section>
         <details className="setup"><summary>Advanced</summary>
           <DeviceNameSettings name={status?.device?.name ?? ''} busy={busy} act={act} />
@@ -546,7 +548,7 @@ export default function App() {
           <ManualPortForwardingSettings endpoint={status?.manual_public_endpoint ?? null} listenPort={status?.listen_port ?? 43101} busy={busy} act={act} />
           <p className="muted">Supabase publishable key is public project configuration. Never enter a secret key here.</p>
           <section className="global-advanced"><h3>Advanced tools</h3><p className="muted">For older builds or custom network setups.</p><div className="actions"><button disabled={busy} onClick={() => { setScreen('projects'); setSetup('join'); setFolder(''); }}>Accept invitation file</button></div></section>
-        </details></section> : <>
+        </details>{status?.jobs.filter(j => !j.project_id).map(job => <JobNotice key={job.job_id} job={job} startedAt={jobStartedAt[job.job_id]} />)}</section> : <>
       <div className="section-heading"><div><h2>Projects</h2><span className="muted">Link a folder, invite a collaborator, then share or receive a version.</span></div><div className="actions">
         <button className="primary" disabled={busy} onClick={() => { setSetup('link'); setFolder(''); setUuid(crypto.randomUUID()); setName(''); setMailbox(''); setRelay(''); }}>+ Link folder</button><button className="primary" disabled={busy} onClick={() => void pasteInvite()}>Paste invite link</button></div></div>
       {setup && <section className="setup-panel"><h2>{setup === 'join' ? 'Pair with an inviter' : 'Link a local project'}</h2>

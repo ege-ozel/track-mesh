@@ -192,11 +192,27 @@ impl Engine {
         peer: DeviceCard,
         target: Option<Uuid>,
     ) -> Result<Uuid> {
+        self.receive_from_peer_with_limit(network, project, peer, target, u64::MAX)
+            .await
+    }
+
+    pub async fn receive_from_peer_with_limit(
+        &self,
+        network: &Network,
+        project: Uuid,
+        peer: DeviceCard,
+        target: Option<Uuid>,
+        download_limit: u64,
+    ) -> Result<Uuid> {
         let snapshot = self
             .fetch_snapshot_chain(network, project, &peer.peer_id, target)
             .await?
             .context("source has no local snapshot")?;
-        self.receiver(network.clone()).receive(snapshot, peer).await
+        let mut receiver = self.receiver(network.clone());
+        receiver.download_limit = download_limit;
+        let result = receiver.receive(snapshot, peer).await;
+        self.maintain_storage_after_transfer().await;
+        result
     }
 
     /// Preserve the current folder as a local snapshot before explicitly replacing a divergent
@@ -207,6 +223,18 @@ impl Engine {
         project: Uuid,
         peer: DeviceCard,
         target: Option<Uuid>,
+    ) -> Result<Uuid> {
+        self.receive_replacing_local_with_limit(network, project, peer, target, u64::MAX)
+            .await
+    }
+
+    pub async fn receive_replacing_local_with_limit(
+        self: &std::sync::Arc<Self>,
+        network: &Network,
+        project: Uuid,
+        peer: DeviceCard,
+        target: Option<Uuid>,
+        download_limit: u64,
     ) -> Result<Uuid> {
         // Scanning and hashing are blocking disk work. `snapshot` reuses the head when nothing
         // changed, so the folder is hashed once; an empty folder has nothing to preserve.
@@ -228,9 +256,11 @@ impl Engine {
             .fetch_snapshot_chain(network, project, &peer.peer_id, target)
             .await?
             .context("source has no local snapshot")?;
-        self.receiver(network.clone())
-            .receive_diverged(snapshot, peer)
-            .await
+        let mut receiver = self.receiver(network.clone());
+        receiver.download_limit = download_limit;
+        let result = receiver.receive_diverged(snapshot, peer).await;
+        self.maintain_storage_after_transfer().await;
+        result
     }
 
     pub fn recover(&self, project: Uuid) -> Result<()> {

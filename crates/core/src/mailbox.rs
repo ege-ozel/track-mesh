@@ -207,6 +207,8 @@ impl MailboxRuntime {
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
                 tokio::select! { _ = &mut stopped => break, _ = interval.tick() => {} }
+                let disk = engine.clone();
+                tokio::task::spawn_blocking(move || disk.maintain_storage_if_idle()).await?;
                 let engine_for_disk = engine.clone();
                 let projects =
                     tokio::task::spawn_blocking(move || engine_for_disk.store.projects()).await??;

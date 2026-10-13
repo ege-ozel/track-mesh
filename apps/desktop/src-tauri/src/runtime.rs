@@ -68,6 +68,9 @@ pub struct Options {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Action {
+    DeleteBackups {
+        selected: Vec<trackmesh_core::BackupSelection>,
+    },
     Link {
         project_id: Uuid,
         name: String,
@@ -174,6 +177,7 @@ impl Action {
     fn project(&self) -> Option<Uuid> {
         match self {
             Self::Join { .. }
+            | Self::DeleteBackups { .. }
             | Self::CompleteInviteLink { .. }
             | Self::SetDefaultSupabase { .. }
             | Self::SetDeviceName { .. }
@@ -203,6 +207,7 @@ impl Action {
     }
     fn label(&self) -> &'static str {
         match self {
+            Self::DeleteBackups { .. } => "Delete old backups",
             Self::Link { .. } => "Link folder",
             Self::ChangeProjectRoot { .. } => "Change project folder",
             Self::SetProjectBackend { .. } => "Save project backend",
@@ -398,6 +403,10 @@ pub struct Desktop {
 }
 
 impl Desktop {
+    pub async fn storage_summary(&self) -> Result<trackmesh_core::StorageSummary> {
+        let engine = self.lock()?.engine.clone().context("Desktop is starting")?;
+        tauri::async_runtime::spawn_blocking(move || engine.storage_summary()).await?
+    }
     pub fn new(options: Options) -> Self {
         let window_session = !options.plugin_owner;
         Self {
@@ -1522,8 +1531,16 @@ impl Desktop {
                 .await??;
                 wait_for_peer(self, &network, &peer.peer_id).await?;
                 let peer_device = peer.device_id;
-                match engine
-                    .receive_from_peer(&network, project_id, peer, snapshot_id)
+                match self
+                    .receive_with_confirmation(
+                        &app,
+                        &engine,
+                        &network,
+                        project_id,
+                        peer,
+                        snapshot_id,
+                        false,
+                    )
                     .await
                 {
                     Ok(transfer_id) => {
@@ -1549,8 +1566,10 @@ impl Desktop {
                 })
                 .await??;
                 wait_for_peer(self, &network, &peer.peer_id).await?;
-                match engine
-                    .receive_replacing_local(&network, project_id, peer, None)
+                match self
+                    .receive_with_confirmation(
+                        &app, &engine, &network, project_id, peer, None, true,
+                    )
                     .await
                 {
                     Ok(transfer_id) => json!({"transfer_id": transfer_id}),
@@ -1604,6 +1623,14 @@ impl Desktop {
                     };
                 tauri::async_runtime::spawn_blocking(move || -> Result<Value> {
                     match action {
+                        Action::DeleteBackups { selected } => {
+                            let total = selected.iter().try_fold(0u64, |sum, item| sum.checked_add(item.bytes)).context("backup size overflow")?;
+                            let accepted = dialog_app.dialog().message(format!("Delete {} old backups ({:.2} GB)? Each project's newest backup will be kept.", selected.len(), total as f64 / 1_000_000_000.0))
+                                .title("Delete old backups?").buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancel).blocking_show();
+                            ensure!(accepted, "Backup deletion cancelled");
+                            let bytes = disk.delete_old_backups(&selected)?;
+                            Ok(json!({"message": format!("Deleted {bytes} bytes of old backups")}))
+                        }
                         Action::Link { project_id, name, folder, mailbox_url, relay_address } => {
                             ensure!(!project_id.is_nil(), "Project UUID cannot be nil");
                             if let Some(relay) = &relay_address { let _: network::NetworkConfig = NetworkConfig { rendezvous: vec![(relay.parse()?, String::new())], ..Default::default() }; }

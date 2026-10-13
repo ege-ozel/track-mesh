@@ -646,6 +646,7 @@ impl Engine {
             network,
             identity: self.identity.clone(),
             directory: self.directory.clone(),
+            download_limit: u64::MAX,
         }
     }
 }

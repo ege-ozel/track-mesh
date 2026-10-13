@@ -713,3 +713,12 @@ Checks actually run: Desktop `npm run typecheck` and `npm run build` passed; the
 
 Supabase projects skip legacy publication/refresh and mailbox-based owner retention, including existing PENDING records. Advanced hides mailbox publication labels for these projects. Existing self-hosted mailbox URLs retain envelope/ACK/retry behavior; database values and signed formats are unchanged. Checks: offline locked workspace check and clippy, TypeScript typecheck and static frontend build passed; Vite warned about Node 22.11 below its supported version. Runtime switching/publication remains unverified.
 
+
+## #45 — Automatic file-cache retention and explicit backup cleanup (2026-10-14)
+
+Core/storage retain indexed file data for the current head, latest locally saved/received version per author and unfinished transfer targets/bases. Signed manifests, ancestry, mailbox states and transfer records remain unchanged. Snapshot/receive/recovery hold a shared Windows cache lease, including cancelled blocking apply; cleanup obtains the exclusive lease and rejects unknown/reparse entries before deletion. Cleanup runs after snapshots/receives and on the existing session interval; it adds no watcher.
+
+Settings → Storage shows cache size and completed backup paths/sizes with bulk selection. Core protects the newest existing completed backup per project, blocks uncertain projects, reacquires project locks and revalidates selected sizes, DONE journal bindings and backup hashes before deleting individual known files/directories. Recovery/unfinished data and working folders are excluded. Native Get (including first automatic receive and Use collaborator's version) computes distinct verified missing chunks and requests confirmation above 1,000,000,000 bytes before any chunk request; retry pins the same snapshot and bounds the approved new bytes. Cancel keeps progress for Resume.
+
+Checks: locked offline workspace check/clippy, fmt, TypeScript typecheck and frontend build passed (same unsupported Node 22.11 Vite warning). CLI/Desktop native builds and Desktop --help succeeded. Disposable CLI operation in .build/phase45-manual-20261014 created three versions: old chunk removal, newest chunk retention, preserved signed ancestry, and fail-closed cleanup with an unknown cache entry were observed. No production-data cleanup or test suites ran. Native backup deletion, paused/recovery retention, multi-author retention and >1 GB dialog/cancel/resume remain runtime-unverified; repeat with disposable data before distribution.
+

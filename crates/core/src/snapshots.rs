@@ -16,6 +16,7 @@ impl Engine {
     }
 
     fn snapshot_impl(&self, project: Uuid, settled: bool) -> Result<SignedSnapshot> {
+        let lease = self.chunks.lease(false)?;
         let _lock = snapshot::ProjectLock::acquire(&self.directory, project)?;
         let project = self.store.project(project)?;
         ensure!(
@@ -58,6 +59,8 @@ impl Engine {
             parent.map(|s| s.manifest.snapshot_id),
             true,
         )?;
+        drop(lease);
+        self.maintain_storage_if_idle();
         Ok(signed)
     }
 }
