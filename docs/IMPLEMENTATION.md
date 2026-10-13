@@ -582,3 +582,9 @@ Checks actually run for this change: `cargo fmt --all -- --check`; locked/offlin
 Moved **Accept invitation file** into Settings → Advanced while preserving its Projects/join navigation. Added shared spacing and color tokens, consistent field spacing, framed top-level Advanced cards, indented deeper details, custom disclosure chevrons, and CSS-only open/close motion with reduced-motion support. Existing connection assistant and approval disclosure behavior is preserved.
 
 Checks: Desktop `npm run typecheck`, `npm run build`, and `git diff --check` passed. Vite warned that Node 22.11.0 is below its 22.12+ recommendation; the build still completed. No automated tests or benchmarks were run.
+
+### Phase 1 Sandbox retest of #33/#34 (2026-10-13)
+
+Release build from `130f5a0`, host plus Windows Sandbox, live Supabase, same setup as the earlier two-instance check. The user ran the retest manually and reported it successful. The host card reached `Connected` with the Sandbox device, and Share current version committed a local snapshot. Only the host → Sandbox direction was exercised. Not verified: Sandbox → host transfer, the same items listed as not verified in the earlier check, and reduced-motion behavior.
+
+Observed UX issues, still open: transfer progress has no percentage, and the sender has no progress at all. After Share, a Supabase project shows "Publication pending: project has no mailbox URL". Paths show the `\?\` prefix. Invite collaborator disappears once a collaborator exists, and the remaining Copy invite link sits inside the manual connection panel. The main, manual and diagnostic sections are not clearly separated.
