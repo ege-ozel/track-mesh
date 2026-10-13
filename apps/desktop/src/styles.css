@@ -857,7 +857,7 @@ details {
   position:absolute;
   z-index:0;
   inset:-150%;
-  background:conic-gradient(var(--accent),var(--accent-hover),var(--accent));
+  background:conic-gradient(var(--accent),var(--link),var(--warn),var(--accent));
   animation:progress-border-spin 3s linear infinite;
 }
 .in-progress > span {
@@ -872,7 +872,7 @@ details {
 @keyframes progress-border-spin { to { transform:rotate(1turn); } }
 .delivery-receipt { color:var(--accent); font-weight:650; margin:var(--s3) 0; }
 @media (prefers-reduced-motion:reduce) {
-  .in-progress::before { animation:none; inset:0; background:linear-gradient(120deg,var(--accent),var(--accent-hover),var(--accent)); }
+  .in-progress::before { animation:none; inset:0; background:linear-gradient(120deg,var(--accent),var(--link),var(--warn),var(--accent)); }
 }
 details::details-content {
   display:flex;

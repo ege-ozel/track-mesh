@@ -6,7 +6,7 @@ use network::{Network, NetworkConfig, NetworkStatus};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::PathBuf,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
@@ -291,6 +291,7 @@ struct Session {
     closed: bool,
     error: Option<String>,
     pending_invite: Option<PendingInviteLink>,
+    auto_receive_attempted: HashSet<(Uuid, Uuid)>,
 }
 
 struct PendingInviteLink {
@@ -657,6 +658,74 @@ impl Desktop {
         })
     }
 
+    pub async fn try_auto_first_receive(
+        self: &Arc<Self>,
+        app: AppHandle,
+        status: &DesktopStatus,
+    ) -> Result<()> {
+        let Some(page) = status.page.as_ref() else {
+            return Ok(());
+        };
+        let network = {
+            let state = self.lock()?;
+            let Some(network) = &state.network else {
+                return Ok(());
+            };
+            network.clone()
+        };
+        for item in &page.projects {
+            if item.local_snapshot.is_some()
+                || item.project.latest_local_snapshot.is_some()
+                || item.project.recovery_required
+                || !item.root_available
+                || !item.root_empty
+                || item.active_transfer
+            {
+                continue;
+            }
+            if self.lock()?.jobs.iter().any(|job| {
+                job.running
+                    && (job.project_id.is_none() || job.project_id == Some(item.project.project_id))
+            }) {
+                continue;
+            }
+            for peer in &item.peers {
+                let Some(snapshot) = peer.announcement.as_ref() else {
+                    continue;
+                };
+                if !network.online(&peer.device.peer_id) {
+                    continue;
+                }
+                let key = (item.project.project_id, snapshot.snapshot_id);
+                {
+                    let mut state = self.lock()?;
+                    if state.auto_receive_attempted.contains(&key)
+                        || state.jobs.iter().any(|job| {
+                            job.running
+                                && (job.project_id.is_none()
+                                    || job.project_id == Some(item.project.project_id))
+                        })
+                    {
+                        continue;
+                    }
+                    state.auto_receive_attempted.insert(key);
+                }
+                // Uses the same bounded receive job path as the manual Get action.
+                let _ = self.submit(
+                    app.clone(),
+                    Action::Receive {
+                        project_id: item.project.project_id,
+                        device_id: peer.device.device_id,
+                        snapshot_id: Some(snapshot.snapshot_id),
+                        daw_closed: true,
+                    },
+                );
+                break;
+            }
+        }
+        Ok(())
+    }
+
     pub fn submit(self: &Arc<Self>, app: AppHandle, action: Action) -> Result<Uuid> {
         let mut state = self.lock()?;
         ensure!(
@@ -796,6 +865,23 @@ impl Desktop {
                         config
                     }
                 };
+                let parent = if let Some(parent) = parent_folder {
+                    parent
+                } else if let Some(location) = engine.projects_location()? {
+                    PathBuf::from(location)
+                } else {
+                    tauri::async_runtime::spawn_blocking(documents::default_projects_location)
+                        .await??
+                };
+                let parent = tauri::async_runtime::spawn_blocking(move || -> Result<PathBuf> {
+                    std::fs::create_dir_all(&parent)
+                        .context("The selected Projects location could not be created")?;
+                    let parent = std::fs::canonicalize(parent)
+                        .context("The selected Projects location could not be resolved")?;
+                    ensure!(parent.is_dir(), "Choose a folder for the project");
+                    Ok(parent)
+                })
+                .await??;
                 let downloaded = mailbox::SupabaseClient::consume_invite_drop(
                     &config.url,
                     &config.publishable_key,
@@ -817,39 +903,8 @@ impl Desktop {
                     anyhow::bail!("Invite link is invalid, expired, or unavailable");
                 }
                 let name = sanitize_project_name(&invite.project_name);
-                let parent = if let Some(parent) = parent_folder {
-                    parent
-                } else if let Some(location) = engine.projects_location()? {
-                    PathBuf::from(location)
-                } else {
-                    tauri::async_runtime::spawn_blocking(documents::default_projects_location)
-                        .await??
-                };
-                let folder = parent.join(name);
-                let folder_for_check = folder.clone();
-                let exists_nonempty =
-                    tauri::async_runtime::spawn_blocking(move || -> Result<bool> {
-                        if !folder_for_check.exists() {
-                            return Ok(false);
-                        }
-                        ensure!(
-                            folder_for_check.is_dir(),
-                            "The proposed project path is a file"
-                        );
-                        Ok(std::fs::read_dir(folder_for_check)?.next().is_some())
-                    })
-                    .await??;
-                if exists_nonempty {
-                    let accepted = app.dialog().message("This folder already contains files. TrackMesh can install the shared version here while preserving existing files in its recovery backup. Continue?")
-                        .title("Use existing project folder?")
-                        .buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancel)
-                        .blocking_show();
-                    ensure!(accepted, "Choose another folder to accept this invitation");
-                }
-                let folder_to_create = folder.clone();
-                tauri::async_runtime::spawn_blocking(move || -> Result<()> {
-                    std::fs::create_dir_all(folder_to_create)?;
-                    Ok(())
+                let folder = tauri::async_runtime::spawn_blocking(move || {
+                    create_unique_invite_folder(&parent, &name)
                 })
                 .await??;
                 let project = invite.project_id;
@@ -1191,30 +1246,10 @@ impl Desktop {
         let (state, message) = match result {
             Ok(protocol::PairingResponse::Pending) => ("pending", "Pairing request sent automatically. The inviter must verify and approve your device. No card file needs to be sent; wait for their confirmation."),
             Ok(protocol::PairingResponse::Approved) => {
-                let disk = engine.clone();
-                let empty = tauri::async_runtime::spawn_blocking(move || -> Result<bool> {
-                    let project = disk.project_summary(project)?;
-                    if project.local_snapshot.is_some()
-                        || project.project.latest_local_snapshot.is_some()
-                        || project.project.recovery_required
-                    {
-                        return Ok(false);
-                    }
-                    let root = std::path::PathBuf::from(project.project.root);
-                    Ok(std::fs::read_dir(root)?.next().is_none())
-                }).await.ok().and_then(Result::ok).unwrap_or(false);
-                if empty {
-                    let disk = engine.clone();
-                    let peer = tauri::async_runtime::spawn_blocking(move || disk.paired_peer(project, device)).await;
-                    if let Ok(Ok(peer)) = peer {
-                        if engine.receive_from_peer(network, project, peer, None).await.is_ok() {
-                            return json!({"project_id": project, "invitation_imported": imported, "pairing_state": "approved", "message": "Approved. The first project version was received automatically."});
-                        }
-                    }
-                    ("approved", "Approved. The first receive could not start; keep both apps open and try Get collaborator’s version.")
-                } else {
-                    ("approved", "The inviter approved this device. The project folder already has content, so later receives stay manual.")
-                }
+                (
+                    "approved",
+                    "The inviter approved this device for the project.",
+                )
             },
             _ => ("retry", "Automatic pairing could not complete. Your project remains imported. Ask the inviter to open a pairing window and keep TrackMesh online, then use Retry automatic pairing. Do not reimport or create a new UUID. Both devices need a build supporting automatic pairing."),
         };
@@ -1271,18 +1306,11 @@ impl Desktop {
         }
     }
     pub fn paste_invite_link(&self, app: &AppHandle) -> Result<()> {
-        ensure!(
-            self.lock()?.pending_invite.is_none(),
-            "No TrackMesh invite link on the clipboard"
-        );
-        let (id, key) = crate::clipboard::take_invite_link()
-            .map_err(|_| anyhow::anyhow!("No TrackMesh invite link on the clipboard"))?;
         self.reopen(app);
         let mut state = self.lock()?;
-        ensure!(
-            state.pending_invite.is_none(),
-            "No TrackMesh invite link on the clipboard"
-        );
+        ensure!(state.pending_invite.is_none(), "An invite is already open");
+        let (id, key) = crate::clipboard::take_invite_link()
+            .map_err(|_| anyhow::anyhow!("No TrackMesh invite link on the clipboard"))?;
         state.work_epoch = state.work_epoch.wrapping_add(1);
         state.pending_invite = Some(PendingInviteLink { id, key });
         Ok(())
@@ -1334,6 +1362,28 @@ impl Desktop {
         }
         ensure!(errors.is_empty(), "{}", errors.join("; "));
         Ok(())
+    }
+}
+
+fn create_unique_invite_folder(parent: &std::path::Path, name: &str) -> Result<PathBuf> {
+    ensure!(!name.is_empty(), "Project folder name is empty");
+    let mut suffix = 1u64;
+    loop {
+        let folder_name = if suffix == 1 {
+            name.to_owned()
+        } else {
+            format!("{name} ({suffix})")
+        };
+        let path = parent.join(folder_name);
+        match std::fs::create_dir(&path) {
+            Ok(()) => return Ok(path),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                suffix = suffix
+                    .checked_add(1)
+                    .context("No available project folder name")?;
+            }
+            Err(error) => return Err(error.into()),
+        }
     }
 }
 

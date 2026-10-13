@@ -235,8 +235,15 @@ function Card({ card, status, jobStartedAt, act }: { card: ProjectCard; status: 
   const resumable = transfer?.state === 'PAUSED' && peerId === transfer.source_device_id;
   const receiving = transfer?.state === 'RECEIVING' || transfer?.state === 'APPLYING';
   const authoredHere = card.local_snapshot?.author_device_id === status.device?.device_id;
-  const receipt = !!authoredHere && !!peer && !!card.local_snapshot && status.network?.received_snapshots.some(item => item.project_id === project.project_id && item.peer_id === peer.device.peer_id && item.snapshot_id === card.local_snapshot?.snapshot_id);
+  const receipt = !!authoredHere && !!peer && !!card.local_snapshot && (
+    (project.verified_peer_id === peer.device.peer_id && project.verified_snapshot_id === card.local_snapshot.snapshot_id)
+    || !!status.network?.received_snapshots.some(item => item.project_id === project.project_id && item.peer_id === peer.device.peer_id && item.snapshot_id === card.local_snapshot?.snapshot_id)
+  );
   const sharedLatest = !!card.local_snapshot && status.jobs.some(item => item.project_id === project.project_id && item.outcome?.snapshot_id === card.local_snapshot?.snapshot_id);
+  const waitingFirstVersion = !!peer && card.root_empty && !card.local_snapshot && !project.latest_local_snapshot
+    && !project.recovery_required && !peer.announcement
+    && (!transfer || transfer.state === 'COMPLETE')
+    && !status.jobs.some(item => item.project_id === project.project_id && item.running);
   const disabledReceive = busy || !peer || !online || !dawClosed || project.recovery_required || divergence;
   const rootMissing = !card.root_available;
   const chooseProjectRoot = async () => {
@@ -285,6 +292,7 @@ function Card({ card, status, jobStartedAt, act }: { card: ProjectCard; status: 
         <button disabled={disabledReceive || rootMissing} onClick={() => act({ kind: 'receive', project_id: project.project_id, device_id: peer.device.device_id, snapshot_id: resumable ? transfer.snapshot_id : null, daw_closed: dawClosed })}>{resumable ? 'Resume receive' : 'Get collaborator’s version'}</button>
         {!online && <p className="muted">Open TrackMesh on both PCs to receive files.</p>}</div></section>}
     {authoredHere && sharedLatest && peer && card.local_snapshot && !receipt && <InProgress>Waiting for {peer.device.name} to get this version…</InProgress>}
+    {waitingFirstVersion && peer && <InProgress>Waiting for {peer.device.name} to share the first version…</InProgress>}
     {receipt && peer && <div className="delivery-receipt" role="status">Received by {peer.device.name} ✓</div>}
     {transfer && <div className="transfer"><div><span>Transfer {transfer.state.replaceAll('_', ' ')}</span><span>{bytes(transfer.completed_bytes)} / {bytes(transfer.total_bytes)}{transfer.total_bytes ? ` · ${Math.min(100, Math.round(transfer.completed_bytes * 100 / transfer.total_bytes))} %` : ''}</span></div>
       <progress max={Math.max(transfer.total_bytes, 1)} value={transfer.completed_bytes} />

@@ -21,6 +21,8 @@ export interface ProjectCard {
     last_verified_at: string | null; verified_peer_id: string | null; verified_snapshot_id: string | null;
     recovery_required: boolean; mailbox_url: string | null; relay_address: string | null; error: string | null };
   root_available: boolean;
+  root_empty: boolean;
+  active_transfer: boolean;
   local_snapshot: SnapshotInfo | null; peers: Peer[]; pending_publications: number; transfer: Transfer | null;
 }
 export type ProjectBackend = 'NONE' | 'SELF_HOSTED_MAILBOX' | 'SUPABASE';

@@ -10,6 +10,14 @@ use rusqlite::{params, OptionalExtension};
 use uuid::Uuid;
 
 impl Store {
+    pub fn has_active_transfer(&self, project: Uuid) -> Result<bool> {
+        Ok(self.lock()?.query_row(
+            "SELECT EXISTS(SELECT 1 FROM transfer_sessions WHERE project_id=?1 AND state<>?2)",
+            params![project.to_string(), TransferState::Complete],
+            |row| row.get(0),
+        )?)
+    }
+
     pub fn latest_transfer(&self, project: Uuid) -> Result<Option<TransferInfo>> {
         Ok(self.lock()?.query_row("SELECT transfer_id,project_id,snapshot_id,source_device_id,state,completed_bytes,total_bytes,error,base_snapshot_id FROM transfer_sessions WHERE project_id=?1 ORDER BY updated_at DESC,transfer_id DESC LIMIT 1", [project.to_string()], transfer_row).optional()?)
     }

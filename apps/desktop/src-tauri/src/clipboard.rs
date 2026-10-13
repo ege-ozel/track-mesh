@@ -185,7 +185,7 @@ pub fn take_invite_link() -> Result<(String, Zeroizing<[u8; 32]>)> {
                         .position(|unit| *unit == 0)
                         .unwrap_or(units.len());
                     let link = Zeroizing::new(String::from_utf16_lossy(&units[..end]));
-                    crate::uri::parse_invite_link(&link).map_err(|_| fail())
+                    crate::uri::parse_invite_link(link.trim()).map_err(|_| fail())
                 };
                 GlobalUnlock(data);
                 result
