@@ -11,7 +11,8 @@ use uuid::Uuid;
 impl Store {
     pub fn has_pending_publication(&self, author: Uuid) -> Result<bool> {
         Ok(self.lock()?.query_row(
-            "SELECT EXISTS(SELECT 1 FROM snapshots WHERE author_device_id=?1 AND metadata_status='PENDING' AND location='LOCAL')",
+            // Only a project with a mailbox can ever clear PENDING; without one, waiting would keep the app alive forever.
+            "SELECT EXISTS(SELECT 1 FROM snapshots s JOIN projects p ON p.project_id=s.project_id WHERE s.author_device_id=?1 AND s.metadata_status='PENDING' AND s.location='LOCAL' AND p.mailbox_url IS NOT NULL AND p.mailbox_url<>'')",
             [author.to_string()],
             |row| row.get(0),
         )?)
