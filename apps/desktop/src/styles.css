@@ -905,6 +905,13 @@ details > summary::before {
 }
 details[open] > summary::before { transform:rotate(90deg); }
 details > summary:hover { background-color:var(--button-hover); }
+/* Open summaries keep their hover area clear of the content frame below. */
+details[open] > summary { margin-bottom:var(--s2); }
+/* Depth is readable from the left rule: each nesting level gets its own hue and weight. */
+details details { border-left:2px solid color-mix(in srgb, var(--accent) 60%, transparent); }
+details details details { border-left:2px solid color-mix(in srgb, var(--link) 60%, transparent); }
+details details details details { border-left:1px solid color-mix(in srgb, var(--warn) 55%, transparent); }
+.advanced-group { border-left:3px solid color-mix(in srgb, var(--accent) 35%, var(--border)); }
 @media (prefers-reduced-motion:reduce) {
   *, *::before, *::after { transition:none !important; scroll-behavior:auto !important; }
 }
