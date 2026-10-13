@@ -17,8 +17,8 @@ use trackmesh_core::{
     default_data_directory, observe_firewall, observe_network, peer::PeerRuntime,
     peer_connection_state, port_observation_status, Engine, FirewallObservation, MailboxRuntime,
     NetworkObservation, PairingStatus, PeerCheck, PeerConnectionState, PluginRuntime,
-    PortObservationStatus, ProjectBackend, ProjectBackendConfig, SessionGrace, SummaryPage,
-    SupabaseDefaultConfig, SupabaseProjectState,
+    PortObservationStatus, ProjectBackend, ProjectBackendConfig, RevokeOutcome, SessionGrace,
+    SummaryPage, SupabaseDefaultConfig, SupabaseProjectState,
 };
 use uuid::Uuid;
 
@@ -1677,8 +1677,17 @@ impl Desktop {
                             Ok(json!({"message": "Pairing reply accepted. This device is authorized for the selected project. Tell your collaborator pairing is complete, create a snapshot, and keep TrackMesh open."}))
                         }
                         Action::Revoke { project_id, device_id } => {
-                            disk.revoke(project_id, device_id)?;
-                            Ok(json!({"message": "Project access revoked locally. The service operator must also update infrastructure ACLs."}))
+                            let name = disk.store.peers(Some(project_id))?.into_iter()
+                                .find(|peer| peer.device_id == device_id)
+                                .map(|peer| peer.name)
+                                .unwrap_or_else(|| "device".to_owned());
+                            let outcome = disk.revoke(project_id, device_id)?;
+                            let message = match outcome {
+                                RevokeOutcome::Queued => format!("Removed {name}'s access on this PC. TrackMesh will also remove {name} from the invite service."),
+                                RevokeOutcome::ImportedSupabase => format!("Removed {name}'s access on this PC. Only the device that created this project can remove {name} from the invite service."),
+                                RevokeOutcome::LocalOnly => format!("Removed {name}'s access on this PC."),
+                            };
+                            Ok(json!({"message": message}))
                         }
                         Action::ExportInvite { project_id, .. } => {
                             let invite = disk.export_invite(project_id, addresses)?;

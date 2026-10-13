@@ -93,10 +93,11 @@ function DefaultSupabaseSettings({ config, busy, act }: {
   </details>;
 }
 
-function ProjectBackendSettings({ projectId, config, defaultSupabase, state, busy, act }: {
+function ProjectBackendSettings({ projectId, config, defaultSupabase, state, revokeProblem, missingFunctions, busy, act }: {
   projectId: string; config: ProjectBackendConfig | undefined; busy: boolean;
   defaultSupabase: SupabaseDefaultConfig | null;
   state: DesktopStatus['supabase_states'][string];
+  revokeProblem: boolean; missingFunctions: string[];
   act: (action: Action) => Promise<boolean>;
 }) {
   const [backend, setBackend] = useState<ProjectBackend>(config?.backend ?? 'NONE');
@@ -126,6 +127,8 @@ function ProjectBackendSettings({ projectId, config, defaultSupabase, state, bus
         supabase_url: backend === 'SUPABASE' ? url.trim() : null,
         supabase_anon_key: backend === 'SUPABASE' ? anonKey.trim() : null });
     }}>Save backend</button><span className="badge">{backend === 'SELF_HOSTED_MAILBOX' ? 'SELF_HOSTED' : state}</span></div>
+    {revokeProblem && <p className="muted">The invite service didn't remove a device. Only the device that created the project can remove others; it may also have been removed already.</p>}
+    {missingFunctions.length > 0 && <p className="muted">The invite service is missing these functions: {missingFunctions.join(', ')}. Deploy them as described in services/supabase/README.md.</p>}
   </section>;
 }
 
@@ -300,7 +303,7 @@ function Card({ card, status, jobStartedAt, focusProjectId, act }: { card: Proje
       {status.pairing.project_id !== project.project_id && (!peer || !!inviteJob) && <><button className="text-button" disabled={busy} onClick={() => act({ kind: 'open_pairing', project_id: project.project_id })}>Reopen approval window</button><p className="muted">Use this if your collaborator opened the link but approval timed out.</p></>}</section>
     {peer && <div className="peer-line"><label>Collaborator <select value={peerId ?? ''} disabled={busy || !card.peers.length} onChange={e => { setSelected(e.target.value); setDawClosed(false); }}>
       {card.peers.map(p => <option key={p.device.device_id} value={p.device.device_id}>{p.device.name}</option>)}</select></label>
-      <button className="text-button danger" disabled={busy} onClick={() => window.confirm(`Remove ${peer.device.name}'s access to this project?`) && act({ kind: 'revoke', project_id: project.project_id, device_id: peer.device.device_id })}>Revoke</button>
+      <button className="text-button danger" disabled={busy} onClick={() => window.confirm(`Remove ${peer.device.name}'s access to this project? They keep the files they already received.`) && act({ kind: 'revoke', project_id: project.project_id, device_id: peer.device.device_id })}>Revoke</button>
       <button className="text-button" disabled={busy} onClick={() => act({ kind: 'check', project_id: project.project_id, device_id: peer.device.device_id })}>Check connection</button></div>}
     {card.grant_problem === 'REJECTED' && peer && <p className="muted">The invite service didn't accept {peer.device.name} (the project may already have 3 devices, or too many requests). Direct sharing still works.</p>}
     {project.recovery_required && <div className="notice danger">Close the DAW and recover this project before receiving another version.</div>}
@@ -346,7 +349,7 @@ function Card({ card, status, jobStartedAt, focusProjectId, act }: { card: Proje
       <div className={`verification ${divergence ? 'danger' : ''}`}>{check?.fresh ? `Current comparison: ${snapshotStatus?.replaceAll('_', ' ') ?? 'not available'}` : 'No current comparison for this collaborator'}</div>
       <ConnectionAssistant card={card} status={status} peer={peer} check={check} busy={busy} act={act} />
       {project.recovery_required && <button disabled={busy || !dawClosed} onClick={() => act({ kind: 'recover', project_id: project.project_id, daw_closed: dawClosed })}>Recover locally</button>}
-      <ProjectBackendSettings projectId={project.project_id} config={status.project_backends[project.project_id]} defaultSupabase={status.default_supabase} state={status.supabase_states[project.project_id] ?? 'NOT_CONFIGURED'} busy={busy} act={act} />
+      <ProjectBackendSettings projectId={project.project_id} config={status.project_backends[project.project_id]} defaultSupabase={status.default_supabase} state={status.supabase_states[project.project_id] ?? 'NOT_CONFIGURED'} revokeProblem={card.revoke_problem} missingFunctions={card.missing_functions} busy={busy} act={act} />
       {(card.grant_problem === 'UNREACHABLE' || inviteState === 'UNREACHABLE') && <p className="muted">Invite service is unreachable. Check its URL and network connection in Advanced settings.</p>}
       <p>UUID <code>{project.project_id}</code></p><p>Mailbox <code>{project.mailbox_url ?? 'Not configured'}</code></p><p>Relay <code>{project.relay_address ?? 'Not configured'}</code></p>
       <p>Mailbox stores encrypted metadata and snapshot announcements only. A configured private relay provides a peer connection path when direct connection fails; files still transfer directly from an online collaborator.</p>

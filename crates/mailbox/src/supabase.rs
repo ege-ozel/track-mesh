@@ -41,6 +41,7 @@ pub struct SupabaseInviteDrop {
 pub enum SupabaseError {
     Rejected,
     Unavailable,
+    NotDeployed,
 }
 
 pub struct SupabaseClient {
@@ -174,6 +175,26 @@ impl SupabaseClient {
                     "actor_seq": actor_seq.to_string(),
                     "target_device_id": target_device_id.to_string(),
                     "target_public_key": target_public_key,
+                }),
+                4096,
+            )
+            .await?;
+        Ok(response.accepted)
+    }
+
+    pub async fn revoke(
+        &self,
+        identity: &Identity,
+        actor_seq: u64,
+        target_device_id: Uuid,
+    ) -> std::result::Result<bool, SupabaseError> {
+        let response: SupabaseAccepted = self
+            .post(
+                identity,
+                "member-revoke",
+                &serde_json::json!({
+                    "actor_seq": actor_seq.to_string(),
+                    "target_device_id": target_device_id.to_string(),
                 }),
                 4096,
             )
@@ -360,6 +381,9 @@ impl SupabaseClient {
             .send()
             .await
             .map_err(|_| SupabaseError::Unavailable)?;
+        if response.status() == StatusCode::NOT_FOUND {
+            return Err(SupabaseError::NotDeployed);
+        }
         if response.status() == StatusCode::BAD_REQUEST {
             return Err(SupabaseError::Rejected);
         }

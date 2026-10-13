@@ -10,7 +10,7 @@ use std::{
 };
 use uuid::Uuid;
 
-const VERSION: u32 = 4;
+const VERSION: u32 = 5;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE", deny_unknown_fields)]
@@ -82,6 +82,14 @@ pub struct PendingGrant {
     pub actor_seq: u64,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PendingRevoke {
+    pub project_id: Uuid,
+    pub target_device_id: Uuid,
+    pub actor_seq: u64,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Settings {
@@ -95,6 +103,10 @@ pub(super) struct Settings {
     pub actor_sequences: HashMap<Uuid, u64>,
     #[serde(default)]
     pub pending_grants: Vec<PendingGrant>,
+    #[serde(default)]
+    pub pending_revokes: Vec<PendingRevoke>,
+    #[serde(default)]
+    pub imported_projects: std::collections::HashSet<Uuid>,
     #[serde(default = "compiled_default_supabase")]
     pub default_supabase: Option<SupabaseDefaultConfig>,
     #[serde(default)]
@@ -114,6 +126,8 @@ impl Default for Settings {
             project_backends: HashMap::new(),
             actor_sequences: HashMap::new(),
             pending_grants: Vec::new(),
+            pending_revokes: Vec::new(),
+            imported_projects: std::collections::HashSet::new(),
             default_supabase: compiled_default_supabase(),
             device_name: None,
             projects_location: None,
@@ -280,6 +294,115 @@ impl SettingsState {
                 || item.target_device_id != grant.target_device_id
                 || item.actor_seq != grant.actor_seq
         });
+        self.commit(directory, candidate)
+    }
+
+    pub fn enqueue_revoke(
+        &mut self,
+        directory: &Path,
+        project_id: Uuid,
+        target_device_id: Uuid,
+    ) -> Result<PendingRevoke> {
+        let mut candidate = self.value.clone();
+        candidate.pending_grants.retain(|grant| {
+            grant.project_id != project_id || grant.target_device_id != target_device_id
+        });
+        candidate.pending_revokes.retain(|revoke| {
+            revoke.project_id != project_id || revoke.target_device_id != target_device_id
+        });
+        let actor_seq = next_sequence(&mut candidate, project_id)?;
+        let revoke = PendingRevoke {
+            project_id,
+            target_device_id,
+            actor_seq,
+        };
+        candidate.pending_revokes.push(revoke.clone());
+        self.commit(directory, candidate)?;
+        Ok(revoke)
+    }
+
+    pub fn cancel_grant(
+        &mut self,
+        directory: &Path,
+        project_id: Uuid,
+        target_device_id: Uuid,
+    ) -> Result<()> {
+        if !self
+            .value
+            .pending_grants
+            .iter()
+            .any(|item| item.project_id == project_id && item.target_device_id == target_device_id)
+        {
+            return Ok(());
+        }
+        let mut candidate = self.value.clone();
+        candidate.pending_grants.retain(|item| {
+            item.project_id != project_id || item.target_device_id != target_device_id
+        });
+        self.commit(directory, candidate)
+    }
+
+    pub fn pending_revokes(&self, project_id: Option<Uuid>) -> Vec<PendingRevoke> {
+        self.value
+            .pending_revokes
+            .iter()
+            .filter(|item| project_id.is_none_or(|project| item.project_id == project))
+            .cloned()
+            .collect()
+    }
+
+    pub fn complete_revoke(&mut self, directory: &Path, revoke: &PendingRevoke) -> Result<()> {
+        let mut candidate = self.value.clone();
+        candidate.pending_revokes.retain(|item| {
+            item.project_id != revoke.project_id
+                || item.target_device_id != revoke.target_device_id
+                || item.actor_seq != revoke.actor_seq
+        });
+        self.commit(directory, candidate)
+    }
+
+    pub fn replace_grant_sequence(&mut self, directory: &Path, grant: &PendingGrant) -> Result<()> {
+        let mut candidate = self.value.clone();
+        let Some(index) = candidate.pending_grants.iter().position(|item| {
+            item.project_id == grant.project_id
+                && item.target_device_id == grant.target_device_id
+                && item.actor_seq == grant.actor_seq
+        }) else {
+            return Ok(());
+        };
+        let sequence = next_sequence(&mut candidate, grant.project_id)?;
+        candidate.pending_grants[index].actor_seq = sequence;
+        self.commit(directory, candidate)
+    }
+
+    pub fn mark_imported(&mut self, directory: &Path, project: Uuid) -> Result<bool> {
+        if self.value.imported_projects.contains(&project) {
+            return Ok(false);
+        }
+        let mut candidate = self.value.clone();
+        candidate.imported_projects.insert(project);
+        self.commit(directory, candidate)?;
+        Ok(true)
+    }
+
+    pub fn rollback_import(
+        &mut self,
+        directory: &Path,
+        project: Uuid,
+        previous_backend: Option<ProjectBackendConfig>,
+        marked_imported: bool,
+    ) -> Result<()> {
+        let mut candidate = self.value.clone();
+        if let Some(config) = previous_backend {
+            candidate.project_backends.insert(project, config);
+        } else {
+            candidate.project_backends.remove(&project);
+        }
+        if marked_imported {
+            candidate.imported_projects.remove(&project);
+        }
+        // Restore the backend and marker together. A failed write retains the
+        // imported marker, so a partially imported project cannot claim a route.
         self.commit(directory, candidate)
     }
 }
