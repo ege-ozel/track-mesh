@@ -228,7 +228,7 @@ impl PeerRuntime {
                                         let response = if authorized { PeerResponse::SnapshotNoticed } else { PeerResponse::Error { message: "project access denied".into() } };
                                         let _ = network.respond(message, response).await;
                                         if authorized && pull_notice {
-                                            let _ = engine.fetch_snapshot_chain(&network, project_id, &peer, None).await;
+                                            let _ = tokio::time::timeout(Duration::from_secs(30), engine.fetch_snapshot_chain(&network, project_id, &peer, None)).await;
                                         }
                                         return;
                                     }

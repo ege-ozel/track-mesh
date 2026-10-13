@@ -164,6 +164,7 @@ function InviteCopiedNotice({ job }: { job: DesktopStatus['jobs'][number] }) {
     return () => window.clearInterval(interval);
   }, []);
   const remaining = Math.max(0, 60 - Math.floor((now - (job.completed_at ?? Math.floor(now / 1000)) * 1000) / 1000));
+  if (!remaining) return <div className="job" role="status">Clipboard cleared. Copy the invite link again if it was not pasted.</div>;
   return <div className="job" role="status">Invite link copied — paste it within 60 s <strong>({remaining}s left)</strong></div>;
 }
 

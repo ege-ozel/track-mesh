@@ -100,6 +100,13 @@ pub fn open_in_explorer(path: &Path) -> Result<()> {
     use windows_sys::Win32::UI::Shell::ShellExecuteW;
 
     ensure!(path.is_dir(), "Folder is not available");
+    // The shell does not accept verbatim `\\?\C:\` paths; drive paths are safe to shorten.
+    let raw = path.as_os_str().to_string_lossy();
+    let shortened = raw
+        .strip_prefix(r"\\?\")
+        .filter(|rest| rest.as_bytes().get(1) == Some(&b':'))
+        .map(Path::new);
+    let path = shortened.unwrap_or(path);
     let verb = "open"
         .encode_utf16()
         .chain(iter::once(0))
