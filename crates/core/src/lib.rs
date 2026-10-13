@@ -457,28 +457,23 @@ impl Engine {
             .complete_revoke(&self.directory, revoke)
     }
 
-    pub(crate) fn mark_imported_project(&self, project: Uuid) -> Result<bool> {
-        self.settings
-            .lock()
-            .map_err(|_| anyhow::anyhow!("settings lock poisoned"))?
-            .mark_imported(&self.directory, project)
-    }
-
-    pub(crate) fn unmark_imported_project(&self, project: Uuid) -> Result<()> {
-        self.settings
-            .lock()
-            .map_err(|_| anyhow::anyhow!("settings lock poisoned"))?
-            .unmark_imported(&self.directory, project)
-    }
-
-    pub(crate) fn is_imported_project(&self, project: Uuid) -> Result<bool> {
-        Ok(self
+    pub(crate) fn project_backend_with_imported(
+        &self,
+        project: Uuid,
+    ) -> Result<(ProjectBackendConfig, bool)> {
+        let settings = self
             .settings
             .lock()
-            .map_err(|_| anyhow::anyhow!("settings lock poisoned"))?
-            .value
-            .imported_projects
-            .contains(&project))
+            .map_err(|_| anyhow::anyhow!("settings lock poisoned"))?;
+        Ok((
+            settings
+                .value
+                .project_backends
+                .get(&project)
+                .cloned()
+                .unwrap_or_default(),
+            settings.value.imported_projects.contains(&project),
+        ))
     }
 
     pub(crate) fn set_supabase_project_state(
@@ -752,7 +747,19 @@ impl Engine {
             invite.project_id,
             Some(&key),
         )?;
-        let marked_imported = self.mark_imported_project(invite.project_id)?;
+        let (previous_backend, marked_imported) = {
+            let mut settings = self
+                .settings
+                .lock()
+                .map_err(|_| anyhow::anyhow!("settings lock poisoned"))?;
+            let previous_backend = settings
+                .value
+                .project_backends
+                .get(&invite.project_id)
+                .cloned();
+            let marked_imported = settings.mark_imported(&self.directory, invite.project_id)?;
+            (previous_backend, marked_imported)
+        };
         let imported_project = invite.project_id;
         let result = (|| -> Result<()> {
             self.link(
@@ -768,10 +775,16 @@ impl Engine {
             self.pair(invite.project_id, invite.device.clone())
         })();
         if let Err(error) = result {
-            if marked_imported {
-                self.unmark_imported_project(imported_project)
-                    .context("could not roll back imported-project marker")?;
-            }
+            self.settings
+                .lock()
+                .map_err(|_| anyhow::anyhow!("settings lock poisoned"))?
+                .rollback_import(
+                    &self.directory,
+                    imported_project,
+                    previous_backend,
+                    marked_imported,
+                )
+                .context("could not roll back imported-project backend and marker")?;
             return Err(error);
         }
         Ok(())

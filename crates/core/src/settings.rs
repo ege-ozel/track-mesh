@@ -307,17 +307,9 @@ impl SettingsState {
         candidate.pending_grants.retain(|grant| {
             grant.project_id != project_id || grant.target_device_id != target_device_id
         });
-        if let Some(existing) = candidate
-            .pending_revokes
-            .iter()
-            .find(|item| item.project_id == project_id && item.target_device_id == target_device_id)
-        {
-            let existing = existing.clone();
-            if candidate.pending_grants.len() != self.value.pending_grants.len() {
-                self.commit(directory, candidate)?;
-            }
-            return Ok(existing);
-        }
+        candidate.pending_revokes.retain(|revoke| {
+            revoke.project_id != project_id || revoke.target_device_id != target_device_id
+        });
         let actor_seq = next_sequence(&mut candidate, project_id)?;
         let revoke = PendingRevoke {
             project_id,
@@ -393,9 +385,24 @@ impl SettingsState {
         Ok(true)
     }
 
-    pub fn unmark_imported(&mut self, directory: &Path, project: Uuid) -> Result<()> {
+    pub fn rollback_import(
+        &mut self,
+        directory: &Path,
+        project: Uuid,
+        previous_backend: Option<ProjectBackendConfig>,
+        marked_imported: bool,
+    ) -> Result<()> {
         let mut candidate = self.value.clone();
-        candidate.imported_projects.remove(&project);
+        if let Some(config) = previous_backend {
+            candidate.project_backends.insert(project, config);
+        } else {
+            candidate.project_backends.remove(&project);
+        }
+        if marked_imported {
+            candidate.imported_projects.remove(&project);
+        }
+        // Restore the backend and marker together. A failed write retains the
+        // imported marker, so a partially imported project cannot claim a route.
         self.commit(directory, candidate)
     }
 }

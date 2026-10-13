@@ -76,10 +76,10 @@ impl SupabaseRuntime {
                 let configs = match tokio::task::spawn_blocking(move || -> Result<_> {
                     let mut result = Vec::new();
                     for project in engine_for_config.store.projects()? {
-                        let config =
-                            engine_for_config.project_backend_config(project.project_id)?;
+                        let (config, imported) =
+                            engine_for_config.project_backend_with_imported(project.project_id)?;
                         if matches!(config.backend, ProjectBackend::Supabase) {
-                            result.push((project.project_id, config));
+                            result.push((project.project_id, config, imported));
                         }
                     }
                     Ok(result)
@@ -91,10 +91,10 @@ impl SupabaseRuntime {
                 };
                 let active = configs
                     .iter()
-                    .map(|(project, _)| *project)
+                    .map(|(project, _, _)| *project)
                     .collect::<std::collections::HashSet<_>>();
                 sessions.retain(|project, _| active.contains(project));
-                for (project, config) in configs {
+                for (project, config, imported) in configs {
                     let session = sessions.entry(project).or_default();
                     let url = config.supabase_url.as_deref().unwrap_or_default();
                     let key = config.supabase_anon_key.as_deref().unwrap_or_default();
@@ -116,20 +116,17 @@ impl SupabaseRuntime {
                         }
                     };
 
-                    if !session.claim_attempted {
-                        match engine.is_imported_project(project) {
-                            Ok(true) => session.claim_attempted = true,
-                            Ok(false) => {}
-                            Err(_) => {
-                                mark_unavailable(&engine, project, session);
-                                continue;
-                            }
-                        }
+                    if imported {
+                        session.claim_attempted = true;
                     }
                     if !session.claim_attempted {
                         match client.claim(&engine.identity).await {
                             Ok(true) => {
-                                let _ = engine.record_supabase_function(project, "claim", false);
+                                let _ = engine.record_supabase_function(
+                                    project,
+                                    "project-claim",
+                                    false,
+                                );
                                 session.claim_attempted = true;
                                 session.member_proven = true;
                                 session.failures = 0;
@@ -139,7 +136,11 @@ impl SupabaseRuntime {
                                 );
                             }
                             Ok(false) => {
-                                let _ = engine.record_supabase_function(project, "claim", false);
+                                let _ = engine.record_supabase_function(
+                                    project,
+                                    "project-claim",
+                                    false,
+                                );
                                 session.claim_attempted = true;
                                 match client.endpoint_page(&engine.identity, None).await {
                                     Ok(rows) => {
@@ -181,7 +182,11 @@ impl SupabaseRuntime {
                                 }
                             }
                             Err(::mailbox::SupabaseError::Rejected) => {
-                                let _ = engine.record_supabase_function(project, "claim", false);
+                                let _ = engine.record_supabase_function(
+                                    project,
+                                    "project-claim",
+                                    false,
+                                );
                                 session.claim_attempted = true;
                                 match client.endpoint_page(&engine.identity, None).await {
                                     Ok(rows) => {
@@ -228,7 +233,8 @@ impl SupabaseRuntime {
                                 continue;
                             }
                             Err(::mailbox::SupabaseError::NotDeployed) => {
-                                let _ = engine.record_supabase_function(project, "claim", true);
+                                let _ =
+                                    engine.record_supabase_function(project, "project-claim", true);
                                 mark_unavailable(&engine, project, session);
                                 continue;
                             }
@@ -621,14 +627,14 @@ async fn flush_member_actions(
                 .await
             {
                 Ok(true) => {
-                    let _ = engine.record_supabase_function(project, "grant", false);
+                    let _ = engine.record_supabase_function(project, "member-grant", false);
                     if engine.complete_supabase_grant(&grant).is_err() {
                         let _ = engine.set_grant_problem(project, crate::GrantProblem::Unreachable);
                         return false;
                     }
                 }
                 Ok(false) | Err(::mailbox::SupabaseError::Rejected) => {
-                    let _ = engine.record_supabase_function(project, "grant", false);
+                    let _ = engine.record_supabase_function(project, "member-grant", false);
                     grant_failed = true;
                     grant_problem = Some(crate::GrantProblem::Rejected);
                     if engine.retry_supabase_grant(&grant).is_err() {
@@ -637,7 +643,7 @@ async fn flush_member_actions(
                     }
                 }
                 Err(::mailbox::SupabaseError::NotDeployed) => {
-                    let _ = engine.record_supabase_function(project, "grant", true);
+                    let _ = engine.record_supabase_function(project, "member-grant", true);
                     let _ = engine.set_grant_problem(project, crate::GrantProblem::Unreachable);
                     return false;
                 }
@@ -651,7 +657,7 @@ async fn flush_member_actions(
                 .await
             {
                 Ok(accepted) => {
-                    let _ = engine.record_supabase_function(project, "revoke", false);
+                    let _ = engine.record_supabase_function(project, "member-revoke", false);
                     if engine.complete_supabase_revoke(&revoke).is_err() {
                         let _ = engine.set_grant_problem(project, crate::GrantProblem::Unreachable);
                         return false;
@@ -663,14 +669,14 @@ async fn flush_member_actions(
                     }
                 }
                 Err(::mailbox::SupabaseError::Rejected) => {
-                    let _ = engine.record_supabase_function(project, "revoke", false);
+                    let _ = engine.record_supabase_function(project, "member-revoke", false);
                     if engine.complete_supabase_revoke(&revoke).is_err() {
                         return false;
                     }
                     let _ = engine.set_revoke_problem(project);
                 }
                 Err(::mailbox::SupabaseError::NotDeployed) => {
-                    let _ = engine.record_supabase_function(project, "revoke", true);
+                    let _ = engine.record_supabase_function(project, "member-revoke", true);
                     let _ = engine.set_grant_problem(project, crate::GrantProblem::Unreachable);
                     return false;
                 }
