@@ -5,7 +5,7 @@
 1. **+ Link folder** seçip proje adını ve klasörünü girin. UUID kendiliğinden oluşturulur; UUID, mailbox ve relay alanları yalnızca **Advanced project settings** içindedir.
 2. Proje kartında **Invite collaborator** seçin. Yeni v2 linki 15 dakika geçerlidir, bir kez açılabilir, kendi Supabase servisini ve erişilebilir adresleri taşır. Alıcı URL veya key girmez. Bu düğme kullanılamıyorsa kartta gösterilen Supabase ayar nedenini **Settings → Advanced** bölümünden giderin. Router'da elle port yönlendirdiyseniz public IPv4 ve dış portu **Settings → Advanced → Manual port forwarding** bölümüne kaydedin.
 3. Alıcı linki açınca **Accept invite link** penceresi öne gelir. Eşleştirme isteği kartın üstünde cihaz adı ve kısa ID ile görünür; beklediğiniz cihazsa **Approve**, değilse **Reject** seçin.
-4. **Share current version** yerel snapshot'ı hazırlar. Bu işlem dosyaları göndermez. Alıcı kendi uygulamasında **Get collaborator’s version** ile dosyaları ister; Receive öncesi DAW projesi kapalı olmalıdır.
+4. **Share current version** yerel snapshot'ı hazırlar. Bu işlem dosyaları göndermez. Alıcı kendi uygulamasında **Get collaborator's version** ile dosyaları ister; alma öncesi DAW projesi kapalı olmalıdır.
 
 Dosya daveti ve ağ kurulumu hâlâ **Advanced** içindedir. Aşağıdaki eski ekran adları önceki Desktop sürümlerini anlatır.
 
@@ -109,12 +109,12 @@ Public alanlar **Legacy file pairing → Save pairing reply** düğmesine uygula
 
 ## 6. Otomatik cihaz isteğini onayla ve snapshot hazırla
 
-- [ ] Davet export'u 10 dakikalık eşleştirme penceresini açar. B daveti kabul edince istek şifreli bağlantıdan otomatik gelir; kart dosyası alman gerekmez. Süre bittiğinde **Pair collaborator → Open pairing window** açıp B'den Retry automatic pairing iste.
-- [ ] Mevcut proje kartında **Collaboration & connection details → Pair collaborator** isteği gösterir. B ile public Device/Identity değerlerini karşılaştırıp **Approve device** seç; sadece cihaz adına güvenme. Beklenmeyen isteği **Reject** yap. Onay öncesinde DB'ye yetki yazılmaz ve proje dosyası alınamaz.
+- [ ] Davet export'u 15 dakikalık eşleştirme penceresini açar. B daveti kabul edince istek şifreli bağlantıdan otomatik gelir; kart dosyası alman gerekmez. Süre bittiğinde **Reopen approval window** ile pencereyi açıp B'den **Try again** seçmesini iste. Aynı proje için pencereyi yeniden açmak bekleyen istekleri korur; farklı proje için açmak önceki projenin bekleyen isteklerini temizler.
+- [ ] Mevcut proje kartında bekleyen onay isteği gösterir. B ile public Device/Identity değerlerini karşılaştırıp **Approve** seç; sadece cihaz adına güvenme. Beklenmeyen isteği **Reject** yap. Onay öncesinde DB'ye yetki yazılmaz ve proje dosyası alınamaz.
 - [ ] Onaydan sonra B `Collaborator` listesinde görünür. Onu seçip `DIRECT` / `RELAYED` / `OFFLINE` durumunu kontrol et. Bekleyen aday listesi canlı bağlantı geçmişi değildir; henüz daveti açmamış kişiyi veya her yetkisiz denemeyi göstermez. İstenen cihaz kaydolduktan sonra eşleştirme penceresini kapatabilirsin; onaylı cihazın yetkisi sürer.
-- [ ] Ableton test projesini kaydet; ilk denemede DAW'ı kapat. **Send Snapshot** yap; LOCAL SNAPSHOT tarihini/dosya sayısını kontrol et.
-- [ ] B'nin uygulaması onayını 60 saniyeye kadar otomatik sorgular. Daha geç onayda B Retry automatic pairing ile sonucu alabilir. Snapshot hazırken TrackMesh açık kalsın.
-- [ ] B Check peer → Receive → tekrar Check peer yaparken TrackMesh'i açık tut. Dosya eklemek tek başına otomatik sync yapmaz; sonraki değişiklik için yeni Send Snapshot gerekir.
+- [ ] Ableton test projesini kaydet; ilk denemede DAW'ı kapat. **Share current version** yap; LOCAL SNAPSHOT tarihini/dosya sayısını kontrol et.
+- [ ] B'nin uygulaması onayını 60 saniyeye kadar otomatik sorgular. Daha geç onayda B **Try again** ile sonucu alabilir. Sürüm hazırken TrackMesh açık kalsın.
+- [ ] B **Check connection** → **Get collaborator's version** → tekrar **Check connection** yaparken TrackMesh'i açık tut. Dosya eklemek tek başına otomatik sync yapmaz; sonraki değişiklik için yeni **Share current version** gerekir.
 - [ ] B'den tamamlanan snapshot/transfer ID ve fresh eşitlik sonucunu al. Kaynak bu sırada yeni snapshot oluşturursa eşitlik ayrıca değerlendirilir. DAW'da açılış/sample kontrolü ayrı bir manuel kontroldür.
 
-Mailbox yoksa PENDING metadata uyarısı kalabilir; snapshot oluştuysa direct Receive denenebilir. Bu uyarı B'nin dosyaları alıp almadığını göstermez. Denemenin bitişi, güvenli kapanış ve hata bildirimleri için [ortak rehbere](../README.md) bak.
+Mailbox yoksa PENDING metadata uyarısı kalabilir; snapshot oluştuysa direct Get collaborator's version denenebilir. Bu uyarı B'nin dosyaları alıp almadığını göstermez. Denemenin bitişi, güvenli kapanış ve hata bildirimleri için [ortak rehbere](../README.md) bak.

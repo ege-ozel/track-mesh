@@ -34,6 +34,14 @@ pub enum SupabaseProjectState {
     Unreachable,
 }
 
+/// In-memory-only status for the most recent invite-service grant attempt.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum GrantProblem {
+    Rejected,
+    Unreachable,
+}
+
 #[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProjectBackendConfig {

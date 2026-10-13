@@ -292,8 +292,6 @@ impl SupabaseRuntime {
                     {
                         session.grant_retry_at = Instant::now() + backoff(session.failures);
                         session.failures = session.failures.saturating_add(1);
-                        let _ = engine
-                            .set_supabase_project_state(project, SupabaseProjectState::Unreachable);
                     }
                     if session.list_at <= Instant::now() {
                         match client
@@ -462,7 +460,10 @@ async fn flush_grants(
 ) -> bool {
     let grants = match engine.pending_supabase_grants(Some(project)) {
         Ok(grants) => grants,
-        Err(_) => return false,
+        Err(_) => {
+            let _ = engine.set_grant_problem(project, crate::GrantProblem::Unreachable);
+            return false;
+        }
     };
     for grant in grants {
         match client
@@ -476,12 +477,21 @@ async fn flush_grants(
         {
             Ok(true) => {
                 if engine.complete_supabase_grant(&grant).is_err() {
+                    let _ = engine.set_grant_problem(project, crate::GrantProblem::Unreachable);
                     return false;
                 }
             }
-            Ok(false) | Err(_) => return false,
+            Ok(false) | Err(::mailbox::SupabaseError::Rejected) => {
+                let _ = engine.set_grant_problem(project, crate::GrantProblem::Rejected);
+                return false;
+            }
+            Err(::mailbox::SupabaseError::Unavailable) => {
+                let _ = engine.set_grant_problem(project, crate::GrantProblem::Unreachable);
+                return false;
+            }
         }
     }
+    let _ = engine.clear_grant_problem(project);
     true
 }
 

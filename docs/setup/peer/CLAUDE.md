@@ -8,23 +8,23 @@ Bu belge dağıtım paketinde `CLAUDE.md` adıyla bulunur. Paket bir installer d
 2. Gönderenden özel davet `.json` dosyasını ayrıca alın. Dosyayı Claude'a eklemeyin/içeriğini yapıştırmayın; yalnızca yerel dosya yolunu verin.
 3. Bu paket klasöründe PowerShell açın. Claude Code kurulu ve giriş yapılmışsa `claude` komutuyla başlatın. Proje dizinindeki `CLAUDE.md` başlangıçta talimat olarak okunur; MD bir executable değildir. [Claude Code belgesi](https://code.claude.com/docs/en/memory).
 4. Claude'a şunu söyleyin: **“CLAUDE.md yönergesine göre TrackMesh denemesini başlat. Davet dosyamın yolunu ve boş hedef klasörümü sor; eşleştirme isteğini otomatik gönderelim. Gönderen cihazımı onaylayıp snapshot oluşturunca dosyaları alacağız.”**
-5. Gönderen cihaz isteğini **Pair collaborator → Approve device** ile onaylasın ve Send Snapshot yapıp uygulamasını açık tutsun. Kart dosyası göndermezsiniz. Sonra Claude'a **“Gönderen cihazımı onayladı, snapshot hazır. DAW kapalı; seçtiğim hedef klasöre Receive yap.”** deyin.
+5. Gönderen cihaz isteğinde kimliğinizi doğrulayıp **Approve** seçsin, **Share current version** yapsın ve uygulamasını açık tutsun. Kart dosyası göndermezsiniz. Sonra Claude'a **“Gönderen cihazımı onayladı ve sürümü paylaştı. DAW kapalı; seçtiğim hedef klasöre Get collaborator's version yap.”** deyin.
 
 Bağlantı başarılı olursa Receive proje dosyalarını seçilen klasöre indirir, doğrular ve yerleştirir. Paket tek başına projeye erişim vermez; davet, karşılıklı pairing, kaynak snapshot ve erişilebilir/online kaynak gerekir. Sürekli sync veya otomatik DAW açma yoktur.
 
 ## Birleşik eşleştirme akışı
 
-Yeni Desktop daveti kabul edince cihaz isteğini şifreli bağlantıdan otomatik gönderir. CLI'de `join`, güvenli `status` ve yeni `request-pairing` aynı işi yapar. Gönderenin 10 dakikalık eşleştirme penceresi açık olmalı; son yetki için cihaz kimliğini doğrulayıp onaylaması gerekir. Alıcı onayı 60 saniyeye kadar sorgular; sonra retry yapılabilir. Proje anahtarı pairing mesajıyla gönderilmez ve agent context'ine girmez; ilk davet dosyası özel kanaldan paylaşılır ve yalnızca native import tarafından okunur. Her iki tarafta otomatik eşleştirme build'i gerekir; `20261007` paketi `request-pairing` içermez. `20261010` ConnectionCheck paketi yeni Desktop bağlantı yardımcısını içerir; önceki `20261009` paketinde bu panel yoktur. Kullanıcı eski build ile kalmayı seçerse manuel `card --output`/Import collaborator card eski akışı kullanılabilir; otomatik başarı diye raporlama.
+Yeni Desktop daveti kabul edince cihaz isteğini şifreli bağlantıdan otomatik gönderir. CLI'de `join`, güvenli `status` ve yeni `request-pairing` aynı işi yapar. Gönderenin 15 dakikalık eşleştirme penceresi açık olmalı; aynı proje için yeniden açmak bekleyen istekleri koruyup süreyi uzatır. Farklı proje için açmak önceki projenin bekleyen isteklerini temizler. Son yetki için cihaz kimliğini doğrulayıp onaylaması gerekir. Alıcı onayı 60 saniyeye kadar sorgular; sonra Try again seçilebilir. Proje anahtarı pairing mesajıyla gönderilmez ve agent context'ine girmez; ilk davet dosyası özel kanaldan paylaşılır ve yalnızca native import tarafından okunur. Her iki tarafta otomatik eşleştirme build'i gerekir; `20261007` paketi `request-pairing` içermez. `20261010` ConnectionCheck paketi yeni Desktop bağlantı yardımcısını içerir; önceki `20261009` paketinde bu panel yoktur. Kullanıcı eski build ile kalmayı seçerse manuel `card --output`/Import collaborator card eski akışı kullanılabilir; otomatik başarı diye raporlama.
 
 ## Göndereni nasıl buluruz; panel ne gösterir?
 
 Gönderenin uygulamayı açması bildirim/public kişi listesi oluşturmaz. Davetin native import'u proje adını/UUID'sini, gönderenin imzalı cihaz kimliğini/PeerId'sini ve adreslerini yerelde kaydeder. Desktop'ta `Collaborator` listesinde, CLI'de güvenli `status` içinde gönderen görünür. Native network komutu bu adreslere bağlanır. Kaydın görünmesi online bağlantı veya dosya teslimi değildir.
 
-Gönderende yalnızca geçerli davet proof'u üreten onaysız adaylar Pair collaborator altında Device/Identity ile görünür; canlı bağlantı göstergesi ve kalıcı giriş geçmişi değildir. Beklenen public kimlikleri karşılaştırıp Approve device seçilir. Onaydan sonra Desktop seçili cihaz için DIRECT / RELAYED / OFFLINE gösterir; fresh Check peer sonucu ayrı doğrulamadır. Daveti açmayan kişiler ve bütün başarısız/yetkisiz denemeler listelenmez.
+Gönderende yalnızca geçerli davet proof'u üreten onaysız adaylar onay listesinde Device/Identity ile görünür; canlı bağlantı göstergesi ve kalıcı giriş geçmişi değildir. Beklenen public kimlikleri karşılaştırıp **Approve** seçilir. Onaydan sonra Desktop seçili cihaz için DIRECT / RELAYED / OFFLINE gösterir; fresh **Check connection** sonucu ayrı doğrulamadır. Daveti açmayan kişiler ve bütün başarısız/yetkisiz denemeler listelenmez.
 
 Yerel SQLite vardır; Supabase, browser deployment veya herkese açık adres rehberi bu paketin parçası değildir. Gönderenin güncel public IP/dış portu ve erişilebilirliği gerekir. Public IP/dış port değiştiyse gönderenden yeni adresli özel davet iste; aynı veri profili/proje/yerel hedefe native join ile adres güncelle. Bu, yalnızca bağlantı timeout olduğunda projeyi yeniden import etmeye izin veren genel bir adım değildir. Telefon hotspot'u/CGNAT'ta erişilebilir ağ veya operatörün hazırladığı private relay gerekir; database NAT engelini kaldırmaz.
 
-Onaylı bir cihaz her yeni bağlantıda eşleştirme penceresi istemez. CLI request-pairing/check/receive yalnızca komut boyunca online kalır; bitince runtime kapanır. Açık bağlantı iki yönlüdür. Alıcı daha sonra kaynak olacaksa aynı profille Desktop veya açık serve oturumu kullanır; alacak taraf DAW kapalıyken check/receive/check yapar, kaynak snapshot oluşturur. Aynı profilde iki network owner açma; divergence kontrollerini aşma. Offline kaynağın dosyaları mailbox'tan gelmez; mailbox snapshot duyurusu tutar ve offline pairing kuyruğu bu build'de yoktur.
+Onaylı bir cihaz her yeni bağlantıda eşleştirme penceresi istemez. CLI request-pairing/check/receive yalnızca komut boyunca online kalır; bitince runtime kapanır. Açık bağlantı iki yönlüdür. Alıcı daha sonra kaynak olacaksa aynı profille Desktop veya açık serve oturumu kullanır; alacak taraf DAW kapalıyken **Check connection** / **Get collaborator's version** / check yapar, kaynak **Share current version** oluşturur. Aynı profilde iki network owner açma; divergence kontrollerini aşma. Offline kaynağın dosyaları mailbox'tan gelmez; mailbox snapshot duyurusu tutar ve offline pairing kuyruğu bu build'de yoktur.
 
 ## Claude için görev ve sınırlar
 
@@ -76,15 +76,15 @@ $trialStatus = & $trialAgent --data-dir $trialData status | ConvertFrom-Json
 
 ### D. Eşleştirme isteğini otomatik gönder
 
-Gönderen kendi Desktop'ında daveti export etmiş (pencereyi açar) veya **Pair collaborator → Open pairing window** seçmiş olsun. Uygulaması açık kalsın. Her komutun sonucunu kontrol et:
+Gönderen kendi Desktop'ında daveti export etmiş (pencereyi açar) veya **Reopen approval window** seçmiş olsun. Uygulaması açık kalsın. Her komutun sonucunu kontrol et:
 
 ```powershell
 & $trialAgent --data-dir $trialData request-pairing $trialProjectId --device-id $trialSenderId --connect-timeout 30
 ```
 
-Native CLI imzalı kartı ve tek kullanımlık davet sahipliği kanıtını doğrudan gönderir; anahtar/proof çıktısını agent okumaz. Gönderen gelen Device/Identity değerlerini beklediği kişiyle doğrulayıp **Approve device** seçer. Alıcı bağlantı için 30 saniyeye, istek sonrası onay için 60 saniyeye kadar bekleyebilir. `pairing_state: approved` yetki verildiğini, `pending` yalnızca isteğin teslim edildiğini gösterir. Pending'i dosya teslimi veya onay olarak raporlama. Daha geç onayda aynı komutu tekrar çalıştır; kaynak snapshot'ını bekle. Offline/kapalı pencere/timeout'ta önce bu koşulları düzelt; profil veya projeyi sıfırlama. Eski executable komutu tanımıyorsa yeni paketi iste.
+Native CLI imzalı kartı ve tek kullanımlık davet sahipliği kanıtını doğrudan gönderir; anahtar/proof çıktısını agent okumaz. Gönderen gelen Device/Identity değerlerini beklediği kişiyle doğrulayıp **Approve** seçer. Alıcı bağlantı için 30 saniyeye, istek sonrası onay için 60 saniyeye kadar bekleyebilir. `pairing_state: approved` yetki verildiğini, `pending` yalnızca isteğin teslim edildiğini gösterir. Pending'i dosya teslimi veya onay olarak raporlama. Daha geç onayda aynı komutu tekrar çalıştır; kaynak sürümü paylaşmasını bekle. Offline/kapalı pencere/timeout'ta önce bu koşulları düzelt; profil veya projeyi sıfırlama. Eski executable komutu tanımıyorsa yeni paketi iste.
 
-### E. Bağlantıyı dene, sonra Receive
+### E. Bağlantıyı dene, sonra Get collaborator's version
 
 ```powershell
 & $trialAgent --data-dir $trialData check $trialProjectId --device-id $trialSenderId --connect-timeout 30
@@ -104,7 +104,7 @@ Receive bitmeden diğer komutu başlatma. Başarıyı son check'in `verified_equ
 
 ## Bağlantı olmadıysa kısa kontrol sırası
 
-1. Gönderen online mı, eşleştirme penceresini açtı mı ve cihaz isteğini onayladı mı, snapshot oluşturdu mu? Davet güncel public IP/dış port içeriyor mu? İlk uzak bağlantıyı alıcı başlatsın.
+1. Gönderen online mı, 15 dakikalık eşleştirme penceresini açtı mı ve cihaz isteğini onayladı mı, sürümü paylaştı mı? Davet güncel public IP/dış port içeriyor mu? İlk uzak bağlantıyı alıcı başlatsın.
 2. Gönderende Windows Firewall TCP ve UDP local portu (varsayılan 43101) aktif ağ profilinde izinli mi?
 3. Gönderen modeminde TCP ve UDP dış port → doğru PC LAN IP/local port eşlemesi etkin mi? Dış port 45000 seçilmişse iç port 43101 kalabilir; davette 45000 olmalı.
 4. Port-forward kapalıysa kuralı etkinleştirin. Menü kilitli/yetki yoksa ISP/ağ yöneticisinden izin isteyin. Port çakışıyorsa boş dış port seçip yeni davet çıkarın.

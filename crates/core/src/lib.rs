@@ -25,7 +25,7 @@ pub use connection::public_ipv4_addresses;
 pub mod peer;
 pub use mailbox::{MailboxRuntime, PublicationStatus, RefreshStatus};
 pub use settings::{
-    ManualPublicEndpoint, PendingGrant, ProjectBackend, ProjectBackendConfig,
+    GrantProblem, ManualPublicEndpoint, PendingGrant, ProjectBackend, ProjectBackendConfig,
     SupabaseDefaultConfig, SupabaseProjectState,
 };
 pub use supabase::SupabaseRuntime;
@@ -57,6 +57,7 @@ pub struct Engine {
     pairing: Mutex<pairing::PairingState>,
     settings: Mutex<settings::SettingsState>,
     supabase_states: Mutex<std::collections::HashMap<Uuid, SupabaseProjectState>>,
+    grant_problems: Mutex<std::collections::HashMap<Uuid, GrantProblem>>,
     upnp_mapping_enabled: AtomicBool,
     offline_heads: Mutex<std::collections::HashMap<(Uuid, Uuid), (u64, protocol::HeadRecord)>>,
     peer_heads: Mutex<std::collections::HashMap<(Uuid, Uuid), Uuid>>,
@@ -89,6 +90,7 @@ impl Engine {
             pairing: Mutex::new(pairing::PairingState::default()),
             settings: Mutex::new(settings),
             supabase_states: Mutex::new(std::collections::HashMap::new()),
+            grant_problems: Mutex::new(std::collections::HashMap::new()),
             upnp_mapping_enabled: AtomicBool::new(upnp_mapping_enabled),
             offline_heads: Mutex::new(std::collections::HashMap::new()),
             peer_heads: Mutex::new(std::collections::HashMap::new()),
@@ -454,6 +456,31 @@ impl Engine {
             .get(&project)
             .copied()
             .unwrap_or_default())
+    }
+
+    pub(crate) fn set_grant_problem(&self, project: Uuid, problem: GrantProblem) -> Result<()> {
+        self.grant_problems
+            .lock()
+            .map_err(|_| anyhow::anyhow!("grant problem lock poisoned"))?
+            .insert(project, problem);
+        Ok(())
+    }
+
+    pub(crate) fn clear_grant_problem(&self, project: Uuid) -> Result<()> {
+        self.grant_problems
+            .lock()
+            .map_err(|_| anyhow::anyhow!("grant problem lock poisoned"))?
+            .remove(&project);
+        Ok(())
+    }
+
+    pub fn grant_problem(&self, project: Uuid) -> Result<Option<GrantProblem>> {
+        Ok(self
+            .grant_problems
+            .lock()
+            .map_err(|_| anyhow::anyhow!("grant problem lock poisoned"))?
+            .get(&project)
+            .copied())
     }
 }
 
