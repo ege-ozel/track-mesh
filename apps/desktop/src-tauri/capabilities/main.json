@@ -3,5 +3,5 @@
   "description": "Only the bundled main window may invoke the five desktop entry points.",
   "windows": ["main"],
   "platforms": ["windows"],
-  "permissions": ["allow-get-status", "allow-choose-folder", "allow-submit-action", "allow-set-upnp-mapping", "allow-close-app"]
+  "permissions": ["allow-get-status", "allow-choose-folder", "allow-paste-invite-link", "allow-submit-action", "allow-set-upnp-mapping", "allow-close-app"]
 }

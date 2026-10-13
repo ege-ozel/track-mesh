@@ -3,6 +3,7 @@ fn main() {
         tauri_build::AppManifest::new().commands(&[
             "get_status",
             "choose_folder",
+            "paste_invite_link",
             "submit_action",
             "set_upnp_mapping",
             "close_app",

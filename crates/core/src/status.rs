@@ -19,6 +19,9 @@ pub struct PeerSummary {
 #[derive(Serialize)]
 pub struct ProjectSummary {
     pub project: Project,
+    pub root_available: bool,
+    pub root_empty: bool,
+    pub active_transfer: bool,
     pub local_snapshot: Option<SnapshotInfo>,
     pub peers: Vec<PeerSummary>,
     pub pending_publications: u64,
@@ -38,6 +41,9 @@ impl Engine {
     }
 
     fn summarize_project(&self, project: Project) -> Result<ProjectSummary> {
+        let root_empty =
+            std::fs::read_dir(&project.root).is_ok_and(|mut entries| entries.next().is_none());
+        let active_transfer = self.store.has_active_transfer(project.project_id)?;
         let peers = self
             .store
             .peers(Some(project.project_id))?
@@ -65,6 +71,10 @@ impl Engine {
             })
             .collect::<Result<Vec<_>>>()?;
         Ok(ProjectSummary {
+            root_available: std::fs::metadata(&project.root)
+                .is_ok_and(|metadata| metadata.is_dir()),
+            root_empty,
+            active_transfer,
             local_snapshot: project
                 .latest_local_snapshot
                 .map(|id| self.store.snapshot_info(id))

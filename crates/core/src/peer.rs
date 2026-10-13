@@ -200,8 +200,18 @@ impl PeerRuntime {
                                     let _ = network.respond(message, response).await;
                                 }
                                 network::IncomingRequest::Transfer(request) => {
+                                    let receipt = match &request {
+                                        protocol::PeerRequest::Verified { project_id, snapshot_id, .. } => Some((*project_id, *snapshot_id)),
+                                        _ => None,
+                                    };
+                                    let receipt_peer = peer.clone();
                                     let response=tokio::task::spawn_blocking(move||transfer::serve(&engine.store,&engine.chunks,&peer,&request)).await;
                                     let response=match response {Ok(Ok(r))=>r,Ok(Err(e))=>PeerResponse::Error {message:e.to_string()},Err(_)=>PeerResponse::Error {message:"peer disk operation failed".into()}};
+                                    if matches!(&response, PeerResponse::Verified { equal: true }) {
+                                        if let Some((project_id, snapshot_id)) = receipt {
+                                            network.record_received_snapshot(receipt_peer, project_id, snapshot_id);
+                                        }
+                                    }
                                     let _=network.respond(message,response).await;
                                 }
                                 network::IncomingRequest::Pairing(request) => {

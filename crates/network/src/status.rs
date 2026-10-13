@@ -12,6 +12,14 @@ pub struct NetworkStatus {
     pub error: Option<String>,
     pub port_mapping: PortMappingStatus,
     pub reachability: ReachabilityStatus,
+    #[serde(default)]
+    pub received_snapshots: Vec<ReceivedSnapshot>,
+}
+#[derive(Clone, Debug, Serialize)]
+pub struct ReceivedSnapshot {
+    pub peer_id: String,
+    pub project_id: uuid::Uuid,
+    pub snapshot_id: uuid::Uuid,
 }
 #[derive(Clone, Debug, Serialize)]
 pub struct ReachabilityStatus {

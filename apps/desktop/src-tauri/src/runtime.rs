@@ -6,7 +6,7 @@ use network::{Network, NetworkConfig, NetworkStatus};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::PathBuf,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
@@ -56,6 +56,10 @@ pub enum Action {
         mailbox_url: Option<String>,
         relay_address: Option<String>,
     },
+    ChangeProjectRoot {
+        project_id: Uuid,
+        folder: PathBuf,
+    },
     SetProjectBackend {
         project_id: Uuid,
         backend: ProjectBackend,
@@ -69,12 +73,16 @@ pub enum Action {
     SetDeviceName {
         name: String,
     },
+    SetProjectsLocation {
+        location: PathBuf,
+    },
     Join {
         folder: PathBuf,
     },
     CompleteInviteLink {
         supabase_url: Option<String>,
         supabase_anon_key: Option<String>,
+        parent_folder: Option<PathBuf>,
     },
     Pair {
         project_id: Uuid,
@@ -142,8 +150,10 @@ impl Action {
             | Self::CompleteInviteLink { .. }
             | Self::SetDefaultSupabase { .. }
             | Self::SetDeviceName { .. }
+            | Self::SetProjectsLocation { .. }
             | Self::ExportCard => None,
             Self::Link { project_id, .. }
+            | Self::ChangeProjectRoot { project_id, .. }
             | Self::SetProjectBackend { project_id, .. }
             | Self::Pair { project_id }
             | Self::Revoke { project_id, .. }
@@ -165,9 +175,11 @@ impl Action {
     fn label(&self) -> &'static str {
         match self {
             Self::Link { .. } => "Link folder",
+            Self::ChangeProjectRoot { .. } => "Change project folder",
             Self::SetProjectBackend { .. } => "Save project backend",
             Self::SetDefaultSupabase { .. } => "Save default Supabase settings",
             Self::SetDeviceName { .. } => "Save device name",
+            Self::SetProjectsLocation { .. } => "Save Projects location",
             Self::Join { .. } => "Accept invitation and request pairing",
             Self::CompleteInviteLink { .. } => "Accept invite link",
             Self::Pair { .. } => "Complete pairing",
@@ -235,6 +247,7 @@ pub struct DesktopStatus {
     pub closing: bool,
     pub device: Option<Device>,
     pub data_directory: Option<String>,
+    pub projects_location: String,
     pub error: Option<String>,
     pub network: Option<NetworkStatus>,
     pub peer_states: HashMap<String, PeerConnectionState>,
@@ -278,6 +291,7 @@ struct Session {
     closed: bool,
     error: Option<String>,
     pending_invite: Option<PendingInviteLink>,
+    auto_receive_attempted: HashSet<(Uuid, Uuid)>,
 }
 
 struct PendingInviteLink {
@@ -463,7 +477,18 @@ impl Desktop {
         let engine = self.lock()?.engine.clone();
         let data_directory = engine
             .as_ref()
-            .map(|engine| engine.directory.display().to_string());
+            .map(|engine| documents::display_path(&engine.directory));
+        let projects_location = if let Some(engine) = engine.as_ref() {
+            let disk = engine.clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                Ok::<_, anyhow::Error>(disk.projects_location()?.map(PathBuf::from))
+            })
+            .await??
+            .map(Ok)
+            .unwrap_or_else(documents::default_projects_location)?
+        } else {
+            tauri::async_runtime::spawn_blocking(documents::default_projects_location).await??
+        };
         let (page, pairing, project_backends, default_supabase) = match engine {
             Some(engine) => {
                 tauri::async_runtime::spawn_blocking(move || -> Result<_> {
@@ -557,6 +582,17 @@ impl Desktop {
                 })
             });
             network.addresses.truncate(32);
+            network.received_snapshots.retain(|receipt| {
+                page.as_ref().is_some_and(|page| {
+                    page.projects.iter().any(|project| {
+                        project.project.project_id == receipt.project_id
+                            && project
+                                .peers
+                                .iter()
+                                .any(|peer| peer.device.peer_id == receipt.peer_id)
+                    })
+                })
+            });
         }
         let runtime_error = state
             .peer
@@ -601,6 +637,7 @@ impl Desktop {
             closing: state.closing,
             device,
             data_directory,
+            projects_location: documents::display_path(&projects_location),
             error: state.error.clone().or(runtime_error),
             network,
             peer_states,
@@ -619,6 +656,74 @@ impl Desktop {
             supabase_states,
             invite_pending: state.pending_invite.is_some(),
         })
+    }
+
+    pub async fn try_auto_first_receive(
+        self: &Arc<Self>,
+        app: AppHandle,
+        status: &DesktopStatus,
+    ) -> Result<()> {
+        let Some(page) = status.page.as_ref() else {
+            return Ok(());
+        };
+        let network = {
+            let state = self.lock()?;
+            let Some(network) = &state.network else {
+                return Ok(());
+            };
+            network.clone()
+        };
+        for item in &page.projects {
+            if item.local_snapshot.is_some()
+                || item.project.latest_local_snapshot.is_some()
+                || item.project.recovery_required
+                || !item.root_available
+                || !item.root_empty
+                || item.active_transfer
+            {
+                continue;
+            }
+            if self.lock()?.jobs.iter().any(|job| {
+                job.running
+                    && (job.project_id.is_none() || job.project_id == Some(item.project.project_id))
+            }) {
+                continue;
+            }
+            for peer in &item.peers {
+                let Some(snapshot) = peer.announcement.as_ref() else {
+                    continue;
+                };
+                if !network.online(&peer.device.peer_id) {
+                    continue;
+                }
+                let key = (item.project.project_id, snapshot.snapshot_id);
+                {
+                    let mut state = self.lock()?;
+                    if state.auto_receive_attempted.contains(&key)
+                        || state.jobs.iter().any(|job| {
+                            job.running
+                                && (job.project_id.is_none()
+                                    || job.project_id == Some(item.project.project_id))
+                        })
+                    {
+                        continue;
+                    }
+                    state.auto_receive_attempted.insert(key);
+                }
+                // Uses the same bounded receive job path as the manual Get action.
+                let _ = self.submit(
+                    app.clone(),
+                    Action::Receive {
+                        project_id: item.project.project_id,
+                        device_id: peer.device.device_id,
+                        snapshot_id: Some(snapshot.snapshot_id),
+                        daw_closed: true,
+                    },
+                );
+                break;
+            }
+        }
+        Ok(())
     }
 
     pub fn submit(self: &Arc<Self>, app: AppHandle, action: Action) -> Result<Uuid> {
@@ -729,6 +834,7 @@ impl Desktop {
             Action::CompleteInviteLink {
                 supabase_url,
                 supabase_anon_key,
+                parent_folder,
             } => {
                 let (id, key) = {
                     let state = self.lock()?;
@@ -759,14 +865,21 @@ impl Desktop {
                         config
                     }
                 };
-                let folder = tauri::async_runtime::spawn_blocking(move || {
-                    app.dialog()
-                        .file()
-                        .blocking_pick_folder()
-                        .map(|path| path.into_path())
-                        .transpose()
-                        .map_err(|_| anyhow::anyhow!("Folder selection failed"))?
-                        .context("Choose a destination folder")
+                let parent = if let Some(parent) = parent_folder {
+                    parent
+                } else if let Some(location) = engine.projects_location()? {
+                    PathBuf::from(location)
+                } else {
+                    tauri::async_runtime::spawn_blocking(documents::default_projects_location)
+                        .await??
+                };
+                let parent = tauri::async_runtime::spawn_blocking(move || -> Result<PathBuf> {
+                    std::fs::create_dir_all(&parent)
+                        .context("The selected Projects location could not be created")?;
+                    let parent = std::fs::canonicalize(parent)
+                        .context("The selected Projects location could not be resolved")?;
+                    ensure!(parent.is_dir(), "Choose a folder for the project");
+                    Ok(parent)
                 })
                 .await??;
                 let downloaded = mailbox::SupabaseClient::consume_invite_drop(
@@ -789,6 +902,11 @@ impl Desktop {
                     crypto::zeroize_project_invite(&mut invite);
                     anyhow::bail!("Invite link is invalid, expired, or unavailable");
                 }
+                let name = sanitize_project_name(&invite.project_name);
+                let folder = tauri::async_runtime::spawn_blocking(move || {
+                    create_unique_invite_folder(&parent, &name)
+                })
+                .await??;
                 let project = invite.project_id;
                 let device = invite.device.device_id;
                 let disk = engine.clone();
@@ -813,6 +931,29 @@ impl Desktop {
             }
             Action::Send { project_id } => {
                 serde_json::to_value(engine.send_snapshot(project_id, allow_http).await?)?
+            }
+            Action::ApprovePairing {
+                project_id,
+                request_id,
+            } => {
+                let disk = engine.clone();
+                let had_snapshot = tauri::async_runtime::spawn_blocking(move || {
+                    Ok::<_, anyhow::Error>(
+                        disk.project_summary(project_id)?.local_snapshot.is_some(),
+                    )
+                })
+                .await??;
+                let disk = engine.clone();
+                tauri::async_runtime::spawn_blocking(move || {
+                    disk.approve_pairing(project_id, request_id)
+                })
+                .await??;
+                if !had_snapshot {
+                    let shared = engine.send_snapshot(project_id, allow_http).await?;
+                    json!({"message": "Collaborator approved. First version shared and ready to receive.", "snapshot_id": shared.snapshot_id})
+                } else {
+                    json!({"message": "Collaborator approved for this project."})
+                }
             }
             Action::CopyInviteLink { project_id } => {
                 let disk = engine.clone();
@@ -954,6 +1095,7 @@ impl Desktop {
             }
             action => {
                 let disk = engine.clone();
+                let dialog_app = app.clone();
                 let mut addresses = advertised_addresses(&network);
                 addresses.extend(self.options.external_address.iter().cloned());
                 addresses.sort();
@@ -977,6 +1119,15 @@ impl Desktop {
                             }
                             Ok(json!({"message": "Folder linked"}))
                         }
+                        Action::ChangeProjectRoot { project_id, folder } => {
+                            let differs = disk.project_root_differs(project_id, &folder)?;
+                            if differs {
+                                let accepted = dialog_app.dialog().message("This folder differs from your last shared version").title("Change project folder?").kind(tauri_plugin_dialog::MessageDialogKind::Warning).blocking_show();
+                                ensure!(accepted, "Folder change cancelled");
+                            }
+                            disk.change_project_root(project_id, &folder, differs)?;
+                            Ok(json!({"message": "Project folder updated"}))
+                        }
                         Action::SetProjectBackend { project_id, backend, supabase_url, supabase_anon_key } => {
                             disk.set_project_backend_config(project_id, ProjectBackendConfig { backend, supabase_url, supabase_anon_key })?;
                             Ok(json!({"message": "Project backend settings saved"}))
@@ -993,6 +1144,10 @@ impl Desktop {
                         Action::SetDeviceName { name } => {
                             disk.set_device_name(&name)?;
                             Ok(json!({"message": "Device name saved"}))
+                        }
+                        Action::SetProjectsLocation { location } => {
+                            disk.set_projects_location(&location)?;
+                            Ok(json!({"message": "Projects location saved"}))
                         }
                         Action::OpenPairing { project_id } => {
                             disk.open_pairing_window(project_id)?;
@@ -1089,8 +1244,13 @@ impl Desktop {
         }
         .await;
         let (state, message) = match result {
-            Ok(protocol::PairingResponse::Pending) => ("pending", "Pairing request sent automatically. The inviter must verify and approve your device. No card file needs to be sent; wait for their confirmation before Check peer and Receive."),
-            Ok(protocol::PairingResponse::Approved) => ("approved", "The inviter has authorized this device. Check peer, then Receive when their snapshot is ready."),
+            Ok(protocol::PairingResponse::Pending) => ("pending", "Pairing request sent automatically. The inviter must verify and approve your device. No card file needs to be sent; wait for their confirmation."),
+            Ok(protocol::PairingResponse::Approved) => {
+                (
+                    "approved",
+                    "The inviter approved this device for the project.",
+                )
+            },
             _ => ("retry", "Automatic pairing could not complete. Your project remains imported. Ask the inviter to open a pairing window and keep TrackMesh online, then use Retry automatic pairing. Do not reimport or create a new UUID. Both devices need a build supporting automatic pairing."),
         };
         json!({"project_id": project, "invitation_imported": imported, "pairing_state": state, "message": message})
@@ -1145,6 +1305,16 @@ impl Desktop {
             });
         }
     }
+    pub fn paste_invite_link(&self, app: &AppHandle) -> Result<()> {
+        self.reopen(app);
+        let mut state = self.lock()?;
+        ensure!(state.pending_invite.is_none(), "An invite is already open");
+        let (id, key) = crate::clipboard::take_invite_link()
+            .map_err(|_| anyhow::anyhow!("No TrackMesh invite link on the clipboard"))?;
+        state.work_epoch = state.work_epoch.wrapping_add(1);
+        state.pending_invite = Some(PendingInviteLink { id, key });
+        Ok(())
+    }
     async fn finish_close(&self, app: AppHandle) {
         let result = self.shutdown().await;
         if let Err(error) = &result {
@@ -1193,6 +1363,66 @@ impl Desktop {
         ensure!(errors.is_empty(), "{}", errors.join("; "));
         Ok(())
     }
+}
+
+fn create_unique_invite_folder(parent: &std::path::Path, name: &str) -> Result<PathBuf> {
+    ensure!(!name.is_empty(), "Project folder name is empty");
+    let mut suffix = 1u64;
+    loop {
+        let folder_name = if suffix == 1 {
+            name.to_owned()
+        } else {
+            format!("{name} ({suffix})")
+        };
+        let path = parent.join(folder_name);
+        match std::fs::create_dir(&path) {
+            Ok(()) => return Ok(path),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                suffix = suffix
+                    .checked_add(1)
+                    .context("No available project folder name")?;
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
+}
+
+fn sanitize_project_name(name: &str) -> String {
+    let mut safe = name
+        .chars()
+        .map(|ch| {
+            if ch.is_control() || matches!(ch, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*')
+            {
+                '_'
+            } else {
+                ch
+            }
+        })
+        .take(120)
+        .collect::<String>();
+    safe = safe.trim().trim_end_matches([' ', '.']).to_owned();
+    if safe.is_empty() {
+        safe = "Shared Project".to_owned();
+    }
+    let stem = safe
+        .split('.')
+        .next()
+        .unwrap_or("")
+        .trim_end_matches([' ', '.'])
+        .to_ascii_uppercase();
+    if matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || matches!(stem.as_str(), "CONIN$" | "CONOUT$")
+        || (stem.len() == 4
+            && (stem.starts_with("COM") || stem.starts_with("LPT"))
+            && matches!(stem.as_bytes()[3], b'1'..=b'9'))
+        || matches!(
+            stem.as_str(),
+            "COM¹" | "COM²" | "COM³" | "LPT¹" | "LPT²" | "LPT³"
+        )
+    {
+        safe.insert(0, '_');
+    }
+    safe
 }
 
 fn metadata_frontier(summary: &trackmesh_core::ProjectSummary) -> Vec<(Uuid, Option<Uuid>)> {

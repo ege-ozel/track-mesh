@@ -183,6 +183,25 @@ impl Network {
     pub fn status(&self) -> NetworkStatus {
         self.status.read().map(|s| s.clone()).unwrap_or_default()
     }
+    pub fn record_received_snapshot(
+        &self,
+        peer_id: String,
+        project_id: uuid::Uuid,
+        snapshot_id: uuid::Uuid,
+    ) {
+        if let Ok(mut status) = self.status.write() {
+            status
+                .received_snapshots
+                .push(crate::status::ReceivedSnapshot {
+                    peer_id,
+                    project_id,
+                    snapshot_id,
+                });
+            if status.received_snapshots.len() > 128 {
+                status.received_snapshots.drain(..64);
+            }
+        }
+    }
     pub fn online(&self, peer: &str) -> bool {
         self.status().peers.get(peer).is_some_and(|p| p.online)
     }

@@ -9,13 +9,19 @@ use uuid::Uuid;
 
 #[tauri::command]
 pub async fn get_status(
+    app: AppHandle,
     desktop: State<'_, Arc<Desktop>>,
     offset: u32,
 ) -> Result<DesktopStatus, String> {
-    desktop
+    let status = desktop
         .status(offset)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    desktop
+        .try_auto_first_receive(app, &status)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(status)
 }
 
 #[tauri::command]
@@ -24,6 +30,20 @@ pub async fn choose_folder(app: AppHandle) -> Result<Option<String>, String> {
         .await
         .map_err(|_| "Folder picker stopped".to_owned())?
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn paste_invite_link(
+    app: AppHandle,
+    desktop: State<'_, Arc<Desktop>>,
+) -> Result<(), String> {
+    desktop.paste_invite_link(&app).map_err(|error| {
+        if error.to_string() == "An invite is already open" {
+            "An invite is already open".to_owned()
+        } else {
+            "No TrackMesh invite link on the clipboard".to_owned()
+        }
+    })
 }
 
 #[tauri::command]

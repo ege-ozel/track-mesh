@@ -10,7 +10,7 @@ use std::{
 };
 use uuid::Uuid;
 
-const VERSION: u32 = 2;
+const VERSION: u32 = 3;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE", deny_unknown_fields)]
@@ -82,6 +82,8 @@ pub(super) struct Settings {
     pub default_supabase: Option<SupabaseDefaultConfig>,
     #[serde(default)]
     pub device_name: Option<String>,
+    #[serde(default)]
+    pub projects_location: Option<String>,
 }
 
 impl Default for Settings {
@@ -94,6 +96,7 @@ impl Default for Settings {
             pending_grants: Vec::new(),
             default_supabase: compiled_default_supabase(),
             device_name: None,
+            projects_location: None,
         }
     }
 }
@@ -181,6 +184,12 @@ impl SettingsState {
     pub fn set_device_name(&mut self, directory: &Path, name: String) -> Result<()> {
         let mut candidate = self.value.clone();
         candidate.device_name = Some(name);
+        self.commit(directory, candidate)
+    }
+
+    pub fn set_projects_location(&mut self, directory: &Path, location: String) -> Result<()> {
+        let mut candidate = self.value.clone();
+        candidate.projects_location = Some(location);
         self.commit(directory, candidate)
     }
 

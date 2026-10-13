@@ -62,6 +62,35 @@ pub fn choose_folder(app: &AppHandle) -> Result<Option<String>> {
     app.dialog()
         .file()
         .blocking_pick_folder()
-        .map(|path| Ok(path.into_path()?.display().to_string()))
+        .map(|path| Ok(display_path(&path.into_path()?)))
         .transpose()
+}
+
+pub fn default_projects_location() -> Result<std::path::PathBuf> {
+    use std::{ffi::OsString, os::windows::ffi::OsStringExt, ptr};
+    use windows_sys::Win32::{
+        System::Com::CoTaskMemFree,
+        UI::Shell::{FOLDERID_Documents, SHGetKnownFolderPath},
+    };
+    let mut raw = ptr::null_mut();
+    let result = unsafe { SHGetKnownFolderPath(&FOLDERID_Documents, 0, ptr::null_mut(), &mut raw) };
+    ensure!(
+        result >= 0 && !raw.is_null(),
+        "Windows Documents folder is unavailable"
+    );
+    let path = unsafe {
+        let mut len = 0;
+        while *raw.add(len) != 0 {
+            len += 1;
+        }
+        let value = OsString::from_wide(std::slice::from_raw_parts(raw, len));
+        CoTaskMemFree(raw.cast());
+        std::path::PathBuf::from(value).join("TrackMesh")
+    };
+    Ok(path)
+}
+
+pub fn display_path(path: &std::path::Path) -> String {
+    let display = path.display().to_string();
+    display.strip_prefix(r"\\?\").unwrap_or(&display).to_owned()
 }
