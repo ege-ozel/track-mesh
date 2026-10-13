@@ -604,3 +604,16 @@ Checks actually run on the final implementation tree: `cargo fmt --all -- --chec
 ### Phase 1 close-hang fix — unpublishable pending snapshots (2026-10-13)
 
 Root cause: the Desktop close path keeps the hidden process alive while `has_pending_publication` is true. A local snapshot of a project without a mailbox URL (for example a Supabase-only project) stays metadata `PENDING` forever, so after the window closed the process never exited. It was observed twice: with the pre-#33 build, and with the `130f5a0` release build after more than 2 idle minutes. The query now counts only snapshots of projects with a configured mailbox URL; the CLI `serve` lifetime uses the same query. Checks: `cargo fmt --all -- --check`, locked/offline strict Clippy for `trackmesh-storage`, `trackmesh-core` and `trackmesh-desktop`, `git diff --check`, and a release Desktop build. Manual check: with the same local data, the new release build launched, its window was closed, and the process exited with code 0 after about 62 s, matching the 60 s idle grace. Not verified: a project with a configured but unreachable mailbox still keeps the process alive by design until publication succeeds.
+
+### Phase 1 Sandbox check of the simplified first-share flow (2026-10-13)
+
+Release build of `ce02a8f`, run on the host plus Windows Sandbox against the live Supabase project. The user ran it manually and reported:
+- Paste invite link opened the invite dialog. One earlier attempt reported "No TrackMesh invite link on the clipboard" and the retry worked; the likely cause is a paste before the copy job finished or after the 60 s clipboard clear.
+- The receiver folder was created automatically as `Documents\TrackMesh\<project name>`.
+- After approval, the card showed `Connected`. The first version downloaded automatically on the receiver, and the sharer showed "Received by … ✓".
+
+Before `c0e4164`, the same flow stalled at "Waiting for … to share the first version…", because without a mailbox nothing delivers the sharer's head to the receiver.
+
+Not verified: Locate/Change folder, the unique `(2)` folder name, receipt persistence across a restart, a manual receive into a non-empty folder, and the earlier not-verified network items.
+
+Open UX items 30–32 (copy-link progress box, clipboard countdown, focus on the new card) are queued in the handoff notes.
