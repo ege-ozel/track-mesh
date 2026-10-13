@@ -1,7 +1,7 @@
 {
   "identifier": "main",
-  "description": "Only the bundled main window may invoke the five desktop entry points.",
+  "description": "Only the bundled main window may invoke the desktop entry points.",
   "windows": ["main"],
   "platforms": ["windows"],
-  "permissions": ["allow-get-status", "allow-choose-folder", "allow-paste-invite-link", "allow-submit-action", "allow-set-upnp-mapping", "allow-close-app"]
+  "permissions": ["allow-get-status", "allow-choose-folder", "allow-open-project-folder", "allow-open-projects-location", "allow-choose-projects-location", "allow-choose-invite-parent-folder", "allow-open-invite-parent-folder", "allow-paste-invite-link", "allow-submit-action", "allow-set-upnp-mapping", "allow-close-app"]
 }

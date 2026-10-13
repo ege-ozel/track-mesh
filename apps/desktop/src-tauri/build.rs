@@ -3,6 +3,11 @@ fn main() {
         tauri_build::AppManifest::new().commands(&[
             "get_status",
             "choose_folder",
+            "open_project_folder",
+            "open_projects_location",
+            "choose_projects_location",
+            "choose_invite_parent_folder",
+            "open_invite_parent_folder",
             "paste_invite_link",
             "submit_action",
             "set_upnp_mapping",

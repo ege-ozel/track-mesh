@@ -94,3 +94,31 @@ pub fn display_path(path: &std::path::Path) -> String {
     let display = path.display().to_string();
     display.strip_prefix(r"\\?\").unwrap_or(&display).to_owned()
 }
+
+pub fn open_in_explorer(path: &Path) -> Result<()> {
+    use std::{iter, os::windows::ffi::OsStrExt};
+    use windows_sys::Win32::UI::Shell::ShellExecuteW;
+
+    ensure!(path.is_dir(), "Folder is not available");
+    let verb = "open"
+        .encode_utf16()
+        .chain(iter::once(0))
+        .collect::<Vec<_>>();
+    let target = path
+        .as_os_str()
+        .encode_wide()
+        .chain(iter::once(0))
+        .collect::<Vec<_>>();
+    let result = unsafe {
+        ShellExecuteW(
+            std::ptr::null_mut(),
+            verb.as_ptr(),
+            target.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            1,
+        )
+    };
+    ensure!(result as isize > 32, "Could not open folder in Explorer");
+    Ok(())
+}

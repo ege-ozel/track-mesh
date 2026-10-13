@@ -1,6 +1,8 @@
 //! Explicit manual send: local commit survives metadata transport failure.
 use crate::{Engine, PublicationStatus};
 use anyhow::Result;
+use network::Network;
+use protocol::PeerRequest;
 use serde::Serialize;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -15,22 +17,27 @@ pub struct SendStatus {
 impl Engine {
     pub async fn send_snapshot(
         self: &Arc<Self>,
+        network: &Network,
         project: Uuid,
         allow_loopback_http: bool,
     ) -> Result<SendStatus> {
-        self.send_impl(project, allow_loopback_http, false).await
+        self.send_impl(network, project, allow_loopback_http, false)
+            .await
     }
 
     pub async fn send_saved_snapshot(
         self: &Arc<Self>,
+        network: &Network,
         project: Uuid,
         allow_loopback_http: bool,
     ) -> Result<SendStatus> {
-        self.send_impl(project, allow_loopback_http, true).await
+        self.send_impl(network, project, allow_loopback_http, true)
+            .await
     }
 
     async fn send_impl(
         self: &Arc<Self>,
+        network: &Network,
         project: Uuid,
         allow_loopback_http: bool,
         settled: bool,
@@ -45,6 +52,7 @@ impl Engine {
             snapshot.map(|s| s.manifest.snapshot_id)
         })
         .await??;
+        self.notify_snapshot_available(network.clone(), project, snapshot_id);
         let (publication, publication_error) =
             match self.publish_metadata(project, allow_loopback_http).await {
                 Ok(status) => (Some(status), None),
@@ -55,5 +63,41 @@ impl Engine {
             publication,
             publication_error,
         })
+    }
+
+    fn notify_snapshot_available(&self, network: Network, project: Uuid, snapshot_id: Uuid) {
+        let store = self.store.clone();
+        tokio::spawn(async move {
+            let trusted =
+                match tokio::task::spawn_blocking(move || store.peers(Some(project))).await {
+                    Ok(Ok(peers)) => peers,
+                    _ => return,
+                };
+            let mut requests = tokio::task::JoinSet::new();
+            for peer in trusted
+                .into_iter()
+                .filter(|peer| network.online(&peer.peer_id))
+            {
+                let network = network.clone();
+                let peer_id = peer.peer_id;
+                requests.spawn(async move {
+                    let _ = tokio::time::timeout(
+                        std::time::Duration::from_secs(2),
+                        network.request(
+                            &peer_id,
+                            PeerRequest::SnapshotAvailable {
+                                project_id: project,
+                                snapshot_id,
+                            },
+                        ),
+                    )
+                    .await;
+                });
+                if requests.len() >= 8 {
+                    let _ = requests.join_next().await;
+                }
+            }
+            while requests.join_next().await.is_some() {}
+        });
     }
 }

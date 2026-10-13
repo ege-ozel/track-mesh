@@ -41,7 +41,7 @@ export interface FirewallObservation {
   third_party_products: string;
 }
 export type Lineage = 'EQUAL' | 'REMOTE_AHEAD' | 'LOCAL_AHEAD' | 'DIVERGED' | 'UNKNOWN';
-export interface Job { job_id: string; project_id: string | null; label: string; running: boolean; outcome: Record<string, unknown> | null; error: string | null }
+export interface Job { job_id: string; project_id: string | null; label: string; running: boolean; outcome: Record<string, unknown> | null; error: string | null; completed_at: number | null }
 export interface CheckView { device_id: string; fresh: boolean; current_known: boolean; age_seconds: number; result: {
   project_id: string; local_snapshot: string | null; remote_snapshot: string | null;
   lineage: Lineage | null;
@@ -83,7 +83,7 @@ export type Action =
   | { kind: 'set_device_name'; name: string }
   | { kind: 'set_projects_location'; location: string }
   | { kind: 'join'; folder: string }
-  | { kind: 'complete_invite_link'; supabase_url?: string; supabase_anon_key?: string; parent_folder?: string | null }
+  | { kind: 'complete_invite_link'; supabase_url?: string; supabase_anon_key?: string }
   | { kind: 'export_card' }
   | { kind: 'open_pairing' | 'close_pairing'; project_id: string }
   | { kind: 'approve_pairing' | 'reject_pairing'; project_id: string; request_id: string }
@@ -97,6 +97,11 @@ export type Action =
 
 export const getStatus = (offset: number) => invoke<DesktopStatus>('get_status', { offset });
 export const chooseFolder = () => invoke<string | null>('choose_folder');
+export const openProjectFolder = (projectId: string) => invoke<void>('open_project_folder', { projectId });
+export const openProjectsLocation = () => invoke<void>('open_projects_location');
+export const chooseProjectsLocation = () => invoke<string | null>('choose_projects_location');
+export const chooseInviteParentFolder = () => invoke<string | null>('choose_invite_parent_folder');
+export const openInviteParentFolder = () => invoke<void>('open_invite_parent_folder');
 export const pasteInviteLink = () => invoke<void>('paste_invite_link');
 export const submitAction = (action: Action) => invoke<string>('submit_action', { action });
 export const setUpnpMapping = (enabled: boolean) => invoke<void>('set_upnp_mapping', { enabled });

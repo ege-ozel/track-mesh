@@ -16,6 +16,9 @@ pub fn serve(
         "project access denied"
     );
     match request {
+        PeerRequest::SnapshotAvailable { .. } => {
+            anyhow::bail!("snapshot availability notices are handled by the core runtime")
+        }
         PeerRequest::EndpointUpdate { .. } => {
             anyhow::bail!("endpoint updates are handled by the core runtime")
         }
