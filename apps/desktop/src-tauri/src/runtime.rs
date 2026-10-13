@@ -1025,20 +1025,12 @@ impl Desktop {
                         publishable_key: service.publishable_key,
                     },
                     (None, Some(config)) => config,
-                    (None, None) => {
-                        let config = SupabaseDefaultConfig {
-                            url: supabase_url.context("Enter the Supabase Project URL")?,
-                            publishable_key: supabase_anon_key
-                                .context("Enter the Supabase publishable key")?,
-                        };
-                        let disk = engine.clone();
-                        let saved = config.clone();
-                        tauri::async_runtime::spawn_blocking(move || {
-                            disk.set_default_supabase_config(Some(saved))
-                        })
-                        .await??;
-                        config
-                    }
+                    // Saved as the default only after the signed invite confirms this service.
+                    (None, None) => SupabaseDefaultConfig {
+                        url: supabase_url.context("Enter the Supabase Project URL")?,
+                        publishable_key: supabase_anon_key
+                            .context("Enter the Supabase publishable key")?,
+                    },
                 };
                 let parent = if let Some(parent) = pending_parent {
                     parent
@@ -1522,6 +1514,10 @@ impl Desktop {
                         url: format!("https://{}.supabase.co", service.ref_name),
                         publishable_key: service.publishable_key,
                     });
+                    // A replaced link must not show the previous link's failure.
+                    state
+                        .jobs
+                        .retain(|job| job.running || job.label != "Accept invite link");
                     state.pending_invite = Some(PendingInviteLink {
                         id: parsed.id,
                         key: parsed.key,
@@ -1561,6 +1557,9 @@ impl Desktop {
         );
         let parsed = crate::clipboard::take_invite_link()?;
         state.work_epoch = state.work_epoch.wrapping_add(1);
+        state
+            .jobs
+            .retain(|job| job.running || job.label != "Accept invite link");
         state.pending_invite = Some(PendingInviteLink {
             id: parsed.id,
             key: parsed.key,
@@ -1811,29 +1810,34 @@ async fn invite_addresses(
     let manual =
         tauri::async_runtime::spawn_blocking(move || disk.manual_public_endpoint()).await??;
     let endpoint_addresses = network.endpoint_addresses().await?;
-    let mut output = Vec::new();
-    let mut add = |address: String| {
-        if protocol::validate_endpoint_address(&address).is_ok() && !output.contains(&address) {
+    let mut output: Vec<String> = Vec::new();
+    let mut add = |address: String, validate: bool| {
+        if (!validate || protocol::validate_endpoint_address(&address).is_ok())
+            && !output.contains(&address)
+        {
             output.push(address);
         }
     };
     for address in explicit {
-        add(address);
+        add(address, true);
     }
     if let Some(manual) = manual {
         for address in
             trackmesh_core::public_ipv4_addresses(&manual.public_ipv4, manual.external_port)?
         {
-            add(address);
+            add(address, true);
         }
     }
+    // Operator-supplied startup addresses (possibly DNS) are kept as before this helper.
+    for address in startup_external {
+        add(address.clone(), false);
+    }
     let mut dynamic = endpoint_addresses;
-    dynamic.extend(startup_external.iter().cloned());
     dynamic.extend(network.status().addresses);
     dynamic.retain(|address| protocol::validate_endpoint_address(address).is_ok());
     dynamic.sort_by_key(|address| !network::is_public_endpoint_address(address));
     for address in dynamic {
-        add(address);
+        add(address, true);
     }
     output.truncate(16);
     output.sort();

@@ -502,7 +502,7 @@ export default function App() {
           focusBaseline.current = new Set(status.page?.projects.map(item => item.project.project_id) ?? []);
           void act({ kind: 'complete_invite_link', ...(status.invite_needs_service_fields ? { supabase_url: inviteServiceUrl.trim(), supabase_anon_key: inviteServiceKey.trim() } : {}) });
         }}>Accept</button>
-          <button disabled={!status.ready || status.closing} onClick={() => void cancelInviteLink().then(poll).catch(err => setError(String(err)))}>Cancel</button>
+          <button disabled={!status.ready || status.closing || status.jobs.some(job => job.running && job.label === 'Accept invite link')} onClick={() => void cancelInviteLink().then(poll).catch(err => setError(String(err)))}>Cancel</button>
           <button disabled={busy} onClick={async () => { try { const value = await chooseInviteParentFolder(); if (value) setInviteParentFolder(value); } catch (err) { setError(String(err)); } }}>Choose another folder</button></div>
       </section></div>}
       {upnpConsentPrompt && <div className="invite-overlay"><section className="invite-dialog upnp-consent-dialog" role="dialog" aria-modal="true" aria-labelledby="upnp-consent-title"><h2 id="upnp-consent-title">Router setup</h2>

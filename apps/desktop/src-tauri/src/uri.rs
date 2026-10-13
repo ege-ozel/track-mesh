@@ -17,8 +17,12 @@ pub fn register_protocol() -> Result<()> {
     set_default(r"Software\Classes\trackmesh\shell\open\command", &command)
 }
 
+/// Prefix check only: a malformed link must still reach the running app as a visible error,
+/// never fall through to startup argument parsing.
 pub fn is_invite_link(value: &str) -> bool {
-    parse_invite_link(value).is_ok()
+    value
+        .get(.."trackmesh://".len())
+        .is_some_and(|scheme| scheme.eq_ignore_ascii_case("trackmesh://"))
 }
 
 pub struct InviteService {
