@@ -40,6 +40,11 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::get_status,
             commands::choose_folder,
+            commands::open_project_folder,
+            commands::open_projects_location,
+            commands::choose_projects_location,
+            commands::choose_invite_parent_folder,
+            commands::open_invite_parent_folder,
             commands::paste_invite_link,
             commands::submit_action,
             commands::set_upnp_mapping,

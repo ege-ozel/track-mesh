@@ -29,6 +29,8 @@ pub struct PeerRuntime {
     endpoint_publisher: JoinHandle<()>,
     endpoint_publisher_cancel: tokio::sync::watch::Sender<bool>,
     supabase: Option<crate::SupabaseRuntime>,
+    online_pull: JoinHandle<()>,
+    online_pull_cancel: tokio::sync::watch::Sender<bool>,
 }
 #[derive(Default)]
 struct ResponderActivity {
@@ -66,6 +68,9 @@ impl PeerRuntime {
         ));
         let supabase =
             start_mapping.then(|| crate::SupabaseRuntime::start(engine.clone(), network.clone()));
+        let (online_pull_cancel, online_pull_rx) = tokio::sync::watch::channel(false);
+        let online_pull =
+            spawn_online_pull_monitor(engine.clone(), network.clone(), online_pull_rx);
         if start_mapping {
             network.set_mapping_consent(engine.upnp_mapping_enabled());
         }
@@ -176,6 +181,7 @@ impl PeerRuntime {
         let responder = tokio::spawn(async move {
             let _lease = responder_lease;
             let mut workers = JoinSet::new();
+            let mut notice_pulls = std::collections::HashMap::new();
             let mut closed = false;
             loop {
                 if closed && workers.is_empty() {
@@ -184,6 +190,16 @@ impl PeerRuntime {
                 tokio::select! {
                     message=incoming.recv(),if !closed && workers.len()<8=>{
                         let Some(message)=message else {closed=true;continue;};
+                        let pull_notice = match &message.request {
+                            network::IncomingRequest::Transfer(protocol::PeerRequest::SnapshotAvailable { project_id, .. }) => {
+                                let key = (message.peer.to_string(), *project_id);
+                                notice_pulls.retain(|_, at: &mut std::time::Instant| at.elapsed() < Duration::from_secs(5));
+                                let allowed = !notice_pulls.contains_key(&key) && notice_pulls.len() < 512;
+                                if allowed { notice_pulls.insert(key, std::time::Instant::now()); }
+                                allowed
+                            }
+                            _ => false,
+                        };
                         responder_activity.active.fetch_add(1, Ordering::SeqCst);
                         responder_activity.epoch.fetch_add(1, Ordering::SeqCst);
                         let work = ResponderWork(responder_activity.clone());
@@ -200,6 +216,22 @@ impl PeerRuntime {
                                     let _ = network.respond(message, response).await;
                                 }
                                 network::IncomingRequest::Transfer(request) => {
+                                    if let protocol::PeerRequest::SnapshotAvailable { project_id, .. } = &request {
+                                        let project_id = *project_id;
+                                        let store = engine.store.clone();
+                                        let auth_peer = peer.clone();
+                                        let authorized = tokio::task::spawn_blocking(move || store.authorized(project_id, &auth_peer).map(|record| record.is_some()))
+                                            .await
+                                            .ok()
+                                            .and_then(Result::ok)
+                                            .unwrap_or(false);
+                                        let response = if authorized { PeerResponse::SnapshotNoticed } else { PeerResponse::Error { message: "project access denied".into() } };
+                                        let _ = network.respond(message, response).await;
+                                        if authorized && pull_notice {
+                                            let _ = tokio::time::timeout(Duration::from_secs(30), engine.fetch_snapshot_chain(&network, project_id, &peer, None)).await;
+                                        }
+                                        return;
+                                    }
                                     let receipt = match &request {
                                         protocol::PeerRequest::Verified { project_id, snapshot_id, .. } => Some((*project_id, *snapshot_id)),
                                         _ => None,
@@ -238,6 +270,8 @@ impl PeerRuntime {
             endpoint_publisher,
             endpoint_publisher_cancel,
             supabase,
+            online_pull,
+            online_pull_cancel,
             mapping_task,
         })
     }
@@ -284,6 +318,15 @@ impl PeerRuntime {
         {
             endpoint_publisher.abort();
             let _ = tokio::time::timeout(Duration::from_secs(1), &mut endpoint_publisher).await;
+        }
+        self.online_pull_cancel.send_replace(true);
+        let mut online_pull = self.online_pull;
+        if tokio::time::timeout(Duration::from_secs(15), &mut online_pull)
+            .await
+            .is_err()
+        {
+            online_pull.abort();
+            let _ = tokio::time::timeout(Duration::from_secs(1), &mut online_pull).await;
         }
         if let Some(cancel) = self.monitor_cancel {
             cancel.send_replace(true);
@@ -431,6 +474,70 @@ fn runtime_lease(directory: &std::path::Path) -> Result<std::fs::File> {
     options
         .open(locks.join("peer-runtime.lock"))
         .context("another TrackMesh peer runtime already owns this data directory")
+}
+
+fn spawn_online_pull_monitor(
+    engine: Arc<Engine>,
+    network: Network,
+    mut cancelled: tokio::sync::watch::Receiver<bool>,
+) -> JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut previously_online = std::collections::HashSet::new();
+        let mut pulls = JoinSet::new();
+        loop {
+            tokio::select! {
+                _ = cancelled.changed() => return,
+                _ = tokio::time::sleep(Duration::from_millis(250)) => {}
+            }
+            let online = network
+                .status()
+                .peers
+                .into_iter()
+                .filter_map(|(peer, status)| status.online.then_some(peer))
+                .collect::<std::collections::HashSet<_>>();
+            let newly_online = online
+                .difference(&previously_online)
+                .cloned()
+                .collect::<Vec<_>>();
+            previously_online = online;
+            for peer_id in newly_online {
+                while pulls.len() >= 8 {
+                    let _ = pulls.join_next().await;
+                }
+                let engine = engine.clone();
+                let network = network.clone();
+                pulls.spawn(async move {
+                    let disk = engine.clone();
+                    let peer_for_query = peer_id.clone();
+                    let projects = tokio::task::spawn_blocking(move || -> Result<Vec<Uuid>> {
+                        let mut authorized = Vec::new();
+                        for project in disk.store.projects()? {
+                            if disk
+                                .store
+                                .peers(Some(project.project_id))?
+                                .iter()
+                                .any(|peer| peer.peer_id == peer_for_query)
+                            {
+                                authorized.push(project.project_id);
+                            }
+                        }
+                        Ok(authorized)
+                    })
+                    .await
+                    .ok()
+                    .and_then(Result::ok)
+                    .unwrap_or_default();
+                    for project in projects {
+                        let _ = tokio::time::timeout(
+                            Duration::from_secs(30),
+                            engine.fetch_snapshot_chain(&network, project, &peer_id, None),
+                        )
+                        .await;
+                    }
+                });
+            }
+        }
+    })
 }
 
 impl Engine {

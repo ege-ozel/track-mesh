@@ -287,6 +287,28 @@ h1 {
   border-radius:12px;
   padding:var(--s5)
 }
+.project-card.focus-highlight { animation:project-focus 2.5s ease-out; }
+@keyframes project-focus { 0%,55% { box-shadow:0 0 0 3px var(--accent); } 100% { box-shadow:0 0 0 0 transparent; } }
+.path-link {
+  border:0;
+  background:transparent;
+  color:var(--muted);
+  padding:0;
+  text-align:left;
+  overflow-wrap:anywhere;
+  cursor:pointer
+}
+.path-link:hover { color:var(--link); text-decoration:underline; }
+.path-link:focus-visible { outline:2px solid var(--link); outline-offset:3px; }
+.new-version-notice {
+  border:1px solid var(--success-border);
+  background:var(--success-bg);
+  color:var(--accent);
+  border-radius:8px;
+  padding:var(--s3) var(--s4);
+  margin:var(--s4) 0;
+  font-weight:650
+}
 .card-title {
   display:flex;
   justify-content:space-between;

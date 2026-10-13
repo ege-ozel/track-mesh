@@ -423,6 +423,10 @@ pub struct PluginStatus {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub enum PeerRequest {
+    SnapshotAvailable {
+        project_id: Uuid,
+        snapshot_id: Uuid,
+    },
     EndpointUpdate {
         project_id: Uuid,
         record: EndpointRecord,
@@ -448,6 +452,7 @@ pub enum PeerRequest {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub enum PeerResponse {
+    SnapshotNoticed,
     EndpointUpdated,
     Head { snapshot: Option<SignedSnapshot> },
     Manifest { snapshot: SignedSnapshot },
@@ -458,7 +463,8 @@ pub enum PeerResponse {
 
 pub fn request_project(request: &PeerRequest) -> Uuid {
     match request {
-        PeerRequest::EndpointUpdate { project_id, .. }
+        PeerRequest::SnapshotAvailable { project_id, .. }
+        | PeerRequest::EndpointUpdate { project_id, .. }
         | PeerRequest::Head { project_id }
         | PeerRequest::Manifest { project_id, .. }
         | PeerRequest::Chunk { project_id, .. }

@@ -82,7 +82,6 @@ pub enum Action {
     CompleteInviteLink {
         supabase_url: Option<String>,
         supabase_anon_key: Option<String>,
-        parent_folder: Option<PathBuf>,
     },
     Pair {
         project_id: Uuid,
@@ -220,6 +219,7 @@ pub struct Job {
     pub running: bool,
     pub outcome: Option<Value>,
     pub error: Option<String>,
+    pub completed_at: Option<u64>,
 }
 
 #[derive(Clone, Serialize)]
@@ -298,6 +298,7 @@ struct Session {
 struct PendingInviteLink {
     id: String,
     key: zeroize::Zeroizing<[u8; 32]>,
+    parent_folder: Option<PathBuf>,
 }
 
 pub struct Desktop {
@@ -775,6 +776,7 @@ impl Desktop {
             running: true,
             outcome: None,
             error: None,
+            completed_at: None,
         });
         let desktop = self.clone();
         let engine = state.engine.clone().context("Engine is unavailable")?;
@@ -791,6 +793,12 @@ impl Desktop {
             if let Ok(mut state) = desktop.lock() {
                 if let Some(job) = state.jobs.iter_mut().find(|job| job.job_id == job_id) {
                     job.running = false;
+                    job.completed_at = Some(
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs(),
+                    );
                     match result {
                         Ok(outcome) => job.outcome = Some(outcome),
                         Err(error) => job.error = Some(error.to_string()),
@@ -817,6 +825,89 @@ impl Desktop {
         tauri::async_runtime::spawn_blocking(move || disk.set_upnp_mapping_enabled(enabled))
             .await??;
         network.set_mapping_consent(enabled);
+        Ok(())
+    }
+
+    pub async fn open_project_folder(&self, project_id: Uuid) -> Result<()> {
+        let engine = self
+            .lock()?
+            .engine
+            .clone()
+            .context("Engine is unavailable")?;
+        let path = tauri::async_runtime::spawn_blocking(move || {
+            Ok::<_, anyhow::Error>(PathBuf::from(engine.store.project(project_id)?.root))
+        })
+        .await??;
+        tauri::async_runtime::spawn_blocking(move || documents::open_in_explorer(&path)).await??;
+        Ok(())
+    }
+
+    pub async fn open_projects_location(&self) -> Result<()> {
+        let engine = self
+            .lock()?
+            .engine
+            .clone()
+            .context("Engine is unavailable")?;
+        let path =
+            tauri::async_runtime::spawn_blocking(move || match engine.projects_location()? {
+                Some(path) => Ok(PathBuf::from(path)),
+                None => documents::default_projects_location(),
+            })
+            .await??;
+        tauri::async_runtime::spawn_blocking(move || documents::open_in_explorer(&path)).await??;
+        Ok(())
+    }
+
+    pub async fn choose_projects_location(&self, app: AppHandle) -> Result<Option<String>> {
+        let engine = self
+            .lock()?
+            .engine
+            .clone()
+            .context("Engine is unavailable")?;
+        tauri::async_runtime::spawn_blocking(move || {
+            let Some(path) = documents::choose_folder(&app)? else {
+                return Ok(None);
+            };
+            engine.set_projects_location(std::path::Path::new(&path))?;
+            Ok(Some(path))
+        })
+        .await?
+    }
+
+    pub fn set_invite_parent_folder(&self, folder: PathBuf) -> Result<String> {
+        let folder =
+            std::fs::canonicalize(folder).context("Selected folder could not be resolved")?;
+        ensure!(folder.is_dir(), "Choose a folder for the project");
+        let mut state = self.lock()?;
+        let pending = state
+            .pending_invite
+            .as_mut()
+            .context("No invitation link is waiting")?;
+        pending.parent_folder = Some(folder.clone());
+        Ok(documents::display_path(&folder))
+    }
+
+    pub async fn open_invite_parent_folder(&self) -> Result<()> {
+        let (engine, selected) = {
+            let state = self.lock()?;
+            (
+                state.engine.clone().context("Engine is unavailable")?,
+                state
+                    .pending_invite
+                    .as_ref()
+                    .and_then(|pending| pending.parent_folder.clone()),
+            )
+        };
+        let path = if let Some(path) = selected {
+            path
+        } else {
+            tauri::async_runtime::spawn_blocking(move || match engine.projects_location()? {
+                Some(path) => Ok(PathBuf::from(path)),
+                None => documents::default_projects_location(),
+            })
+            .await??
+        };
+        tauri::async_runtime::spawn_blocking(move || documents::open_in_explorer(&path)).await??;
         Ok(())
     }
 
@@ -856,15 +947,18 @@ impl Desktop {
             Action::CompleteInviteLink {
                 supabase_url,
                 supabase_anon_key,
-                parent_folder,
             } => {
-                let (id, key) = {
+                let (id, key, pending_parent) = {
                     let state = self.lock()?;
                     let pending = state
                         .pending_invite
                         .as_ref()
                         .context("No invitation link is waiting")?;
-                    (pending.id.clone(), pending.key.clone())
+                    (
+                        pending.id.clone(),
+                        pending.key.clone(),
+                        pending.parent_folder.clone(),
+                    )
                 };
                 let disk = engine.clone();
                 let configured =
@@ -887,7 +981,7 @@ impl Desktop {
                         config
                     }
                 };
-                let parent = if let Some(parent) = parent_folder {
+                let parent = if let Some(parent) = pending_parent {
                     parent
                 } else if let Some(location) = engine.projects_location()? {
                     PathBuf::from(location)
@@ -951,9 +1045,11 @@ impl Desktop {
                 self.automatic_pairing(&engine, &network, project_id, device_id, false)
                     .await
             }
-            Action::Send { project_id } => {
-                serde_json::to_value(engine.send_snapshot(project_id, allow_http).await?)?
-            }
+            Action::Send { project_id } => serde_json::to_value(
+                engine
+                    .send_snapshot(&network, project_id, allow_http)
+                    .await?,
+            )?,
             Action::ApprovePairing {
                 project_id,
                 request_id,
@@ -971,7 +1067,9 @@ impl Desktop {
                 })
                 .await??;
                 if !had_snapshot {
-                    let shared = engine.send_snapshot(project_id, allow_http).await?;
+                    let shared = engine
+                        .send_snapshot(&network, project_id, allow_http)
+                        .await?;
                     json!({"message": "Collaborator approved. First version shared and ready to receive.", "snapshot_id": shared.snapshot_id})
                 } else {
                     json!({"message": "Collaborator approved for this project."})
@@ -1042,7 +1140,7 @@ impl Desktop {
                 if let Ok(mut state) = self.lock() {
                     state.tasks.push(cleanup);
                 }
-                json!({"message": "Invite link copied. Share it privately; it expires after 15 minutes and the clipboard clears after 60 seconds."})
+                json!({"message": "Invite link copied — paste it within 60 s"})
             }
             Action::Publish { project_id } => {
                 serde_json::to_value(engine.publish_metadata(project_id, allow_http).await?)?
@@ -1309,7 +1407,11 @@ impl Desktop {
             state.work_epoch = state.work_epoch.wrapping_add(1);
             if let Ok((id, key)) = parsed {
                 if state.pending_invite.is_none() {
-                    state.pending_invite = Some(PendingInviteLink { id, key });
+                    state.pending_invite = Some(PendingInviteLink {
+                        id,
+                        key,
+                        parent_folder: None,
+                    });
                     return;
                 }
             }
@@ -1324,6 +1426,7 @@ impl Desktop {
                     "This invite link could not be opened. Open one link at a time and try again."
                         .to_owned(),
                 ),
+                completed_at: None,
             });
         }
     }
@@ -1334,7 +1437,11 @@ impl Desktop {
         let (id, key) = crate::clipboard::take_invite_link()
             .map_err(|_| anyhow::anyhow!("No TrackMesh invite link on the clipboard"))?;
         state.work_epoch = state.work_epoch.wrapping_add(1);
-        state.pending_invite = Some(PendingInviteLink { id, key });
+        state.pending_invite = Some(PendingInviteLink {
+            id,
+            key,
+            parent_folder: None,
+        });
         Ok(())
     }
     async fn finish_close(&self, app: AppHandle) {

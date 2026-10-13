@@ -33,6 +33,64 @@ pub async fn choose_folder(app: AppHandle) -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
+pub async fn open_project_folder(
+    desktop: State<'_, Arc<Desktop>>,
+    project_id: Uuid,
+) -> Result<(), String> {
+    desktop
+        .open_project_folder(project_id)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn open_projects_location(desktop: State<'_, Arc<Desktop>>) -> Result<(), String> {
+    desktop
+        .open_projects_location()
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn choose_projects_location(
+    app: AppHandle,
+    desktop: State<'_, Arc<Desktop>>,
+) -> Result<Option<String>, String> {
+    desktop
+        .choose_projects_location(app)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn choose_invite_parent_folder(
+    app: AppHandle,
+    desktop: State<'_, Arc<Desktop>>,
+) -> Result<Option<String>, String> {
+    let desktop = desktop.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        documents::choose_folder(&app)
+            .map_err(|error| error.to_string())?
+            .map(|folder| {
+                desktop
+                    .set_invite_parent_folder(folder.into())
+                    .map_err(|error| error.to_string())
+            })
+            .transpose()
+    })
+    .await
+    .map_err(|_| "Folder picker stopped".to_owned())?
+}
+
+#[tauri::command]
+pub async fn open_invite_parent_folder(desktop: State<'_, Arc<Desktop>>) -> Result<(), String> {
+    desktop
+        .open_invite_parent_folder()
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub async fn paste_invite_link(
     app: AppHandle,
     desktop: State<'_, Arc<Desktop>>,

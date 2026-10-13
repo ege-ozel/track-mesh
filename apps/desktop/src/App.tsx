@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { chooseFolder, closeApp, getStatus, pasteInviteLink, setUpnpMapping, submitAction } from './api';
+import { chooseFolder, chooseInviteParentFolder, chooseProjectsLocation, closeApp, getStatus, openInviteParentFolder, openProjectFolder, openProjectsLocation, pasteInviteLink, setUpnpMapping, submitAction } from './api';
 import type { Action, CheckView, DesktopStatus, ProjectBackend, ProjectBackendConfig, ProjectCard, SnapshotInfo, SupabaseDefaultConfig } from './api';
 
 const short = (id: string | null | undefined) => id ? id.slice(0, 8) : '—';
@@ -27,7 +27,7 @@ function publicIpv4(value: string) {
     && !(a === 203 && b === 0 && c === 113) && !(a === 198 && (b === 18 || b === 19));
 }
 
-function ConnectionSetup({ status, projectId, busy, act }: { status: DesktopStatus; projectId: string; busy: boolean; act: (action: Action) => Promise<void> }) {
+function ConnectionSetup({ status, projectId, busy, act }: { status: DesktopStatus; projectId: string; busy: boolean; act: (action: Action) => Promise<boolean> }) {
   const [ip, setIp] = useState('');
   const [port, setPort] = useState(String(status.listen_port));
   const [mappingSaving, setMappingSaving] = useState(false);
@@ -88,7 +88,7 @@ function Snapshot({ value, empty }: { value: SnapshotInfo | null; empty: string 
 }
 
 function DefaultSupabaseSettings({ config, busy, act }: {
-  config: SupabaseDefaultConfig | null; busy: boolean; act: (action: Action) => Promise<void>;
+  config: SupabaseDefaultConfig | null; busy: boolean; act: (action: Action) => Promise<boolean>;
 }) {
   const [url, setUrl] = useState(config?.url ?? '');
   const [publishableKey, setPublishableKey] = useState(config?.publishable_key ?? '');
@@ -110,7 +110,7 @@ function ProjectBackendSettings({ projectId, config, defaultSupabase, state, bus
   projectId: string; config: ProjectBackendConfig | undefined; busy: boolean;
   defaultSupabase: SupabaseDefaultConfig | null;
   state: DesktopStatus['supabase_states'][string];
-  act: (action: Action) => Promise<void>;
+  act: (action: Action) => Promise<boolean>;
 }) {
   const [backend, setBackend] = useState<ProjectBackend>(config?.backend ?? 'NONE');
   const [url, setUrl] = useState((config?.backend === 'SUPABASE' ? config.supabase_url : null) ?? defaultSupabase?.url ?? '');
@@ -145,6 +145,7 @@ function ProjectBackendSettings({ projectId, config, defaultSupabase, state, bus
 function jobStatus(job: DesktopStatus['jobs'][number], startedAt: number | undefined, collaboratorName?: string) {
   if (!job.running) {
     return job.error ? `${job.label}: ${job.error}`
+      : job.label === 'Receive snapshot' && typeof job.outcome?.snapshot_id === 'string' ? `Received ${collaboratorName ?? 'collaborator'}'s version ✓`
       : job.outcome?.publication_error ? `Ready — ${collaboratorName ?? 'your collaborator'} can now get this version.`
       : typeof job.outcome?.snapshot_id === 'string' ? `Ready — ${collaboratorName ?? 'your collaborator'} can now get this version.`
       : job.outcome?.message ? String(job.outcome.message) : `${job.label} completed`;
@@ -154,6 +155,17 @@ function jobStatus(job: DesktopStatus['jobs'][number], startedAt: number | undef
   const elapsed = startedAt ? Math.floor((Date.now() - startedAt) / 1000) : 0;
   const remaining = Math.max(0, CHECK_TIMEOUT_SECONDS - elapsed);
   return `Check peer… trying to reach collaborator for up to ${CHECK_TIMEOUT_SECONDS}s (${remaining}s left)`;
+}
+
+function InviteCopiedNotice({ job }: { job: DesktopStatus['jobs'][number] }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(interval);
+  }, []);
+  const remaining = Math.max(0, 60 - Math.floor((now - (job.completed_at ?? Math.floor(now / 1000)) * 1000) / 1000));
+  if (!remaining) return <div className="job" role="status">Clipboard cleared. Copy the invite link again if it was not pasted.</div>;
+  return <div className="job" role="status">Invite link copied — paste it within 60 s <strong>({remaining}s left)</strong></div>;
 }
 
 function JobNotice({ job, startedAt, collaboratorName }: { job: DesktopStatus['jobs'][number]; startedAt: number | undefined; collaboratorName?: string }) {
@@ -170,7 +182,7 @@ function InProgress({ children }: { children: ReactNode }) {
 
 function ConnectionAssistant({ card, status, peer, check, busy, act }: {
   card: ProjectCard; status: DesktopStatus; peer: ProjectCard['peers'][number] | undefined;
-  check: CheckView | undefined; busy: boolean; act: (action: Action) => Promise<void>;
+  check: CheckView | undefined; busy: boolean; act: (action: Action) => Promise<boolean>;
 }) {
   const projectId = card.project.project_id;
   const candidates = status.pairing.project_id === projectId ? status.pairing.requests : [];
@@ -217,7 +229,7 @@ function ConnectionAssistant({ card, status, peer, check, busy, act }: {
   </details>;
 }
 
-function Card({ card, status, jobStartedAt, act }: { card: ProjectCard; status: DesktopStatus; jobStartedAt: Record<string, number>; act: (action: Action) => Promise<void> }) {
+function Card({ card, status, jobStartedAt, focusProjectId, act }: { card: ProjectCard; status: DesktopStatus; jobStartedAt: Record<string, number>; focusProjectId: string | null; act: (action: Action) => Promise<boolean> }) {
   const [selected, setSelected] = useState('');
   const [dawClosed, setDawClosed] = useState(false);
   const [folderError, setFolderError] = useState('');
@@ -231,6 +243,7 @@ function Card({ card, status, jobStartedAt, act }: { card: ProjectCard; status: 
   const check = status.checks.find(c => c.result.project_id === project.project_id && c.device_id === peerId);
   const snapshotStatus = check?.fresh ? check.result.snapshot_status : null;
   const divergence = snapshotStatus === 'DIVERGED';
+  const remoteAhead = peer?.known_lineage === 'REMOTE_AHEAD';
   const transfer = card.transfer;
   const resumable = transfer?.state === 'PAUSED' && peerId === transfer.source_device_id;
   const receiving = transfer?.state === 'RECEIVING' || transfer?.state === 'APPLYING';
@@ -252,6 +265,10 @@ function Card({ card, status, jobStartedAt, act }: { card: ProjectCard; status: 
       if (folder) await act({ kind: 'change_project_root', project_id: project.project_id, folder });
     } catch (err) { setFolderError(String(err)); }
   };
+  const openProject = async () => {
+    try { await openProjectFolder(project.project_id); }
+    catch (err) { setFolderError(String(err)); }
+  };
   const request = (kind: 'send' | 'publish' | 'refresh' | 'pair' | 'export_invite' | 'copy_invite_link') => act({ kind, project_id: project.project_id });
   const candidates = status.pairing.project_id === project.project_id ? status.pairing.requests : [];
   const inviteState = status.supabase_states[project.project_id] ?? 'NOT_CONFIGURED';
@@ -266,8 +283,10 @@ function Card({ card, status, jobStartedAt, act }: { card: ProjectCard; status: 
       : !status.default_supabase
         ? 'Set a default Supabase service in Settings to create invite links.'
         : 'Configure Supabase for this project in Advanced settings before creating an invite link.';
-  return <article className="project-card">
-    <header className="card-title"><div><h2>{project.name}</h2><p title={displayPath(project.root)}>{displayPath(project.root)}</p></div>
+  const inviteJob = status.jobs.find(item => item.project_id === project.project_id && item.label === 'Copy invite link');
+  const copyInviteSuccess = !!inviteJob && !inviteJob.running && !inviteJob.error && typeof inviteJob.outcome?.message === 'string';
+  return <article id={`project-${project.project_id}`} className={`project-card${focusProjectId === project.project_id ? ' focus-highlight' : ''}`}>
+    <header className="card-title"><div><h2>{project.name}</h2><button className="path-link" title="Open in Explorer" onClick={() => void openProject()}>{displayPath(project.root)}</button></div>
       <span className={`badge ${online ? 'online' : ''}`}>{projectStatus}</span></header>
     {rootMissing && <section className="notice danger"><strong>Project folder not found</strong><div className="actions"><button className="primary" disabled={busy} onClick={() => void chooseProjectRoot()}>Locate folder</button></div></section>}
     {folderError && <p className="error">{folderError}</p>}
@@ -285,11 +304,12 @@ function Card({ card, status, jobStartedAt, act }: { card: ProjectCard; status: 
     {status.supabase_states[project.project_id] === 'UNREACHABLE' && <p className="muted">Invite service is unreachable. Check its connection in Advanced.</p>}
     {status.supabase_states[project.project_id] === 'WAITING_FOR_GRANT' && <p className="muted">Waiting for the invite service owner to approve this project.</p>}
     {project.recovery_required && <div className="notice danger">Close the DAW and recover this project before receiving another version.</div>}
+    {remoteAhead && peer?.announcement && <div className="new-version-notice" role="status">New version from {peer.device.name} — {time(peer.announcement.created_at)}</div>}
     {peer && <section className="share-flow"><div><h3>Share current version</h3><p className="muted">Save a version here for your collaborator to receive.</p>
-      <button className="primary" disabled={busy || rootMissing || project.recovery_required} onClick={() => request('send')}>Share current version</button></div>
+      <button className={remoteAhead ? '' : 'primary'} disabled={busy || rootMissing || project.recovery_required} onClick={() => request('send')}>Share current version</button></div>
       <div><h3>Get collaborator’s version</h3><p className="muted">Receive copies the selected collaborator’s snapshot into this folder.</p>
         <label className="confirmation"><input type="checkbox" checked={dawClosed} disabled={busy} onChange={e => setDawClosed(e.target.checked)} /> I closed this project in the DAW</label>
-        <button disabled={disabledReceive || rootMissing} onClick={() => act({ kind: 'receive', project_id: project.project_id, device_id: peer.device.device_id, snapshot_id: resumable ? transfer.snapshot_id : null, daw_closed: dawClosed })}>{resumable ? 'Resume receive' : 'Get collaborator’s version'}</button>
+        <button className={remoteAhead ? 'primary' : ''} disabled={disabledReceive || rootMissing} onClick={() => act({ kind: 'receive', project_id: project.project_id, device_id: peer.device.device_id, snapshot_id: resumable ? transfer.snapshot_id : null, daw_closed: dawClosed })}>{resumable ? 'Resume receive' : 'Get collaborator’s version'}</button>
         {!online && <p className="muted">Open TrackMesh on both PCs to receive files.</p>}</div></section>}
     {authoredHere && sharedLatest && peer && card.local_snapshot && !receipt && <InProgress>Waiting for {peer.device.name} to get this version…</InProgress>}
     {waitingFirstVersion && peer && <InProgress>Waiting for {peer.device.name} to share the first version…</InProgress>}
@@ -298,7 +318,9 @@ function Card({ card, status, jobStartedAt, act }: { card: ProjectCard; status: 
       <progress max={Math.max(transfer.total_bytes, 1)} value={transfer.completed_bytes} />
       {transfer.error && <p className="error">{transfer.error}</p>}{receiving && <InProgress>Receiving project… {transfer.total_bytes ? Math.min(100, Math.round(transfer.completed_bytes * 100 / transfer.total_bytes)) : 0} %</InProgress>}</div>}
     {job && !peer && ((job.running && ['Accept invitation and request pairing', 'Request automatic pairing'].includes(job.label)) || job.outcome?.pairing_state === 'pending') && <InProgress>Waiting for the inviter to approve…</InProgress>}
-    {job && <JobNotice job={job} startedAt={jobStartedAt[job.job_id]} collaboratorName={peer?.device.name} />}
+    {inviteJob?.running && <InProgress>Creating invite link…</InProgress>}
+    {copyInviteSuccess && inviteJob && <InviteCopiedNotice job={inviteJob} />}
+    {job && !(job.label === 'Copy invite link' && (job.running || copyInviteSuccess)) && <JobNotice job={job} startedAt={jobStartedAt[job.job_id]} collaboratorName={peer?.device.name} />}
     <details className="setup advanced-card"><summary>Advanced</summary>
       <section className="advanced-group"><h3>Connection details</h3>
       <div className="snapshots"><section><h3>LOCAL SNAPSHOT</h3><Snapshot value={card.local_snapshot} empty="No local snapshot yet." /></section>
@@ -345,6 +367,7 @@ export default function App() {
   const [screen, setScreen] = useState<'projects' | 'settings'>('projects');
   const [folder, setFolder] = useState('');
   const [name, setName] = useState('');
+  const [autoName, setAutoName] = useState(false);
   const [uuid, setUuid] = useState('');
   const [mailbox, setMailbox] = useState('');
   const [relay, setRelay] = useState('');
@@ -353,15 +376,17 @@ export default function App() {
   const [inviteParentFolder, setInviteParentFolder] = useState<string | null>(null);
   const [projectsLocation, setProjectsLocation] = useState('');
   const [jobStartedAt, setJobStartedAt] = useState<Record<string, number>>({});
+  const [focusProjectId, setFocusProjectId] = useState<string | null>(null);
   const polling = useRef(false);
   const mounted = useRef(true);
   const generation = useRef(0);
   const submitted = useRef(false);
+  const focusBaseline = useRef<Set<string> | null>(null);
   const poll = useCallback(async () => {
     if (polling.current) return;
     polling.current = true;
     const request = generation.current;
-    try { const value = await getStatus(offset); if (mounted.current && generation.current === request) { setStatus(value); setError(''); } }
+    try { const value = await getStatus(offset); if (mounted.current && generation.current === request) { setStatus(value); } }
     catch (err) { if (mounted.current) setError(String(err)); }
     finally { polling.current = false; }
   }, [offset]);
@@ -383,41 +408,92 @@ export default function App() {
       return next;
     });
   }, [status?.jobs]);
-  const act = async (action: Action) => {
-    if (submitted.current) return;
+  useEffect(() => {
+    if (!error) return;
+    const timeout = window.setTimeout(() => setError(''), 8000);
+    return () => window.clearTimeout(timeout);
+  }, [error]);
+  useEffect(() => {
+    if (!status?.page || !focusBaseline.current) return;
+    const added = status.page.projects.find(item => !focusBaseline.current?.has(item.project.project_id));
+    if (added) {
+      focusBaseline.current = null;
+      setFocusProjectId(added.project.project_id);
+    }
+  }, [status?.page]);
+  useEffect(() => {
+    if (!focusProjectId) return;
+    let timeout: number | undefined;
+    const frame = window.requestAnimationFrame(() => {
+      const card = document.getElementById(`project-${focusProjectId}`);
+      if (!card) return;
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      timeout = window.setTimeout(() => setFocusProjectId(null), 2500);
+    });
+    return () => { window.cancelAnimationFrame(frame); if (timeout !== undefined) window.clearTimeout(timeout); };
+  }, [focusProjectId, status?.page]);
+  const act = async (action: Action): Promise<boolean> => {
+    if (submitted.current) return false;
     submitted.current = true;
     setError('');
-    try { await submitAction(action); await poll(); }
-    catch (err) { setError(String(err)); }
+    try { await submitAction(action); await poll(); return true; }
+    catch (err) { setError(String(err)); return false; }
     finally { submitted.current = false; }
   };
   useEffect(() => setProjectsLocation(status?.projects_location ?? ''), [status?.projects_location]);
   const pasteInvite = async () => {
-    try { await pasteInviteLink(); await poll(); } catch { setError('No TrackMesh invite link on the clipboard'); }
+    setSetup(null);
+    setScreen('projects');
+    setOffset(0);
+    focusBaseline.current = new Set(status?.page?.projects.map(item => item.project.project_id) ?? []);
+    try { await pasteInviteLink(); setError(''); await poll(); } catch { setError('No TrackMesh invite link on the clipboard'); }
   };
   const busy = !status?.ready || status.closing || status.jobs.some(j => j.running);
-  const browse = async () => { try { const value = await chooseFolder(); if (value) setFolder(value); } catch (err) { setError(String(err)); } };
+  const browse = async () => {
+    try {
+      const value = await chooseFolder();
+      if (value) {
+        setFolder(value);
+        const base = value.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? '';
+        if (setup === 'link' && (!name.trim() || autoName)) { setName(base); setAutoName(true); }
+      }
+    } catch (err) { setError(String(err)); }
+  };
   const saveSetup = async () => {
-    if (setup === 'join') await act({ kind: 'join', folder });
-    else await act({ kind: 'link', project_id: uuid.trim(), name: name.trim(), folder, mailbox_url: mailbox.trim() || null, relay_address: relay.trim() || null });
-    setSetup(null);
+    if (setup === 'join') {
+      setOffset(0);
+      focusBaseline.current = new Set(status?.page?.projects.map(item => item.project.project_id) ?? []);
+      if (await act({ kind: 'join', folder })) setSetup(null);
+    } else {
+      const projectId = uuid.trim();
+      setOffset(0);
+      focusBaseline.current = null;
+      if (await act({ kind: 'link', project_id: projectId, name: name.trim(), folder, mailbox_url: mailbox.trim() || null, relay_address: relay.trim() || null })) {
+        setSetup(null);
+        setFocusProjectId(projectId);
+      }
+    }
   };
   return <div className="app-shell"><aside className="rail"><div className="brand-mark">TM</div><button className={screen === 'projects' ? 'rail-nav active' : 'rail-nav'} onClick={() => setScreen('projects')}>PROJECTS</button><button className={screen === 'settings' ? 'rail-nav active' : 'rail-nav'} onClick={() => setScreen('settings')}>SETTINGS</button><div className="rail-bottom">PRIVATE<br />BY DESIGN</div></aside>
     <main><header className="topbar"><div><div className="eyebrow">YOUR STUDIO, CONNECTED</div><h1>TRACKMESH</h1><p>Immutable snapshots. Trusted collaborators.</p></div>
       <div className="device"><span className={`status-dot ${status?.ready ? 'active' : ''}`} />{status?.device?.name ?? 'Starting device…'}<small>{short(status?.device?.device_id)}</small></div></header>
       {(error || status?.error || status?.network?.error) && <div className="notice danger" role="alert">{error || status?.error || status?.network?.error}</div>}
       {status?.invite_pending && <div className="invite-overlay"><section className="invite-dialog" role="dialog" aria-modal="true" aria-labelledby="invite-title"><h2 id="invite-title">Accept invite link</h2>
-        <p>The invitation will create a project folder under <code>{inviteParentFolder ?? status.projects_location}\[project name]</code>. You can choose a different parent folder below.</p>
+        <p>The invitation will create a project folder under <button className="path-link" title="Open in Explorer" onClick={() => void openInviteParentFolder().catch(err => setError(String(err)))}>{displayPath(inviteParentFolder ?? status.projects_location)}\[project name]</button>. You can choose a different parent folder below.</p>
         {!status.default_supabase && <><label className="field">Supabase Project URL<input autoComplete="off" value={inviteServiceUrl} onChange={event => setInviteServiceUrl(event.target.value)} placeholder="https://your-project.supabase.co" /></label>
         <label className="field">Publishable key<input type="password" autoComplete="new-password" value={inviteServiceKey} onChange={event => setInviteServiceKey(event.target.value)} /></label></>}
-        <div className="actions"><button className="primary" disabled={busy || (!status.default_supabase && (!inviteServiceUrl.trim() || !inviteServiceKey.trim()))} onClick={() => void act({ kind: 'complete_invite_link', parent_folder: inviteParentFolder, ...(!status.default_supabase ? { supabase_url: inviteServiceUrl.trim(), supabase_anon_key: inviteServiceKey.trim() } : {}) })}>Accept</button>
-          <button disabled={busy} onClick={async () => { try { const value = await chooseFolder(); if (value) setInviteParentFolder(value); } catch (err) { setError(String(err)); } }}>Choose another folder</button></div>
+        <div className="actions"><button className="primary" disabled={busy || (!status.default_supabase && (!inviteServiceUrl.trim() || !inviteServiceKey.trim()))} onClick={() => {
+          setSetup(null); setScreen('projects'); setOffset(0);
+          focusBaseline.current = new Set(status.page?.projects.map(item => item.project.project_id) ?? []);
+          void act({ kind: 'complete_invite_link', ...(!status.default_supabase ? { supabase_url: inviteServiceUrl.trim(), supabase_anon_key: inviteServiceKey.trim() } : {}) });
+        }}>Accept</button>
+          <button disabled={busy} onClick={async () => { try { const value = await chooseInviteParentFolder(); if (value) setInviteParentFolder(value); } catch (err) { setError(String(err)); } }}>Choose another folder</button></div>
       </section></div>}
       {status?.closing && <div className="notice">Work finished. TRACKMESH is shutting down safely.</div>}
       {screen === 'settings' ? <section className="settings-screen"><div className="section-heading"><div><h2>Settings</h2><span className="muted">Device identity and optional connection services.</span></div></div>
         <details className="setup"><summary>Advanced</summary>
           <DeviceNameSettings name={status?.device?.name ?? ''} busy={busy} act={act} />
-          <div className="settings-block"><h3>Projects location</h3><p className="muted">New invitations create a named project folder here.</p><div className="input-row"><input aria-label="Projects location" value={projectsLocation} disabled={busy} onChange={event => setProjectsLocation(event.target.value)} /><button disabled={busy} onClick={async () => { try { const value = await chooseFolder(); if (value) setProjectsLocation(value); } catch (err) { setError(String(err)); } }}>Browse…</button><button disabled={busy || !projectsLocation.trim() || projectsLocation === status?.projects_location} onClick={() => void act({ kind: 'set_projects_location', location: projectsLocation })}>Save</button></div></div>
+          <div className="settings-block"><h3>Projects location</h3><p className="muted">New invitations create a named project folder here.</p><div className="input-row"><button className="path-link" title="Open in Explorer" onClick={() => void openProjectsLocation().catch(err => setError(String(err)))}>{displayPath(projectsLocation)}</button><button disabled={busy} onClick={async () => { try { const value = await chooseProjectsLocation(); if (value) { setProjectsLocation(value); await poll(); } } catch (err) { setError(String(err)); } }}>Browse…</button></div></div>
           <DefaultSupabaseSettings config={status?.default_supabase ?? null} busy={busy} act={act} />
           <p className="muted">Supabase publishable key is public project configuration. Never enter a secret key here.</p>
           <section className="global-advanced"><h3>Advanced tools</h3><p className="muted">For older builds or custom network setups.</p><div className="actions"><button disabled={busy} onClick={() => { setScreen('projects'); setSetup('join'); setFolder(''); }}>Accept invitation file</button></div></section>
@@ -425,7 +501,7 @@ export default function App() {
       <div className="section-heading"><div><h2>Projects</h2><span className="muted">Link a folder, invite a collaborator, then share or receive a version.</span></div><div className="actions">
         <button className="primary" disabled={busy} onClick={() => { setSetup('link'); setFolder(''); setUuid(crypto.randomUUID()); setName(''); setMailbox(''); setRelay(''); }}>+ Link folder</button><button className="primary" disabled={busy} onClick={() => void pasteInvite()}>Paste invite link</button></div></div>
       {setup && <section className="setup-panel"><h2>{setup === 'join' ? 'Pair with an inviter' : 'Link a local project'}</h2>
-        {setup === 'link' && <><label className="field">Project name<input value={name} maxLength={320} onChange={e => setName(e.target.value)} placeholder="Track 07" /></label>
+        {setup === 'link' && <><label className="field">Project name<input value={name} maxLength={320} onChange={e => { setName(e.target.value); setAutoName(false); }} placeholder="Track 07" /></label>
           </>}
         <label className="field">Local project folder<div className="input-row"><input value={folder} onChange={e => setFolder(e.target.value)} placeholder="D:\Projects\Track 07" /><button onClick={() => void browse()}>Browse…</button></div></label>
         {setup === 'link' && <details className="form-advanced"><summary>Advanced project settings</summary><div className="field-stack"><label className="field">Permanent project UUID<div className="input-row"><input value={uuid} onChange={e => setUuid(e.target.value)} /><button onClick={() => setUuid(crypto.randomUUID())}>New UUID</button></div></label>
@@ -433,7 +509,7 @@ export default function App() {
         {setup === 'join' && <p className="muted">Choose your local folder, then open the private invitation. TrackMesh sends your pairing request automatically; keep the inviter online with their pairing window open. Wait for their approval before Check peer and Receive. The invitation key stays in the native backend.</p>}
         <div className="actions"><button className="primary" disabled={busy || !folder || (setup === 'link' && (!name || !uuid))} onClick={() => void saveSetup()}>{setup === 'join' ? 'Accept invitation & connect…' : 'Link project'}</button><button onClick={() => setSetup(null)}>Cancel</button></div>
       </section>}
-      <div className="project-list">{status?.page?.projects.map(card => <Card key={card.project.project_id} card={card} status={status} jobStartedAt={jobStartedAt} act={act} />)}</div>
+      <div className="project-list">{status?.page?.projects.map(card => <Card key={card.project.project_id} card={card} status={status} jobStartedAt={jobStartedAt} focusProjectId={focusProjectId} act={act} />)}</div>
       {status?.ready && !status.page?.projects.length && !setup && <div className="empty"><div className="empty-icon">↗</div><h2>Your first shared project</h2><p>Link a folder or accept an invitation link to get a project.</p><div className="actions"><button className="primary" disabled={busy} onClick={() => { setSetup('link'); setFolder(''); setUuid(crypto.randomUUID()); setName(''); }}>+ Link folder</button><button className="primary" disabled={busy} onClick={() => void pasteInvite()}>Paste invite link</button></div><p>Snapshots stay immutable; files stay on your PCs.</p></div>}
       <div className="pagination"><button disabled={!offset || busy} onClick={() => setOffset(Math.max(0, offset - 32))}>Previous</button><span className="muted">Page {offset / 32 + 1}</span><button disabled={!status?.page?.has_more || busy} onClick={() => setOffset(offset + 32)}>Next</button></div>
       {status?.jobs.filter(j => !j.project_id).map(job => <JobNotice key={job.job_id} job={job} startedAt={jobStartedAt[job.job_id]} />)}
@@ -442,7 +518,7 @@ export default function App() {
     </main></div>;
 }
 
-function DeviceNameSettings({ name, busy, act }: { name: string; busy: boolean; act: (action: Action) => Promise<void> }) {
+function DeviceNameSettings({ name, busy, act }: { name: string; busy: boolean; act: (action: Action) => Promise<boolean> }) {
   const [value, setValue] = useState(name);
   useEffect(() => setValue(name), [name]);
   return <details className="settings-block"><summary>Device name</summary><div className="field-stack"><label className="field">Name shown to collaborators<input maxLength={80} value={value} disabled={busy} onChange={event => setValue(event.target.value)} /></label>
