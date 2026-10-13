@@ -332,13 +332,21 @@ pub(crate) async fn run_endpoint_publisher(
                 Err(_) => continue,
             };
             let expires_at = crypto::endpoint_record_expires_at(&record);
-            if matches!(
-                client
-                    .publish_endpoint(&engine.identity, record.seq, &expires_at, &ciphertext,)
-                    .await,
-                Ok(true)
-            ) {
-                state.supabase_acknowledged.insert(project);
+            match client
+                .publish_endpoint(&engine.identity, record.seq, &expires_at, &ciphertext)
+                .await
+            {
+                Ok(true) => {
+                    let _ = engine.record_supabase_function(project, "endpoint-publish", false);
+                    state.supabase_acknowledged.insert(project);
+                }
+                Ok(false) | Err(::mailbox::SupabaseError::Rejected) => {
+                    let _ = engine.record_supabase_function(project, "endpoint-publish", false);
+                }
+                Err(::mailbox::SupabaseError::NotDeployed) => {
+                    let _ = engine.record_supabase_function(project, "endpoint-publish", true);
+                }
+                Err(::mailbox::SupabaseError::Unavailable) => {}
             }
         }
     }

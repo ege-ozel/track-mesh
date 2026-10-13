@@ -3,7 +3,7 @@ use clap::{Args, Parser, Subcommand};
 use std::{path::PathBuf, sync::Arc, time::Duration};
 use trackmesh_core::{
     default_data_directory, observe_network, peer::PeerRuntime, Engine, MailboxRuntime,
-    PluginRuntime, SessionGrace,
+    PluginRuntime, RevokeOutcome, SessionGrace,
 };
 use uuid::Uuid;
 
@@ -244,8 +244,20 @@ async fn main() -> Result<()> {
             project_id,
             device_id,
         } => {
-            engine.revoke(project_id, device_id)?;
-            println!("Device authorization removed from {project_id}");
+            let name = engine
+                .store
+                .peers(Some(project_id))?
+                .into_iter()
+                .find(|peer| peer.device_id == device_id)
+                .map(|peer| peer.name)
+                .unwrap_or_else(|| "device".to_owned());
+            let outcome = engine.revoke(project_id, device_id)?;
+            let message = match outcome {
+                RevokeOutcome::Queued => format!("Removed {name}'s access on this PC. TrackMesh will also remove {name} from the invite service."),
+                RevokeOutcome::ImportedSupabase => format!("Removed {name}'s access on this PC. Only the device that created this project can remove {name} from the invite service."),
+                RevokeOutcome::LocalOnly => format!("Removed {name}'s access on this PC."),
+            };
+            println!("{message}");
         }
         Command::Invite {
             project_id,

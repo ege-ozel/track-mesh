@@ -25,8 +25,8 @@ pub use connection::public_ipv4_addresses;
 pub mod peer;
 pub use mailbox::{MailboxRuntime, PublicationStatus, RefreshStatus};
 pub use settings::{
-    GrantProblem, ManualPublicEndpoint, PendingGrant, ProjectBackend, ProjectBackendConfig,
-    SupabaseDefaultConfig, SupabaseProjectState,
+    GrantProblem, ManualPublicEndpoint, PendingGrant, PendingRevoke, ProjectBackend,
+    ProjectBackendConfig, SupabaseDefaultConfig, SupabaseProjectState,
 };
 pub use supabase::SupabaseRuntime;
 mod workflows;
@@ -58,6 +58,9 @@ pub struct Engine {
     settings: Mutex<settings::SettingsState>,
     supabase_states: Mutex<std::collections::HashMap<Uuid, SupabaseProjectState>>,
     grant_problems: Mutex<std::collections::HashMap<Uuid, GrantProblem>>,
+    revoke_problems: Mutex<std::collections::HashSet<Uuid>>,
+    missing_supabase_functions:
+        Mutex<std::collections::HashMap<Uuid, std::collections::HashSet<String>>>,
     upnp_mapping_enabled: AtomicBool,
     offline_heads: Mutex<std::collections::HashMap<(Uuid, Uuid), (u64, protocol::HeadRecord)>>,
     peer_heads: Mutex<std::collections::HashMap<(Uuid, Uuid), Uuid>>,
@@ -91,6 +94,8 @@ impl Engine {
             settings: Mutex::new(settings),
             supabase_states: Mutex::new(std::collections::HashMap::new()),
             grant_problems: Mutex::new(std::collections::HashMap::new()),
+            revoke_problems: Mutex::new(std::collections::HashSet::new()),
+            missing_supabase_functions: Mutex::new(std::collections::HashMap::new()),
             upnp_mapping_enabled: AtomicBool::new(upnp_mapping_enabled),
             offline_heads: Mutex::new(std::collections::HashMap::new()),
             peer_heads: Mutex::new(std::collections::HashMap::new()),
@@ -430,6 +435,52 @@ impl Engine {
             .complete_grant(&self.directory, grant)
     }
 
+    pub(crate) fn retry_supabase_grant(&self, grant: &PendingGrant) -> Result<()> {
+        self.settings
+            .lock()
+            .map_err(|_| anyhow::anyhow!("settings lock poisoned"))?
+            .replace_grant_sequence(&self.directory, grant)
+    }
+
+    pub(crate) fn pending_supabase_revokes(&self, project: Uuid) -> Result<Vec<PendingRevoke>> {
+        Ok(self
+            .settings
+            .lock()
+            .map_err(|_| anyhow::anyhow!("settings lock poisoned"))?
+            .pending_revokes(Some(project)))
+    }
+
+    pub(crate) fn complete_supabase_revoke(&self, revoke: &PendingRevoke) -> Result<()> {
+        self.settings
+            .lock()
+            .map_err(|_| anyhow::anyhow!("settings lock poisoned"))?
+            .complete_revoke(&self.directory, revoke)
+    }
+
+    pub(crate) fn mark_imported_project(&self, project: Uuid) -> Result<bool> {
+        self.settings
+            .lock()
+            .map_err(|_| anyhow::anyhow!("settings lock poisoned"))?
+            .mark_imported(&self.directory, project)
+    }
+
+    pub(crate) fn unmark_imported_project(&self, project: Uuid) -> Result<()> {
+        self.settings
+            .lock()
+            .map_err(|_| anyhow::anyhow!("settings lock poisoned"))?
+            .unmark_imported(&self.directory, project)
+    }
+
+    pub(crate) fn is_imported_project(&self, project: Uuid) -> Result<bool> {
+        Ok(self
+            .settings
+            .lock()
+            .map_err(|_| anyhow::anyhow!("settings lock poisoned"))?
+            .value
+            .imported_projects
+            .contains(&project))
+    }
+
     pub(crate) fn set_supabase_project_state(
         &self,
         project: Uuid,
@@ -482,6 +533,68 @@ impl Engine {
             .get(&project)
             .copied())
     }
+
+    pub fn revoke_problem(&self, project: Uuid) -> Result<bool> {
+        Ok(self
+            .revoke_problems
+            .lock()
+            .map_err(|_| anyhow::anyhow!("revoke problem lock poisoned"))?
+            .contains(&project))
+    }
+
+    pub(crate) fn set_revoke_problem(&self, project: Uuid) -> Result<()> {
+        self.revoke_problems
+            .lock()
+            .map_err(|_| anyhow::anyhow!("revoke problem lock poisoned"))?
+            .insert(project);
+        Ok(())
+    }
+
+    pub(crate) fn clear_revoke_problem(&self, project: Uuid) -> Result<()> {
+        self.revoke_problems
+            .lock()
+            .map_err(|_| anyhow::anyhow!("revoke problem lock poisoned"))?
+            .remove(&project);
+        Ok(())
+    }
+
+    pub fn missing_supabase_functions(&self, project: Uuid) -> Result<Vec<String>> {
+        let mut names = self
+            .missing_supabase_functions
+            .lock()
+            .map_err(|_| anyhow::anyhow!("missing function status lock poisoned"))?
+            .get(&project)
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .collect::<Vec<_>>();
+        names.sort();
+        Ok(names)
+    }
+
+    pub(crate) fn record_supabase_function(
+        &self,
+        project: Uuid,
+        operation: &str,
+        missing: bool,
+    ) -> Result<()> {
+        let mut state = self
+            .missing_supabase_functions
+            .lock()
+            .map_err(|_| anyhow::anyhow!("missing function status lock poisoned"))?;
+        let names = state.entry(project).or_default();
+        let name = operation.to_owned();
+        if missing {
+            names.insert(name);
+        } else {
+            names.remove(&name);
+        }
+        let empty = names.is_empty();
+        if empty {
+            state.remove(&project);
+        }
+        Ok(())
+    }
 }
 
 impl Engine {
@@ -500,9 +613,32 @@ impl Engine {
         );
         self.store.trust(project, &card)
     }
-    pub fn revoke(&self, project: Uuid, device: Uuid) -> Result<()> {
+    pub fn revoke(&self, project: Uuid, device: Uuid) -> Result<RevokeOutcome> {
         self.store.project(project)?;
-        self.store.revoke(project, device)
+        self.store.revoke(project, device)?;
+        let mut settings = self
+            .settings
+            .lock()
+            .map_err(|_| anyhow::anyhow!("settings lock poisoned"))?;
+        let config = settings
+            .value
+            .project_backends
+            .get(&project)
+            .cloned()
+            .unwrap_or_default();
+        if config.backend == ProjectBackend::Supabase
+            && settings.value.imported_projects.contains(&project)
+        {
+            settings.cancel_grant(&self.directory, project, device)?;
+            return Ok(RevokeOutcome::ImportedSupabase);
+        }
+        if config.backend == ProjectBackend::Supabase {
+            settings.enqueue_revoke(&self.directory, project, device)?;
+            Ok(RevokeOutcome::Queued)
+        } else {
+            settings.cancel_grant(&self.directory, project, device)?;
+            Ok(RevokeOutcome::LocalOnly)
+        }
     }
     pub fn namespaces(&self) -> Result<Vec<(libp2p::Multiaddr, String)>> {
         let mut result = Vec::new();
@@ -616,18 +752,37 @@ impl Engine {
             invite.project_id,
             Some(&key),
         )?;
-        self.link(
-            invite.project_id,
-            &invite.project_name,
-            folder,
-            invite.mailbox_url.as_deref(),
-            invite.relay_address.as_deref(),
-        )?;
-        if let Some(backend) = backend {
-            self.set_project_backend_config(invite.project_id, backend)?;
+        let marked_imported = self.mark_imported_project(invite.project_id)?;
+        let imported_project = invite.project_id;
+        let result = (|| -> Result<()> {
+            self.link(
+                invite.project_id,
+                &invite.project_name,
+                folder,
+                invite.mailbox_url.as_deref(),
+                invite.relay_address.as_deref(),
+            )?;
+            if let Some(backend) = backend {
+                self.set_project_backend_config(invite.project_id, backend)?;
+            }
+            self.pair(invite.project_id, invite.device.clone())
+        })();
+        if let Err(error) = result {
+            if marked_imported {
+                self.unmark_imported_project(imported_project)
+                    .context("could not roll back imported-project marker")?;
+            }
+            return Err(error);
         }
-        self.pair(invite.project_id, invite.device.clone())
+        Ok(())
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RevokeOutcome {
+    LocalOnly,
+    Queued,
+    ImportedSupabase,
 }
 
 pub fn default_data_directory() -> Result<PathBuf> {
