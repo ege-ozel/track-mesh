@@ -222,11 +222,11 @@ impl Action {
             Self::ApprovePairing { .. } => "Approve pairing",
             Self::RejectPairing { .. } => "Reject pairing",
             Self::RequestPairing { .. } => "Request automatic pairing",
-            Self::Send { .. } => "Send Snapshot",
+            Self::Send { .. } => "Share current version",
             Self::Publish { .. } => "Publish metadata",
             Self::Refresh { .. } => "Refresh metadata",
-            Self::Check { .. } => "Check peer",
-            Self::Receive { .. } => "Receive snapshot",
+            Self::Check { .. } => "Check connection",
+            Self::Receive { .. } => "Get collaborator's version",
             Self::UsePeerVersion { .. } => "Use collaborator's version",
             Self::Recover { .. } => "Recover installation",
         }
@@ -241,6 +241,16 @@ impl Action {
                 | Self::ApprovePairing { .. }
         )
     }
+
+    fn is_parallel_projectless_setting(&self) -> bool {
+        matches!(
+            self,
+            Self::SetDefaultSupabase { .. }
+                | Self::SetDeviceName { .. }
+                | Self::SetProjectsLocation { .. }
+                | Self::SetManualPublicEndpoint { .. }
+        )
+    }
 }
 
 #[derive(Clone, Serialize)]
@@ -252,6 +262,39 @@ pub struct Job {
     pub outcome: Option<Value>,
     pub error: Option<String>,
     pub completed_at: Option<u64>,
+}
+
+fn prune_finished_jobs(jobs: &mut Vec<Job>) {
+    while jobs.iter().filter(|job| !job.running).count() > 32 {
+        let oldest = jobs
+            .iter()
+            .enumerate()
+            .filter(|(_, job)| !job.running)
+            .min_by_key(|(_, job)| job.completed_at.unwrap_or(0))
+            .map(|(index, _)| index);
+        if let Some(index) = oldest {
+            jobs.remove(index);
+        } else {
+            break;
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum PairingApprovalState {
+    #[default]
+    Unknown,
+    Pending,
+    NotReachable,
+    Approved,
+}
+
+#[derive(Clone, Serialize)]
+pub struct PairingApproval {
+    pub project_id: Uuid,
+    pub device_id: Uuid,
+    pub state: PairingApprovalState,
 }
 
 #[derive(Clone, Serialize)]
@@ -289,6 +332,7 @@ pub struct DesktopStatus {
     pub page: Option<SummaryPage>,
     pub jobs: Vec<Job>,
     pub checks: Vec<CheckView>,
+    pub pairing_approvals: Vec<PairingApproval>,
     pub project_backends: HashMap<Uuid, ProjectBackendConfig>,
     pub default_supabase: Option<SupabaseDefaultConfig>,
     pub supabase_states: HashMap<Uuid, SupabaseProjectState>,
@@ -328,6 +372,9 @@ struct Session {
     pending_invite: Option<PendingInviteLink>,
     auto_receive_attempted: HashSet<(Uuid, Uuid)>,
     head_pulled_at: HashMap<(Uuid, Uuid), Instant>,
+    pairing_approval_states: HashMap<(Uuid, Uuid), PairingApprovalState>,
+    pairing_approval_checked_at: HashMap<(Uuid, Uuid), Instant>,
+    pairing_approval_in_flight: HashSet<(Uuid, Uuid)>,
 }
 
 struct PendingInviteLink {
@@ -366,6 +413,13 @@ impl Desktop {
         self.session
             .lock()
             .map_err(|_| anyhow::anyhow!("Desktop session lock poisoned"))
+    }
+    fn set_pairing_approval(&self, project: Uuid, device: Uuid, approval: PairingApprovalState) {
+        if let Ok(mut state) = self.lock() {
+            state
+                .pairing_approval_states
+                .insert((project, device), approval);
+        }
     }
     pub fn is_closed(&self) -> bool {
         self.session.lock().is_ok_and(|s| s.closed)
@@ -691,6 +745,22 @@ impl Desktop {
             }
             device
         });
+        let pairing_approvals = page
+            .as_ref()
+            .into_iter()
+            .flat_map(|page| page.projects.iter())
+            .flat_map(|project| {
+                project.peers.iter().map(|peer| PairingApproval {
+                    project_id: project.project.project_id,
+                    device_id: peer.device.device_id,
+                    state: state
+                        .pairing_approval_states
+                        .get(&(project.project.project_id, peer.device.device_id))
+                        .copied()
+                        .unwrap_or_default(),
+                })
+            })
+            .collect();
         Ok(DesktopStatus {
             pairing,
             listen_port: self.options.port,
@@ -713,6 +783,7 @@ impl Desktop {
             page,
             jobs: state.jobs.clone(),
             checks,
+            pairing_approvals,
             project_backends,
             default_supabase,
             supabase_states,
@@ -775,10 +846,20 @@ impl Desktop {
                     }
                     let (engine, network) = (engine.clone(), network.clone());
                     let (project, source) = (item.project.project_id, peer.device.peer_id.clone());
+                    let desktop = self.clone();
+                    let device = peer.device.device_id;
                     tauri::async_runtime::spawn(async move {
-                        let _ = engine
+                        if engine
                             .fetch_snapshot_chain(&network, project, &source, None)
-                            .await;
+                            .await
+                            .is_ok()
+                        {
+                            desktop.set_pairing_approval(
+                                project,
+                                device,
+                                PairingApprovalState::Approved,
+                            );
+                        }
                     });
                     continue;
                 };
@@ -812,6 +893,87 @@ impl Desktop {
         Ok(())
     }
 
+    pub async fn try_pairing_approval_status(
+        self: &Arc<Self>,
+        status: &DesktopStatus,
+    ) -> Result<()> {
+        let Some(page) = status.page.as_ref() else {
+            return Ok(());
+        };
+        let (network, engine) = {
+            let state = self.lock()?;
+            let (Some(network), Some(engine)) = (&state.network, &state.engine) else {
+                return Ok(());
+            };
+            (network.clone(), engine.clone())
+        };
+        for item in &page.projects {
+            if item.local_snapshot.is_some()
+                || item.project.latest_local_snapshot.is_some()
+                || item.active_transfer
+            {
+                continue;
+            }
+            for peer in &item.peers {
+                if peer.head_fetched {
+                    continue;
+                }
+                let key = (item.project.project_id, peer.device.device_id);
+                {
+                    let mut state = self.lock()?;
+                    // An expired or closed window drops the connection, so a pending
+                    // receiver must keep asking to learn that approval is no longer coming.
+                    let approval = state
+                        .pairing_approval_states
+                        .get(&key)
+                        .copied()
+                        .unwrap_or_default();
+                    if approval == PairingApprovalState::Approved
+                        || (approval != PairingApprovalState::Pending
+                            && !network.online(&peer.device.peer_id))
+                        || state.pairing_approval_in_flight.contains(&key)
+                        || state.jobs.iter().any(|job| {
+                            job.running && job.project_id == Some(item.project.project_id)
+                        })
+                        || state
+                            .pairing_approval_checked_at
+                            .get(&key)
+                            .is_some_and(|at| at.elapsed() < Duration::from_secs(10))
+                    {
+                        continue;
+                    }
+                    state.pairing_approval_in_flight.insert(key);
+                }
+                let desktop = self.clone();
+                let engine = engine.clone();
+                let network = network.clone();
+                let (project, device) = key;
+                tauri::async_runtime::spawn(async move {
+                    let approval = match engine.pairing_approval(&network, project, device).await {
+                        Ok(protocol::PairingResponse::Approved) => PairingApprovalState::Approved,
+                        Ok(protocol::PairingResponse::Pending) => PairingApprovalState::Pending,
+                        _ => PairingApprovalState::NotReachable,
+                    };
+                    if let Ok(mut state) = desktop.lock() {
+                        // A Check, head pull or receive may have proven approval meanwhile.
+                        let current = state
+                            .pairing_approval_states
+                            .entry((project, device))
+                            .or_default();
+                        if *current != PairingApprovalState::Approved {
+                            *current = approval;
+                        }
+                        state.pairing_approval_in_flight.remove(&(project, device));
+                        state
+                            .pairing_approval_checked_at
+                            .insert((project, device), Instant::now());
+                    }
+                });
+            }
+        }
+        Ok(())
+    }
+
     pub fn submit(self: &Arc<Self>, app: AppHandle, action: Action) -> Result<Uuid> {
         let mut state = self.lock()?;
         ensure!(
@@ -819,17 +981,39 @@ impl Desktop {
             "Desktop is starting or closing"
         );
         let project = action.project();
-        ensure!(
-            !state.jobs.iter().any(|job| job.running
-                && (job.project_id.is_none() || project.is_none() || job.project_id == project)),
-            "This project already has an active operation"
-        );
+        let parallel_setting = action.is_parallel_projectless_setting();
+        let conflicting = state.jobs.iter().any(|job| {
+            job.running
+                && if parallel_setting {
+                    job.project_id.is_none()
+                } else {
+                    job.project_id.is_none() || project.is_none() || job.project_id == project
+                }
+        });
+        if conflicting {
+            let projectless_conflict = project.is_none()
+                || state
+                    .jobs
+                    .iter()
+                    .any(|job| job.running && job.project_id.is_none());
+            anyhow::ensure!(
+                !conflicting,
+                if projectless_conflict {
+                    "Wait for the current operation to finish"
+                } else {
+                    "This project already has an active operation"
+                }
+            );
+        }
         ensure!(
             state.jobs.iter().filter(|job| job.running).count() < 8,
             "Too many active operations"
         );
         state.work_epoch = state.work_epoch.wrapping_add(1);
-        state.jobs.retain(|job| job.running);
+        state
+            .jobs
+            .retain(|job| job.running || job.project_id != project);
+        prune_finished_jobs(&mut state.jobs);
         state.tasks.retain(|task| !task.inner().is_finished());
         let job_id = Uuid::new_v4();
         state.jobs.push(Job {
@@ -867,6 +1051,7 @@ impl Desktop {
                         Err(error) => job.error = Some(error.to_string()),
                     }
                 }
+                prune_finished_jobs(&mut state.jobs);
             }
         }));
         Ok(job_id)
@@ -1246,8 +1431,14 @@ impl Desktop {
                     encoded_key.as_str(),
                 ));
                 let disk = engine.clone();
-                tauri::async_runtime::spawn_blocking(move || disk.open_pairing_window(project_id))
-                    .await??;
+                let replaced = tauri::async_runtime::spawn_blocking(move || {
+                    disk.open_pairing_window(project_id)
+                })
+                .await??;
+                let cleared_pending = match replaced {
+                    Some(other) => Some(engine.store.project(other)?.name),
+                    None => None,
+                };
                 network
                     .pairing_window(trackmesh_core::PAIRING_WINDOW)
                     .await?;
@@ -1267,7 +1458,7 @@ impl Desktop {
                 if let Ok(mut state) = self.lock() {
                     state.tasks.push(cleanup);
                 }
-                json!({"message": "Invite link copied — paste it within 60 s"})
+                json!({"message": "Invite link copied — paste it within 60 s", "invite_copied": true, "cleared_pending": cleared_pending})
             }
             Action::Publish { project_id } => {
                 serde_json::to_value(engine.publish_metadata(project_id, allow_http).await?)?
@@ -1288,6 +1479,7 @@ impl Desktop {
                 let result = engine
                     .check_peer(&network, project_id, &peer.peer_id)
                     .await?;
+                self.set_pairing_approval(project_id, device_id, PairingApprovalState::Approved);
                 let outcome = serde_json::to_value(&result)?;
                 let disk = engine.clone();
                 let summary =
@@ -1329,11 +1521,19 @@ impl Desktop {
                 })
                 .await??;
                 wait_for_peer(self, &network, &peer.peer_id).await?;
+                let peer_device = peer.device_id;
                 match engine
                     .receive_from_peer(&network, project_id, peer, snapshot_id)
                     .await
                 {
-                    Ok(transfer_id) => json!({"transfer_id": transfer_id}),
+                    Ok(transfer_id) => {
+                        self.set_pairing_approval(
+                            project_id,
+                            peer_device,
+                            PairingApprovalState::Approved,
+                        );
+                        json!({"transfer_id": transfer_id})
+                    }
                     Err(error) => receive_blocked_or_error(error)?,
                 }
             }
@@ -1455,17 +1655,18 @@ impl Desktop {
                             Ok(json!({"message": "Manual port forwarding settings saved"}))
                         }
                         Action::OpenPairing { project_id } => {
-                            disk.open_pairing_window(project_id)?;
-                            Ok(json!({"message": "Pairing window open for 10 minutes. Ask your collaborator to accept the invitation or retry automatic pairing. Verify the arriving device before approving."}))
+                            let replaced = disk.open_pairing_window(project_id)?;
+                            let message = if let Some(other) = replaced {
+                                format!("Pending approvals for {} were cleared; only one project can accept new devices at a time.", disk.store.project(other)?.name)
+                            } else {
+                                "Approval window open for 15 minutes. Ask your collaborator to press Try again, then verify the arriving device before approving.".to_owned()
+                            };
+                            Ok(json!({"message": message}))
                         }
                         Action::ClosePairing { project_id } => {
                             ensure!(disk.pairing_status()?.project_id == Some(project_id), "No pairing window for this project");
                             disk.close_pairing_window()?;
                             Ok(json!({"message": "Pairing window closed; unapproved requests removed"}))
-                        }
-                        Action::ApprovePairing { project_id, request_id } => {
-                            disk.approve_pairing(project_id, request_id)?;
-                            Ok(json!({"message": "Device approved for this project. Create a snapshot and keep TrackMesh open while the collaborator checks and receives."}))
                         }
                         Action::RejectPairing { project_id, request_id } => {
                             disk.reject_pairing(project_id, request_id)?;
@@ -1482,8 +1683,13 @@ impl Desktop {
                         Action::ExportInvite { project_id, .. } => {
                             let invite = disk.export_invite(project_id, addresses)?;
                             let path = documents::write_document(&app, "trackmesh-invite.json", &invite)?;
-                            disk.open_pairing_window(project_id)?;
-                            Ok(json!({"message": "Private invitation saved. Automatic pairing window open for 10 minutes; share the invitation privately, then verify and approve your collaborator here.", "path": path}))
+                            let replaced = disk.open_pairing_window(project_id)?;
+                            let message = if let Some(other) = replaced {
+                                format!("Private invitation saved. Pending approvals for {} were cleared; only one project can accept new devices at a time.", disk.store.project(other)?.name)
+                            } else {
+                                "Private invitation saved. Automatic pairing window open for 15 minutes; share the invitation privately, then verify and approve your collaborator here.".to_owned()
+                            };
+                            Ok(json!({"message": message, "path": path}))
                         }
                         Action::ExportCard => {
                             let card = disk.device_card(addresses)?;
@@ -1534,16 +1740,18 @@ impl Desktop {
                 .await
         }
         .await;
-        let (state, message) = match result {
-            Ok(protocol::PairingResponse::Pending) => ("pending", "Pairing request sent automatically. The inviter must verify and approve your device. No card file needs to be sent; wait for their confirmation."),
+        let (state, approval, message) = match result {
+            Ok(protocol::PairingResponse::Pending) => ("pending", PairingApprovalState::Pending, "Pairing request sent automatically. The inviter must verify and approve your device. No card file needs to be sent; wait for their confirmation."),
             Ok(protocol::PairingResponse::Approved) => {
                 (
                     "approved",
+                    PairingApprovalState::Approved,
                     "The inviter approved this device for the project.",
                 )
             },
-            _ => ("retry", "Automatic pairing could not complete. Your project remains imported. Ask the inviter to open a pairing window and keep TrackMesh online, then use Retry automatic pairing. Do not reimport or create a new UUID. Both devices need a build supporting automatic pairing."),
+            _ => ("retry", PairingApprovalState::NotReachable, "Automatic pairing could not complete. Your project remains imported. Ask the inviter to open a pairing window and keep TrackMesh online, then use Try again. Do not reimport or create a new UUID. Both devices need a build supporting automatic pairing."),
         };
+        self.set_pairing_approval(project, device, approval);
         json!({"project_id": project, "invitation_imported": imported, "pairing_state": state, "message": message})
     }
 
@@ -1586,10 +1794,11 @@ impl Desktop {
                         url: format!("https://{}.supabase.co", service.ref_name),
                         publishable_key: service.publishable_key,
                     });
-                    // A replaced link must not show the previous link's failure.
+                    // A new project-less invite replaces only project-less notices.
                     state
                         .jobs
-                        .retain(|job| job.running || job.label != "Accept invite link");
+                        .retain(|job| job.running || job.project_id.is_some());
+                    prune_finished_jobs(&mut state.jobs);
                     state.pending_invite = Some(PendingInviteLink {
                         id: parsed.id,
                         key: parsed.key,
@@ -1599,7 +1808,10 @@ impl Desktop {
                     return;
                 }
             }
-            state.jobs.retain(|job| job.running);
+            state
+                .jobs
+                .retain(|job| job.running || job.project_id.is_some());
+            prune_finished_jobs(&mut state.jobs);
             state.jobs.push(Job {
                 job_id: Uuid::new_v4(),
                 project_id: None,
@@ -1615,6 +1827,7 @@ impl Desktop {
                 ),
                 completed_at: None,
             });
+            prune_finished_jobs(&mut state.jobs);
         }
     }
     pub fn paste_invite_link(&self, app: &AppHandle) -> Result<()> {

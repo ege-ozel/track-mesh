@@ -661,3 +661,28 @@ Review follow-up:
 - Blocked Get notices no longer advise snapshotting first. The card explains when "Use …'s version" needs the collaborator online or the DAW-closed confirmation, and why Share is hidden before the first version.
 
 Checks: `cargo fmt --all -- --check`; locked/offline `cargo check` and strict Clippy for snapshot, transfer, crypto, core and desktop; Desktop `npm run typecheck` and `npm run build` (Node 22.11.0); `git diff --check`. Live two-instance check not done.
+
+### Phase 1 pairing-status-ux #41 — approval status and honest job notices (2026-10-13)
+
+Added a single-shot existing pairing-status request and a 15-minute pairing window. Reopening the same project's window extends it without clearing pending requests, challenges or rejections; opening another project's window reports which project's pending approvals were cleared. Desktop keeps per-project/device approval state in memory, re-derives it through a rate-limited status poll, and marks it approved after a successful head pull, Check connection or receive. The receiver card now shows the pending or unreachable approval state and Try again action, while transfer progress takes precedence. The inviter can reopen the approval window from the main invite section.
+
+Supabase grant failures now remain separate from project connectivity state: rejected grants and unavailable service are exposed as per-project in-memory problems, with the unreachable detail under Advanced and the rejected notice on the main card. Updated Desktop job labels and current-flow setup guidance, made offline-head notices say availability rather than automatic download, and let the four quick project-less settings writes overlap project jobs. Finished job notices are retained by project scope with a 32-notice cap. `VERIFIED_INBOUND` remains in the core's documented reserved reachability model; its Desktop UI branch and API type member were removed. No pairing message/proof, signed bytes, SQLite schema, dependencies, `.in-progress` border CSS, or Supabase deployment changed.
+
+Checks actually run on the final implementation tree: `cargo fmt --all -- --check`; `cargo check -p trackmesh-core -p trackmesh-desktop --locked --offline`; `cargo clippy -p trackmesh-core -p trackmesh-desktop --lib --bins --locked --offline -- -D warnings`; `cargo check -p trackmesh-desktop --target x86_64-pc-windows-msvc --locked --offline`; Desktop `npm run typecheck`; Desktop `npm run build`; and `git diff --check`. Vite warned that Node 22.11.0 is below its stated 22.12+ requirement; the production build completed. No automated tests or benchmarks were run. **Live two-instance check not done.** No live Supabase project was contacted.
+
+Manual checks for the next Windows two-instance trial:
+1. The receiver opens a link and the inviter waits more than 60 s before approving. The receiver shows "Waiting for <name> to approve this device…" the whole time, and the first version arrives after approval.
+2. The inviter rejects or lets the window expire. The receiver shows the "hasn't approved" notice. The inviter uses Reopen approval window, the receiver uses Try again, and approval works.
+3. The receiver restarts while still unapproved. The card returns to the waiting state within about 10 s of the inviter being online.
+4. Copy a link for project X, then for project Y. The job message says X's pending approvals were cleared. Re-copying a link for the same project keeps its pending request.
+5. While a long Get runs in one project, Settings changes and Link folder still work, and the other project's notices stay visible.
+6. Labels read Share current version / Check connection / Get collaborator's version everywhere, including errors.
+
+Review follow-up:
+- A pending receiver keeps asking even when the inviter looks offline. An expired or closed approval window drops the connection, so the card now moves from "Waiting for … to approve" to the "hasn't approved" notice with Try again instead of waiting forever. Approved peers are no longer polled, only one status request per peer is in flight, and a late result never downgrades a proven approval.
+- The invite-service rejection notice and the Advanced unreachable line read `grant_problem` from the project card, where the status actually serializes it; before, they never showed.
+- The "Waiting for … to share the first version" box is hidden while approval is not confirmed.
+- Copy invite link keeps its normal "copied" countdown and reports a cleared project in a separate notice.
+- Reopen approval window shows only on cards without a collaborator or with an invite created this session.
+
+Checks: `cargo fmt --all -- --check`; locked/offline `cargo check`, Windows-target check and strict Clippy for core and desktop; Desktop `npm run typecheck` and `npm run build` (Node 22.11.0); `git diff --check`. Live two-instance check not done.

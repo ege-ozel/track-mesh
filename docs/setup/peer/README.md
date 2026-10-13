@@ -4,19 +4,19 @@
 
 1. Size gelen `trackmesh://invite/...` bağlantısını Windows'ta açın. Yeni v2 link kendi Supabase servisini ve gönderenin erişilebilir adreslerini taşır; **Accept invite link** penceresinde URL veya key girmeniz gerekmez. Klasörü seçip kabul edin. Eski biçimli link, varsayılan servis ayarınızı kullanır; ayar yoksa URL/key ister.
 2. Gönderenin cihaz isteğini onaylamasını bekleyin. Onaylı işbirlikçi proje kartında görünür; bağlantı ve snapshot durumunu **Advanced** içindeki ayrıntılardan inceleyebilirsiniz.
-3. Gönderen **Share current version** ile snapshot hazırladıktan sonra DAW projesini kapatın, onay kutusunu işaretleyin ve **Get collaborator’s version** seçin. Dosyalar yalnızca bu açık Receive adımında aktarılır.
+3. Gönderen **Share current version** ile snapshot hazırladıktan sonra DAW projesini kapatın, onay kutusunu işaretleyin ve **Get collaborator's version** seçin. Dosyalar yalnızca bu açık alma adımında aktarılır.
 
 Dosya davetiyle katılma ve eski eşleştirme yolu **Advanced** altındadır. Aşağıdaki eski düğme adları önceki Desktop sürümlerini anlatır.
 
 Bu rehber arkadaşın/alıcı bilgisayar içindir. [Ortak sıra ve sorun giderme](../README.md), [ana bilgisayarın adımları](../host/README.md).
 
-İlk bağlantıyı **sen, A'ya doğru başlatırsın**. A erişilebilir olmalı; normal dışarı bağlantın varsa bu ilk Receive için kendi modeminde port-forward açman gerekmez. Kurumsal politika/güvenlik yazılımı dışarı bağlantıyı engelliyorsa ayrıca çözülmelidir. Kurulmuş bağlantıda iki yöne dosya istenebilir; A'nın sana bağımsız yeni bağlantı açması gerektiğinde kendi erişilebilirliğin ayrıca hazırlanır.
+İlk bağlantıyı **sen, A'ya doğru başlatırsın**. A erişilebilir olmalı; normal dışarı bağlantın varsa bu ilk alma için kendi modeminde port-forward açman gerekmez. Kurumsal politika/güvenlik yazılımı dışarı bağlantıyı engelliyorsa ayrıca çözülmelidir. Kurulmuş bağlantıda iki yöne dosya istenebilir; A'nın sana bağımsız yeni bağlantı açması gerektiğinde kendi erişilebilirliğin ayrıca hazırlanır.
 
-A'nın uygulamayı açması sana bildirim göndermez. Daveti import edince proje adını/UUID'sini ve A'nın imzalı cihaz kimliğini yerelde görürsün; uygulama davetteki adreslere bağlanır. A'nın listede görünmesi, online olması ve Receive'in bitmesi ayrı durumlardır. [Ortak rehber](../README.md) panel, IP değişimi ve database/relay sınırlarını açıklar.
+A'nın uygulamayı açması sana bildirim göndermez. Daveti import edince proje adını/UUID'sini ve A'nın imzalı cihaz kimliğini yerelde görürsün; uygulama davetteki adreslere bağlanır. A'nın listede görünmesi, online olması ve Get collaborator's version işleminin bitmesi ayrı durumlardır. [Ortak rehber](../README.md) panel, IP değişimi ve database/relay sınırlarını açıklar.
 
 ## Davet dosyası veya tek kullanımlık link
 
-Gönderenin size JSON davet dosyası vermesi hâlâ desteklenir; Desktop'ta **Accept invitation** akışından import edin. `trackmesh://invite/...#...` linki geldiyse Windows'ta TrackMesh ile açın. Yeni v2 link kendi Supabase servisini ve gönderene erişilebilir adresleri taşır, bu nedenle alıcı URL veya key yazmaz. Linkteki servis çözülen imzalı davetin Supabase host ve publishable key'iyle eşleşmelidir. Alıcının global varsayılan servisi yoksa linkteki servis varsayılan olarak kaydedilir; mevcut farklı varsayılan korunur. Eski link biçimi varsayılan servisi kullanır veya ayar yoksa ilk kullanımda Project URL ve Project Settings → API Keys içindeki public `sb_publishable_...` key ister. Link ve fragment anahtarı native uygulamada kalır. `sb_secret_...` anahtarını veya veritabanı parolasını girmeyin/paylaşmayın. Varsayılan servis build sırasında `TRACKMESH_DEFAULT_SUPABASE_URL` ve `TRACKMESH_DEFAULT_SUPABASE_PUBLISHABLE_KEY` env değerleriyle de sağlanabilir. Elle port yönlendirme gerekiyorsa gönderen bunu **Settings → Advanced → Manual port forwarding** içinde ayarlar. Ardından boş hedef klasörünü seçin. Decrypt/import sonrası aynı otomatik challenge/proof pairing isteği gönderilir ve gönderenin açık **Approve device** onayı gerekir. ID'yi tek başına tüketmek mümkün olduğundan linki özel kanalda paylaşın; link kullanılamaz veya süresi dolmuşsa gönderen yeni link oluşturabilir. Link için Supabase'in deploy edilmiş olması gerekir.
+Gönderenin size JSON davet dosyası vermesi hâlâ desteklenir; Desktop'ta **Accept invitation** akışından import edin. `trackmesh://invite/...#...` linki geldiyse Windows'ta TrackMesh ile açın. Yeni v2 link kendi Supabase servisini ve gönderene erişilebilir adresleri taşır, bu nedenle alıcı URL veya key yazmaz. Linkteki servis çözülen imzalı davetin Supabase host ve publishable key'iyle eşleşmelidir. Alıcının global varsayılan servisi yoksa linkteki servis varsayılan olarak kaydedilir; mevcut farklı varsayılan korunur. Eski link biçimi varsayılan servisi kullanır veya ayar yoksa ilk kullanımda Project URL ve Project Settings → API Keys içindeki public `sb_publishable_...` key ister. Link ve fragment anahtarı native uygulamada kalır. `sb_secret_...` anahtarını veya veritabanı parolasını girmeyin/paylaşmayın. Varsayılan servis build sırasında `TRACKMESH_DEFAULT_SUPABASE_URL` ve `TRACKMESH_DEFAULT_SUPABASE_PUBLISHABLE_KEY` env değerleriyle de sağlanabilir. Elle port yönlendirme gerekiyorsa gönderen bunu **Settings → Advanced → Manual port forwarding** içinde ayarlar. Ardından boş hedef klasörünü seçin. Decrypt/import sonrası aynı otomatik challenge/proof pairing isteği gönderilir ve gönderenin açık **Approve** onayı gerekir. ID'yi tek başına tüketmek mümkün olduğundan linki özel kanalda paylaşın; link kullanılamaz veya süresi dolmuşsa gönderen yeni link oluşturabilir. Link için Supabase'in deploy edilmiş olması gerekir.
 
 ## 1. Paketi ve hedef klasörü hazırla
 
@@ -33,11 +33,11 @@ Gönderenin size JSON davet dosyası vermesi hâlâ desteklenir; Desktop'ta **Ac
 1. `trackmesh-desktop.exe` aç. Varsayılan profil `%LOCALAPPDATA%\TrackMesh` olur; bu profili, secrets/veritabanını A'ya gönderme.
 2. **Accept invitation** seç; boş hedef klasörünü seçip **Accept invitation & connect…** ile A'nın özel davetini aç. Kendi başına New UUID/Link folder yapma; projeye davet üzerinden katıl.
 3. Uygulama cihaz kimliğini ve tek kullanımlık davet doğrulamasını A'ya otomatik gönderir. Kart dosyası export/gönderme adımı yoktur. A ile paneldeki public Device/Identity değerlerini karşılaştır.
-4. A mevcut projede **Pair collaborator → Approve device** yapar. Alıcı onayı 60 saniyeye kadar otomatik sorgular; ardından A'nın snapshot'ını bekle.
+4. A proje kartındaki istekte cihaz kimliğini doğrulayıp **Approve** seçer. Alıcı onayı 60 saniyeye kadar otomatik sorgular; ardından A'nın paylaştığı sürümü bekle.
 
-Import sonrası proje kartındaki `Collaborator` alanında A görünür. Seçili cihazın badge'i `DIRECT` / `RELAYED` / `OFFLINE` olur; offline kayıt yalnızca bilinen kimlik/geçmiş metadata'dır. Bağlantı kurulsa bile A onaylayana ve snapshot hazır olana kadar dosyaların alınabileceğini varsayma. Henüz Receive yapmadıysan yerel hedefte DAW projesi görünmez.
+Import sonrası proje kartındaki `Collaborator` alanında A görünür. Seçili cihazın badge'i `DIRECT` / `RELAYED` / `OFFLINE` olur; offline kayıt yalnızca bilinen kimlik/geçmiş metadata'dır. Bağlantı kurulsa bile A onaylayana ve sürüm paylaşılana kadar dosyaların alınabileceğini varsayma. Henüz Get collaborator's version yapmadıysan yerel hedefte DAW projesi görünmez.
 
-A offline veya eşleştirme penceresi kapalıysa proje import edilmiş kalır. A Open pairing window açıp online kalsın; sen **Pair collaborator → Retry automatic pairing** seç. New UUID veya yeniden import gerekmez. İki tarafta otomatik eşleştirme build'i gerekir. Eski cihazlarla manuel kart yolu **Legacy file pairing** altındadır; `20261007` ZIP'i bunu eski Import invitation/Export my device card/Import collaborator card etiketleriyle yapar.
+A offline veya eşleştirme penceresi kapalıysa proje import edilmiş kalır. A **Reopen approval window** seçip online kalsın; sen **Try again** seç. New UUID veya yeniden import gerekmez. İki tarafta otomatik eşleştirme build'i gerekir. Eski cihazlarla manuel kart yolu **Legacy file pairing** altındadır; `20261007` ZIP'i bunu eski Import invitation/Export my device card/Import collaborator card etiketleriyle yapar.
 
 ### Claude ile terminalden
 
@@ -48,16 +48,16 @@ A offline veya eşleştirme penceresi kapalıysa proje import edilmiş kalır. A
 
 CLI yolu ayrı, kalıcı `%LOCALAPPDATA%\TrackMeshPeerTrial` profili kullanır. Aynı profilde Desktop/serve/plugin owner ile CLI check/receive aynı anda çalışmasın. Mevcut kimliği/profili sıfırlama. CLI sonrasında Desktop ile devam etmek istersen aynı profille açma komutu [CLAUDE.md](CLAUDE.md) sonunda bulunur; normal çift tıklama başka profili gösterebilir.
 
-Her CLI network komutu bittiğinde kendi bağlantısı da kapanır. A'nın senden dosya alacağı bir sonraki denemede aynı profille Desktop veya `serve` açık olmalı; Send Snapshot ve alıcıdaki DAW-closed Check/Receive adımları iki yönde de geçerlidir. Açık B → A bağlantısında B'nin port-forward yapması önkoşul değildir. İki tarafın bağımsız değişiklikleri divergence oluşturursa otomatik merge yapılmaz.
+Her CLI network komutu bittiğinde kendi bağlantısı da kapanır. A'nın senden dosya alacağı bir sonraki denemede aynı profille Desktop veya `serve` açık olmalı; **Share current version** ve alıcıdaki DAW-closed **Check connection** / **Get collaborator's version** adımları iki yönde de geçerlidir. Açık B → A bağlantısında B'nin port-forward yapması önkoşul değildir. İki tarafın bağımsız değişiklikleri divergence oluşturursa otomatik merge yapılmaz.
 
 ## 3. A hazır olduğunda al ve doğrula
 
 - [ ] A cihaz isteğini onaylasın ve snapshot hazır olsun. Daveti import etmek tek başına karşılıklı yetkilendirmeyi tamamlamaz.
-- [ ] Desktop'ta doğru A peer'ını seçip **Check peer** yap. Bağlantı denemesi **30 saniyeye kadar** sürebilir; geri sayımı bekle. Offline/last-known bilgi dosyaların şu an indirilebilir olduğunu göstermez.
-- [ ] Kaynak snapshot mevcut ve Receive uygun olsun. DAW projesini kapat; Desktop'ta **I closed this project in the DAW before Receive or Recovery** kutusunu işaretle, **Receive** seç.
-- [ ] CLI kullanıyorsan “Gönderen cihazımı onayladı, snapshot hazır. DAW kapalı; seçtiğim hedef klasöre Receive yap” de. Agent önce check, sonra receive ve son check çalıştırır.
+- [ ] Desktop'ta doğru A peer'ını seçip **Check connection** yap. Bağlantı denemesi **30 saniyeye kadar** sürebilir; geri sayımı bekle. Offline/last-known bilgi dosyaların şu an indirilebilir olduğunu göstermez.
+- [ ] Kaynak sürüm paylaşılmış ve alma uygun olsun. DAW projesini kapat; Desktop'ta DAW-kapalı onay kutusunu işaretle, **Get collaborator's version** seç.
+- [ ] CLI kullanıyorsan “Gönderen cihazımı onayladı ve sürümü paylaştı. DAW kapalı; seçtiğim hedef klasöre Get collaborator's version yap” de. Agent önce check, sonra `receive` ve son check çalıştırır.
 - [ ] Apply bitmeden uygulamayı/process'i zorla kapatma. A online kalsın. Bağlantı kesilirse PAUSED session için aynı snapshot'tan Resume receive / `receive --snapshot-id` kullan.
-- [ ] Başarılı Receive ardından yeniden **Check peer** yap. Alınan dosyaları/snapshot ID'yi ve fresh eşitliği kontrol et: CLI `verified_equal: true`, Desktop güncel doğrulanmış **UP TO DATE**. A yeni snapshot oluşturmuşsa farklılık ayrıca değerlendirilir.
+- [ ] Başarılı alma ardından yeniden **Check connection** yap. Alınan dosyaları/snapshot ID'yi ve fresh eşitliği kontrol et: CLI `verified_equal: true`, Desktop güncel doğrulanmış **UP TO DATE**. A yeni sürüm paylaşmışsa farklılık ayrıca değerlendirilir.
 - [ ] Dosyaları DAW'da açıp sample eksikliği/açılışı ayrıca kontrol et; transfer başarısı bu DAW kontrolünü tek başına kanıtlamaz.
 
 ## 4. Hata olursa

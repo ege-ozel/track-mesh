@@ -49,7 +49,6 @@ function ConnectionSetup({ status, projectId, busy, act }: { status: DesktopStat
     <p><strong>Windows Firewall startup observation (read only)</strong>: {status.firewall_observation.state}. Active profiles: {status.firewall_observation.profiles.length ? status.firewall_observation.profiles.map(profile => `${profile.name}: ${profile.enabled === null ? 'UNKNOWN' : profile.enabled ? 'enabled' : 'disabled'}, block-all-inbound ${profile.block_all_inbound === null ? 'UNKNOWN' : profile.block_all_inbound}, default inbound ${profile.default_inbound ?? 'UNKNOWN'}`).join('; ') : 'UNKNOWN'}.</p>
     <p>Candidate inbound rules for local port {status.listen_port}: TCP Allow {status.firewall_observation.tcp_rules.allow}, Block {status.firewall_observation.tcp_rules.block}; UDP Allow {status.firewall_observation.udp_rules.allow}, Block {status.firewall_observation.udp_rules.block}. Third-party firewall product registration: {status.firewall_observation.third_party_products} (absence does not rule out other packet filters). Rule candidates do not prove effective permission.</p>
     {(status.firewall_observation.tcp_rules.allow !== 'PRESENT' || status.firewall_observation.udp_rules.allow !== 'PRESENT') && <p>For ABSENT/UNKNOWN details, use <code>docs/setup/AYNI-WIFI-DENEMESI.md</code> → “Takılırsanız” → <code>Win + R → wf.msc</code>. No firewall rule is changed by this observation.</p>}
-    <p><strong>UPnP mapping status (read only)</strong>: {status.network?.port_mapping.state ?? 'NOT_ATTEMPTED'}; TCP {status.network?.port_mapping.tcp ?? 'NOT_ATTEMPTED'}; UDP {status.network?.port_mapping.udp ?? 'NOT_ATTEMPTED'}. PCP is NOT_ATTEMPTED in this build; a port mapping alone does not verify inbound reachability.</p>
     {status.network?.port_mapping.detail && <p>{status.network.port_mapping.detail}</p>}
     <p>Local listen port: <strong>{status.listen_port}</strong> (default 43101). This session keeps its listen port; a different local port requires reopening with that startup port after the current owner exits.</p>
     <p>Local IPv4 / destination port: {localIps.length ? localIps.map(localIp => <code key={localIp}>{localIp}:{status.listen_port} </code>) : 'Waiting for a local IPv4 listen address. Do not use 0.0.0.0 as the router destination.'}</p>
@@ -134,16 +133,16 @@ function jobStatus(job: DesktopStatus['jobs'][number], startedAt: number | undef
   if (!job.running) {
     return job.error ? `${job.label}: ${job.error}`
       : job.label === "Use collaborator's version" && typeof job.outcome?.transfer_id === 'string' ? `Now using ${collaboratorName ?? 'collaborator'}'s version ✓`
-      : job.label === 'Receive snapshot' && typeof job.outcome?.snapshot_id === 'string' ? `Received ${collaboratorName ?? 'collaborator'}'s version ✓`
+      : job.label === "Get collaborator's version" && typeof job.outcome?.snapshot_id === 'string' ? `Received ${collaboratorName ?? 'collaborator'}'s version ✓`
       : job.outcome?.publication_error ? `Ready — ${collaboratorName ?? 'your collaborator'} can now get this version.`
       : typeof job.outcome?.snapshot_id === 'string' ? `Ready — ${collaboratorName ?? 'your collaborator'} can now get this version.`
       : job.outcome?.message ? String(job.outcome.message) : `${job.label} completed`;
   }
-  if (job.label === 'Send Snapshot') return 'Preparing current version…';
-  if (job.label !== 'Check peer') return `${job.label}…`;
+  if (job.label === 'Share current version') return 'Preparing current version…';
+  if (job.label !== 'Check connection') return `${job.label}…`;
   const elapsed = startedAt ? Math.floor((Date.now() - startedAt) / 1000) : 0;
   const remaining = Math.max(0, CHECK_TIMEOUT_SECONDS - elapsed);
-  return `Check peer… trying to reach collaborator for up to ${CHECK_TIMEOUT_SECONDS}s (${remaining}s left)`;
+  return `Check connection… trying to reach collaborator for up to ${CHECK_TIMEOUT_SECONDS}s (${remaining}s left)`;
 }
 
 function InviteCopiedNotice({ job }: { job: DesktopStatus['jobs'][number] }) {
@@ -176,12 +175,11 @@ function ConnectionAssistant({ card, status, peer, check, busy, act }: {
   const projectId = card.project.project_id;
   const candidates = status.pairing.project_id === projectId ? status.pairing.requests : [];
   const connection = peer ? status.network?.peers[peer.device.peer_id] : undefined;
-  const checkJob = status.jobs.find(job => job.project_id === projectId && job.label === 'Check peer');
-  const pairingRetry = status.jobs.some(job => job.project_id === projectId && job.outcome?.pairing_state === 'retry');
+  const checkJob = status.jobs.find(job => job.project_id === projectId && job.label === 'Check connection');
   const localIps = localIpv4Addresses(status);
   const runtimeError = status.error ?? status.network?.error;
   const [expanded, setExpanded] = useState(!connection?.online || !!runtimeError);
-  let next = 'Export a current-address invitation on the sender PC, then accept it on the receiver PC.';
+  let next = 'Invite your collaborator with Invite collaborator; they open the link.';
   if (runtimeError) next = 'The local network session has an error. Reopen TrackMesh after current work finishes.';
   else if (candidates.length) next = 'Compare the pending Device and Identity with the other PC, then approve the expected device in Pair collaborator.';
   else if (!peer && status.pairing.project_id === projectId) next = 'The pairing window is open. Keep TrackMesh running while the other PC accepts the private invitation.';
@@ -189,31 +187,30 @@ function ConnectionAssistant({ card, status, peer, check, busy, act }: {
   else if (peer && checkJob?.error) next = connection?.online
     ? 'The peer connection exists, but the project check failed. Read the error below and confirm the sender approved this device for this project.'
     : 'The connection check failed. Keep both PCs open, compare the sender’s current Wi-Fi IP with the invitation, then check guest isolation and inbound Windows Firewall on the sender. A timeout cannot identify which one blocked traffic.';
-  else if (peer && !connection?.online) next = 'Run the connection check. If the invitation was imported but approval is still pending, open the sender’s pairing window and retry automatic pairing here.';
-  else if (peer && !check?.fresh) next = 'The peer is connected. Run the connection check to verify project access and compare current snapshots.';
+  else if (peer && !connection?.online) next = 'Use Check connection when both PCs are open. If approval is pending, the sender can reopen the approval window and you can press Try again.';
+  else if (peer && !check?.fresh) next = 'The peer is connected. Use Check connection to verify project access and compare current snapshots.';
   else if (card.project.recovery_required) next = 'Local installation needs recovery. Close the DAW project and use Recover locally before another Receive.';
   else if (check?.fresh && check.result.snapshot_status === 'DIVERGED') next = 'Both versions changed. Choose which version to keep in the resolution box below; TrackMesh does not merge projects.';
   else if (check?.fresh && check.result.snapshot_status === 'UP_TO_DATE') next = 'Both snapshot heads are equal on this live connection.';
-  else if (check?.fresh && check.result.snapshot_status === 'LOCAL_AHEAD') next = 'Your local snapshot is ahead. The other PC should Check peer and Receive from this PC.';
+  else if (check?.fresh && check.result.snapshot_status === 'LOCAL_AHEAD') next = 'Your local snapshot is ahead. The other PC should use Get collaborator\'s version.';
   else if (check?.fresh && check.result.snapshot_status === 'UNKNOWN') next = 'Snapshot ancestry is unknown. Review the current project warning before receiving.';
-  else if (check?.result.remote_snapshot) next = 'A source snapshot is available. Close the DAW project, then use Receive when the button is enabled.';
-  else if (card.local_snapshot) next = 'Your local snapshot is ready. The other PC should run Check peer and Receive.';
-  else if (peer) next = 'No source snapshot is available yet. Create one with Send Snapshot on the source PC.';
+  else if (check?.result.remote_snapshot) next = 'A source snapshot is available. Close the DAW project, then use Get collaborator\'s version when the button is enabled.';
+  else if (card.local_snapshot) next = 'Your local snapshot is ready. The other PC should use Get collaborator\'s version.';
+  else if (peer) next = 'No version yet. Share current version on the PC with the project files.';
 
   return <details className="connection-assistant" open={expanded} onToggle={event => setExpanded(event.currentTarget.open)}>
     <summary>Connection check · one-click peer check and next step</summary>
     <div className="diagnostic-grid">
       <p><strong>Local app:</strong> {runtimeError ? `Network error: ${runtimeError}` : status.ready ? 'Network session running' : 'Starting'}</p>
       <p><strong>Local address:</strong> {localIps.length ? localIps.map(ip => `${ip}:${status.listen_port}`).join(', ') : `No Wi-Fi IPv4 address shown yet · listen port ${status.listen_port}`}</p>
-      <p><strong>Device:</strong> {candidates.length ? `${candidates.length} request awaiting your approval` : peer ? `${peer.device.name} recorded locally; remote approval is verified by Check peer` : status.pairing.project_id === projectId ? 'Pairing window open; waiting for the other PC' : 'No collaborator recorded yet'}</p>
+      <p><strong>Device:</strong> {candidates.length ? `${candidates.length} request awaiting your approval` : peer ? `${peer.device.name} recorded locally; remote approval is verified by Check connection` : status.pairing.project_id === projectId ? 'Pairing window open; waiting for the other PC' : 'No collaborator recorded yet'}</p>
       <p><strong>Connection:</strong> {connection?.online ? `${connection.route} · ${connection.transport}` : checkJob?.running ? 'Checking now' : checkJob?.error ? 'Last check failed' : 'No active peer connection'}</p>
       <p><strong>Peer status:</strong> {peer ? status.peer_states[peer.device.peer_id] ?? 'UNKNOWN' : 'UNKNOWN'}</p>
       <p><strong>Snapshot status:</strong> {check?.fresh ? check.result.snapshot_status.replaceAll('_', ' ') : 'No live comparison · mailbox metadata is last-known only'}</p>
-      <p><strong>Port status:</strong> {status.port_status === 'VERIFIED_INBOUND' ? 'Inbound reachability verified' : status.port_status === 'UNVERIFIED' ? 'PORT_UNVERIFIED' : 'UNKNOWN'}</p>
+      <p><strong>Port status:</strong> {status.port_status === 'UNVERIFIED' ? 'PORT_UNVERIFIED' : 'UNKNOWN'}</p>
     </div>
     <p className="diagnostic-next"><strong>Next:</strong> {next}</p>
-    {peer && <div className="actions"><button disabled={busy} onClick={() => act({ kind: 'check', project_id: projectId, device_id: peer.device.device_id })}>{checkJob?.running ? 'Checking…' : 'Run connection check'}</button>
-      {pairingRetry && <button disabled={busy} onClick={() => act({ kind: 'request_pairing', project_id: projectId, device_id: peer.device.device_id })}>Retry automatic pairing</button>}</div>}
+    {peer && <div className="actions"><button disabled={busy} onClick={() => act({ kind: 'check', project_id: projectId, device_id: peer.device.device_id })}>{checkJob?.running ? 'Checking…' : 'Check connection'}</button></div>}
     <p className="muted">This checks the app’s own session and selected peer. Windows Firewall, guest Wi-Fi isolation and the other PC’s current IP cannot be identified separately from a connection timeout.</p>
   </details>;
 }
@@ -226,6 +223,7 @@ function Card({ card, status, jobStartedAt, focusProjectId, act }: { card: Proje
   const project = card.project;
   const peer = card.peers.find(p => p.device.device_id === selected) ?? card.peers[0];
   const peerId = peer?.device.device_id;
+  const pairingApproval = peer ? status.pairing_approvals.find(item => item.project_id === project.project_id && item.device_id === peer.device.device_id)?.state ?? 'UNKNOWN' : 'UNKNOWN';
   const connection = peer ? status.network?.peers[peer.device.peer_id] : undefined;
   const online = connection?.online ?? false;
   const job = status.jobs.find(j => j.project_id === project.project_id);
@@ -257,7 +255,8 @@ function Card({ card, status, jobStartedAt, focusProjectId, act }: { card: Proje
   const waitingFirstVersion = !!peer && card.root_empty && !card.local_snapshot && !project.latest_local_snapshot
     && !project.recovery_required && !peer.announcement
     && (!transfer || transfer.state === 'COMPLETE')
-    && !status.jobs.some(item => item.project_id === project.project_id && item.running);
+    && !status.jobs.some(item => item.project_id === project.project_id && item.running)
+    && pairingApproval !== 'PENDING' && pairingApproval !== 'NOT_REACHABLE';
   const disabledReceive = busy || !peer || !online || !dawClosed || project.recovery_required || divergence;
   const rootMissing = !card.root_available;
   const chooseProjectRoot = async () => {
@@ -274,18 +273,18 @@ function Card({ card, status, jobStartedAt, focusProjectId, act }: { card: Proje
   const candidates = status.pairing.project_id === project.project_id ? status.pairing.requests : [];
   const inviteState = status.supabase_states[project.project_id] ?? 'NOT_CONFIGURED';
   const inviteReady = status.project_backends[project.project_id]?.backend === 'SUPABASE' && ['CLAIMED', 'MEMBER'].includes(inviteState);
-  const projectStatus = online ? `Connected: ${peer?.device.name}` : peer ? 'Collaborator offline' : 'Waiting for a collaborator';
+  const projectStatus = pairingApproval === 'PENDING' ? 'Waiting for approval' : online ? `Connected: ${peer?.device.name}` : peer ? 'Collaborator offline' : 'Waiting for a collaborator';
   const backendMessage = inviteState === 'UNREACHABLE'
-    ? 'The invite service cannot be reached. Check its URL and network connection in Advanced settings.'
+    ? ''
     : inviteState === 'WAITING_FOR_GRANT'
-      ? 'The invite service is waiting for its owner to approve this project.'
+      ? "Waiting for your collaborator's TrackMesh to confirm this device with the invite service. Keep both apps open."
       : status.project_backends[project.project_id]?.backend === 'SUPABASE' && inviteState === 'UNKNOWN'
         ? 'Connecting to the invite service. Try again in a moment.'
       : !status.default_supabase
         ? 'Set a default Supabase service in Settings to create invite links.'
         : 'Configure Supabase for this project in Advanced settings before creating an invite link.';
   const inviteJob = status.jobs.find(item => item.project_id === project.project_id && item.label === 'Copy invite link');
-  const copyInviteSuccess = !!inviteJob && !inviteJob.running && !inviteJob.error && typeof inviteJob.outcome?.message === 'string';
+  const copyInviteSuccess = !!inviteJob && !inviteJob.running && !inviteJob.error && inviteJob.outcome?.invite_copied === true;
   return <article id={`project-${project.project_id}`} className={`project-card${focusProjectId === project.project_id ? ' focus-highlight' : ''}`}>
     <header className="card-title"><div><h2>{project.name}</h2><button className="path-link" title="Open in Explorer" onClick={() => void openProject()}>{displayPath(project.root)}</button></div>
       <span className={`badge ${online ? 'online' : ''}`}>{projectStatus}</span></header>
@@ -297,16 +296,16 @@ function Card({ card, status, jobStartedAt, focusProjectId, act }: { card: Proje
       <div className="actions"><button className="primary" disabled={busy} onClick={() => window.confirm(`Approve ${candidate.name} (${short(candidate.device_id)}) for ${project.name}?`) && act({ kind: 'approve_pairing', project_id: project.project_id, request_id: candidate.request_id })}>Approve</button>
         <button disabled={busy} onClick={() => act({ kind: 'reject_pairing', project_id: project.project_id, request_id: candidate.request_id })}>Reject</button></div></div>)}</section>}
     <section className="invite-flow"><button className={peer ? '' : 'primary'} disabled={busy || !inviteReady} onClick={() => request('copy_invite_link')}>Invite collaborator</button>
-      <p className="muted">The link is valid for 15 minutes and can be opened once.</p>{!inviteReady && <p className="error">{backendMessage}</p>}</section>
+      <p className="muted">The link is valid for 15 minutes and can be opened once.</p>{!inviteReady && backendMessage && <p className="error">{backendMessage}</p>}
+      {status.pairing.project_id !== project.project_id && (!peer || !!inviteJob) && <><button className="text-button" disabled={busy} onClick={() => act({ kind: 'open_pairing', project_id: project.project_id })}>Reopen approval window</button><p className="muted">Use this if your collaborator opened the link but approval timed out.</p></>}</section>
     {peer && <div className="peer-line"><label>Collaborator <select value={peerId ?? ''} disabled={busy || !card.peers.length} onChange={e => { setSelected(e.target.value); setDawClosed(false); }}>
       {card.peers.map(p => <option key={p.device.device_id} value={p.device.device_id}>{p.device.name}</option>)}</select></label>
       <button className="text-button danger" disabled={busy} onClick={() => window.confirm(`Remove ${peer.device.name}'s access to this project?`) && act({ kind: 'revoke', project_id: project.project_id, device_id: peer.device.device_id })}>Revoke</button>
       <button className="text-button" disabled={busy} onClick={() => act({ kind: 'check', project_id: project.project_id, device_id: peer.device.device_id })}>Check connection</button></div>}
-    {status.supabase_states[project.project_id] === 'UNREACHABLE' && <p className="muted">Invite service is unreachable. Check its connection in Advanced.</p>}
-    {status.supabase_states[project.project_id] === 'WAITING_FOR_GRANT' && <p className="muted">Waiting for the invite service owner to approve this project.</p>}
+    {card.grant_problem === 'REJECTED' && peer && <p className="muted">The invite service didn't accept {peer.device.name} (the project may already have 3 devices, or too many requests). Direct sharing still works.</p>}
     {project.recovery_required && <div className="notice danger">Close the DAW and recover this project before receiving another version.</div>}
     {remoteAhead && peer?.announcement && <div className="new-version-notice" role="status">New version from {peer.device.name} — {time(peer.announcement.created_at)}</div>}
-    {showOfflineHead && offlineHead && peer && <div className="new-version-notice" role="status">New version from {peer.device.name} — {time(offlineHead.created_at)} · downloads when {peer.device.name} is online</div>}
+    {showOfflineHead && offlineHead && peer && <div className="new-version-notice" role="status">New version from {peer.device.name} — {time(offlineHead.created_at)} · available when {peer.device.name} is online</div>}
     {peer && status.network?.port_mapping.consent_enabled && mappingState === 'MAPPED' && <p className="muted">Router set up ✓</p>}
     {peer && status.network?.port_mapping.consent_enabled && mappingState === 'FAILED' && <p className="muted">Router didn't allow automatic setup — connection may still work</p>}
     {peer && (resolveDivergence || resolveLocalChanges) && <section className="notice resolution-box" role="region" aria-label="Resolve project versions">
@@ -317,26 +316,28 @@ function Card({ card, status, jobStartedAt, focusProjectId, act }: { card: Proje
         <button className="primary" disabled={busy || !online || !dawClosed} onClick={() => window.confirm(`Replace this folder with ${peer.device.name}'s version? Your current files are saved first and kept next to the project.`) && act({ kind: 'use_peer_version', project_id: project.project_id, device_id: peer.device.device_id, daw_closed: dawClosed })}>Use {peer.device.name}'s version</button>
         <button disabled={busy || rootMissing || project.recovery_required} onClick={() => { setKeepMinePending(true); void act({ kind: 'send', project_id: project.project_id }); }}>Keep mine</button>
       </div>
-      {keepMinePending && job?.label === 'Send Snapshot' && !job.running && !job.error && <p role="status">Ask {peer.device.name} to choose ‘Use {status.device?.name ?? 'your device'}'s version’.</p>}
+      {keepMinePending && job?.label === 'Share current version' && !job.running && !job.error && <p role="status">Ask {peer.device.name} to choose ‘Use {status.device?.name ?? 'your device'}'s version’.</p>}
     </section>}
     {peer && usedTransferId && <div className="delivery-receipt" role="status">Now using {peer.device.name}'s version ✓ <button className="text-button" onClick={() => void openPreviousVersion(project.project_id, usedTransferId).catch(error => setFolderError(String(error)))}>Open my previous files</button></div>}
-    {peer && <section className="share-flow"><div><h3>Share current version</h3><p className="muted">Save a version here for your collaborator to receive.</p>
+    {peer && pairingApproval !== 'PENDING' && <section className="share-flow"><div><h3>Share current version</h3><p className="muted">Save a version here for your collaborator to receive.</p>
       {firstShareBlocked
         ? <p className="muted">{card.root_empty && !card.peers.some(item => !!item.announcement || !!item.offline_head || !!item.known_lineage) ? 'Add your project files to this folder first.' : `Get ${peer.device.name}'s version first.`}</p>
         : <button className={remoteAhead ? '' : 'primary'} disabled={busy || rootMissing || project.recovery_required} onClick={() => request('send')}>Share current version</button>}</div>
-      <div><h3>Get collaborator’s version</h3><p className="muted">Receive copies the selected collaborator’s snapshot into this folder.</p>
+      <div><h3>Get collaborator's version</h3><p className="muted">Receive copies the selected collaborator's snapshot into this folder.</p>
         <label className="confirmation"><input type="checkbox" checked={dawClosed} disabled={busy} onChange={e => setDawClosed(e.target.checked)} /> I closed this project in the DAW</label>
-        <button className={remoteAhead ? 'primary' : ''} disabled={disabledReceive || rootMissing} onClick={() => act({ kind: 'receive', project_id: project.project_id, device_id: peer.device.device_id, snapshot_id: resumable ? transfer.snapshot_id : null, daw_closed: dawClosed })}>{resumable ? 'Resume receive' : 'Get collaborator’s version'}</button>
+        <button className={remoteAhead ? 'primary' : ''} disabled={disabledReceive || rootMissing} onClick={() => act({ kind: 'receive', project_id: project.project_id, device_id: peer.device.device_id, snapshot_id: resumable ? transfer.snapshot_id : null, daw_closed: dawClosed })}>{resumable ? 'Resume receive' : "Get collaborator's version"}</button>
         {!online && <p className="muted">Open TrackMesh on both PCs to receive files.</p>}</div></section>}
     {authoredHere && sharedLatest && peer && card.local_snapshot && !receipt && <InProgress>Waiting for {peer.device.name} to get this version…</InProgress>}
+    {!receiving && pairingApproval === 'PENDING' && peer && <InProgress>Waiting for {peer.device.name} to approve this device…</InProgress>}
+    {!receiving && pairingApproval === 'NOT_REACHABLE' && peer && <section className="notice" role="status"><p>{peer.device.name} hasn't approved this device yet. Ask them to open TrackMesh; if approval timed out, they can press ‘Reopen approval window’. Then press Try again.</p><button disabled={busy} onClick={() => act({ kind: 'request_pairing', project_id: project.project_id, device_id: peer.device.device_id })}>Try again</button></section>}
     {waitingFirstVersion && peer && <InProgress>Waiting for {peer.device.name} to share the first version…</InProgress>}
     {receipt && peer && <div className="delivery-receipt" role="status">Received by {peer.device.name} ✓</div>}
     {transfer && <div className="transfer"><div><span>Transfer {transfer.state.replaceAll('_', ' ')}</span><span>{bytes(transfer.completed_bytes)} / {bytes(transfer.total_bytes)}{transfer.total_bytes ? ` · ${Math.min(100, Math.round(transfer.completed_bytes * 100 / transfer.total_bytes))} %` : ''}</span></div>
       <progress max={Math.max(transfer.total_bytes, 1)} value={transfer.completed_bytes} />
       {transfer.error && <p className="error">{transfer.error}</p>}{receiving && <InProgress>Receiving project… {transfer.total_bytes ? Math.min(100, Math.round(transfer.completed_bytes * 100 / transfer.total_bytes)) : 0} %</InProgress>}</div>}
-    {job && !peer && ((job.running && ['Accept invitation and request pairing', 'Request automatic pairing'].includes(job.label)) || job.outcome?.pairing_state === 'pending') && <InProgress>Waiting for the inviter to approve…</InProgress>}
     {inviteJob?.running && <InProgress>Creating invite link…</InProgress>}
     {copyInviteSuccess && inviteJob && <InviteCopiedNotice job={inviteJob} />}
+    {copyInviteSuccess && typeof inviteJob?.outcome?.cleared_pending === 'string' && <div className="job" role="status">Pending approvals for {inviteJob.outcome.cleared_pending} were cleared; only one project can accept new devices at a time.</div>}
     {job && !(job.label === 'Copy invite link' && (job.running || copyInviteSuccess)) && <JobNotice job={job} startedAt={jobStartedAt[job.job_id]} collaboratorName={peer?.device.name} />}
     <details className="setup advanced-card"><summary>Advanced</summary>
       <section className="advanced-group"><h3>Connection details</h3>
@@ -346,6 +347,7 @@ function Card({ card, status, jobStartedAt, focusProjectId, act }: { card: Proje
       <ConnectionAssistant card={card} status={status} peer={peer} check={check} busy={busy} act={act} />
       {project.recovery_required && <button disabled={busy || !dawClosed} onClick={() => act({ kind: 'recover', project_id: project.project_id, daw_closed: dawClosed })}>Recover locally</button>}
       <ProjectBackendSettings projectId={project.project_id} config={status.project_backends[project.project_id]} defaultSupabase={status.default_supabase} state={status.supabase_states[project.project_id] ?? 'NOT_CONFIGURED'} busy={busy} act={act} />
+      {(card.grant_problem === 'UNREACHABLE' || inviteState === 'UNREACHABLE') && <p className="muted">Invite service is unreachable. Check its URL and network connection in Advanced settings.</p>}
       <p>UUID <code>{project.project_id}</code></p><p>Mailbox <code>{project.mailbox_url ?? 'Not configured'}</code></p><p>Relay <code>{project.relay_address ?? 'Not configured'}</code></p>
       <p>Mailbox stores encrypted metadata and snapshot announcements only. A configured private relay provides a peer connection path when direct connection fails; files still transfer directly from an online collaborator.</p>
       <button disabled={busy} onClick={() => void chooseProjectRoot()}>{rootMissing ? 'Locate folder' : 'Change folder'}</button>
@@ -484,7 +486,7 @@ export default function App() {
     focusBaseline.current = new Set(status?.page?.projects.map(item => item.project.project_id) ?? []);
     try { await pasteInviteLink(); setError(''); await poll(); } catch (err) { setError(String(err)); }
   };
-  const busy = !status?.ready || status.closing || status.jobs.some(j => j.running);
+  const busy = !status?.ready || status.closing || status.jobs.some(j => j.running && !j.project_id);
   const browse = async () => {
     try {
       const value = await chooseFolder();
@@ -550,7 +552,7 @@ export default function App() {
         <label className="field">Local project folder<div className="input-row"><input value={folder} onChange={e => setFolder(e.target.value)} placeholder="D:\Projects\Track 07" /><button onClick={() => void browse()}>Browse…</button></div></label>
         {setup === 'link' && <details className="form-advanced"><summary>Advanced project settings</summary><div className="field-stack"><label className="field">Permanent project UUID<div className="input-row"><input value={uuid} onChange={e => setUuid(e.target.value)} /><button onClick={() => setUuid(crypto.randomUUID())}>New UUID</button></div></label>
           <label className="field">HTTPS mailbox (optional)<input value={mailbox} onChange={e => setMailbox(e.target.value)} placeholder="https://mailbox.example.com" /></label><label className="field">Pinned relay address (optional)<input value={relay} onChange={e => setRelay(e.target.value)} placeholder="/dns4/relay.example.com/udp/4001/quic-v1/p2p/…" /></label></div></details>}
-        {setup === 'join' && <p className="muted">Choose your local folder, then open the private invitation. TrackMesh sends your pairing request automatically; keep the inviter online with their pairing window open. Wait for their approval before Check peer and Receive. The invitation key stays in the native backend.</p>}
+        {setup === 'join' && <p className="muted">Choose your local folder, then open the private invitation. TrackMesh sends your pairing request automatically; keep the inviter online with their approval window open. Wait for approval before Check connection and Get collaborator's version. The invitation key stays in the native backend.</p>}
         <div className="actions"><button className="primary" disabled={busy || !folder || (setup === 'link' && (!name || !uuid))} onClick={() => void saveSetup()}>{setup === 'join' ? 'Accept invitation & connect…' : 'Link project'}</button><button onClick={() => setSetup(null)}>Cancel</button></div>
       </section>}
       <div className="project-list">{status?.page?.projects.map(card => <Card key={card.project.project_id} card={card} status={status} jobStartedAt={jobStartedAt} focusProjectId={focusProjectId} act={act} />)}</div>

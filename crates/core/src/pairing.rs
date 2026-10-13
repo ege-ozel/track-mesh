@@ -11,7 +11,7 @@ use std::{
 };
 use uuid::Uuid;
 
-pub const PAIRING_WINDOW: Duration = Duration::from_secs(600);
+pub const PAIRING_WINDOW: Duration = Duration::from_secs(900);
 const CHALLENGE_TTL: Duration = Duration::from_secs(60);
 #[derive(Default)]
 pub(crate) struct PairingState {
@@ -61,12 +61,36 @@ impl PairingState {
     }
 }
 impl Engine {
-    pub fn open_pairing_window(&self, project: Uuid) -> Result<()> {
+    pub async fn pairing_approval(
+        &self,
+        network: &Network,
+        project: Uuid,
+        inviter_device: Uuid,
+    ) -> Result<PairingResponse> {
+        let inviter = self.paired_peer(project, inviter_device)?;
+        network
+            .pairing_request(
+                &inviter.peer_id,
+                PairingRequest::Status {
+                    project_id: project,
+                },
+            )
+            .await
+    }
+
+    pub fn open_pairing_window(&self, project: Uuid) -> Result<Option<Uuid>> {
         self.store.project(project)?;
         let mut state = self
             .pairing
             .lock()
             .map_err(|_| anyhow::anyhow!("pairing state unavailable"))?;
+        if let Some(window) = state.active() {
+            if window.project == project {
+                window.until = Instant::now() + PAIRING_WINDOW;
+                return Ok(None);
+            }
+        }
+        let lost_project = state.window.take().map(|window| window.project);
         state.window = Some(Window {
             project,
             until: Instant::now() + PAIRING_WINDOW,
@@ -74,7 +98,7 @@ impl Engine {
             pending: HashMap::new(),
             rejected: HashSet::new(),
         });
-        Ok(())
+        Ok(lost_project)
     }
     pub fn close_pairing_window(&self) -> Result<()> {
         self.pairing

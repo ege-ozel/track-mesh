@@ -21,6 +21,7 @@ export interface ProjectCard {
   project: { project_id: string; name: string; root: string; latest_local_snapshot: string | null;
     last_verified_at: string | null; verified_peer_id: string | null; verified_snapshot_id: string | null;
     recovery_required: boolean; mailbox_url: string | null; relay_address: string | null; error: string | null };
+  grant_problem: 'REJECTED' | 'UNREACHABLE' | null;
   root_available: boolean;
   root_empty: boolean;
   active_transfer: boolean;
@@ -66,7 +67,8 @@ export interface DesktopStatus {
   projects_location: string;
   network: { addresses: string[]; error: string | null; peers: Record<string, Connection>; received_snapshots: { peer_id: string; project_id: string; snapshot_id: string }[]; port_mapping: { consent_enabled: boolean; state: string; tcp: string; udp: string; detail: string | null; external_ip_state: string }; reachability: { state: string; peer: string | null; transport: string | null; at_unix_seconds: number | null } } | null;
   peer_states: Record<string, 'CONNECTED' | 'OFFLINE'>;
-  port_status: 'UNVERIFIED' | 'VERIFIED_INBOUND' | null;
+  port_status: 'UNVERIFIED' | null;
+  pairing_approvals: { project_id: string; device_id: string; state: 'UNKNOWN' | 'PENDING' | 'NOT_REACHABLE' | 'APPROVED' }[];
   network_observation: NetworkObservation;
   firewall_observation: FirewallObservation;
   page: { projects: ProjectCard[]; offset: number; has_more: boolean } | null;

@@ -4,12 +4,12 @@ Kart dosyası geri gönderilmez; cihaz kimliği ve davet sahipliği kanıtı şi
 
 ## İşlem sırası
 
-1. Gönderen daveti native olarak export eder. Yalnızca o proje için 10 dakikalık pencere açılır; başka projeye pencere açmak önceki onaysız istekleri temizler. Pencere ayrıca elle açılabilir/kapatılabilir; restart veya süre sonu onaysız istekleri temizler.
+1. Gönderen daveti native olarak export eder. Yalnızca o proje için 15 dakikalık pencere açılır. Aynı proje için pencereyi yeniden açmak süresini uzatır ve bekleyen istekleri korur; başka projeye pencere açmak önceki onaysız istekleri temizler. Pencere ayrıca elle açılabilir/kapatılabilir; restart veya süre sonu onaysız istekleri temizler.
 2. Alıcı native import ile davetteki imzalı inviter kimliğini ve proje anahtarını yerelde öğrenir. TCP/Noise veya QUIC/TLS bağlantısı davetteki PeerId'ye yapılır. Davet ve anahtar React/agent/clipboard/log üzerinden geçirilmez.
 3. `/trackmesh/pairing/1` kanalındaki Begin mesajı proje UUID'si ve mevcut imzalı DeviceCard'ı taşır. Core kart imzasını, public key'den türetilen PeerId'yi ve gerçek transport PeerId eşleşmesini doğrular.
 4. Gönderen 24-byte OS-random challenge üretir. Challenge 60 saniye geçerlidir, tek peer'a ve o anki imzalı karta bağlıdır. Prove mesajı nonce ve empty-message XChaCha20-Poly1305 authentication tag taşır; **proje anahtarını taşımaz**. AAD domain, proje UUID'si, inviter/requester PeerId ve kartın mevcut signing bytes/imzasını bağlar. Crypto mevcut AEAD primitive'ini kullanır; yeni dependency yoktur.
 5. Challenge doğrulamadan önce tüketilir; geçersiz veya tekrar kullanılan proof aynı nonce ile yeniden denenemez. Başarılı proof yalnızca bekleyen aday oluşturur, DB yetkisi vermez. İsim kimlik kanıtı değildir; public Device/Identity değerlerini beklediğiniz kişiyle karşılaştırın. Gönderen Approve veya Reject seçer.
-6. Alıcı Status mesajlarıyla 60 saniyeye kadar onayı sorgular. Daha geç onayda Retry automatic pairing / CLI request-pairing sonucu alır. Pencere/bağlantı kapanırsa yeniden import yerine uygun koşullarda retry yapılır. Reddedilen PeerId aynı pencere içinde yeniden aday oluşturamaz; yeni pencere bunu sıfırlar.
+6. Alıcı Status mesajlarıyla 60 saniyeye kadar onayı sorgular. Daha geç onayda **Try again** / CLI `request-pairing` sonucu alır. Pencere/bağlantı kapanırsa yeniden import yerine uygun koşullarda retry yapılır. Reddedilen PeerId aynı pencere içinde yeniden aday oluşturamaz; yeni pencere bunu sıfırlar.
 
 ## Ağ ve kaynak sınırları
 
@@ -28,6 +28,6 @@ Panel yalnızca geçerli proof üreten adayların public kimliğini gösterir. A
 
 Pasif ağ dinleme şifreli bağlantının uygulama içeriğini açık metin olarak vermez; IP/port, trafik boyutu ve zamanlama gizlenmez. [libp2p güvenli kanallar](https://libp2p.io/docs/secure-channels-overview/), [Noise](https://docs.libp2p.io/concepts/secure-comm/noise/) ve [QUIC/TLS RFC 9001](https://www.rfc-editor.org/info/rfc9001/) transport korumasını açıklar.
 
-Çalınmış davet, proje anahtarına sahip olma kanıtını üretebilir; bu yüzden son onayda beklenen cihazı doğrulamak gerekir. 10 dakikalık pencere davet/proje anahtarının ömrünü kısaltmaz ve eski daveti iptal etmez. Zararlı uç cihaz, yanlış kişiyi onaylama, yanlış/yerine konmuş davet paylaşımı ve pairing penceresi açıkken kaynak tüketme/DoS ayrı risklerdir. Bu sınırlar bir güvenlik denetimi veya gerçek internet saldırı doğrulaması değildir. Gerçek gözlem ve kalan doğrulama işleri yalnızca [IMPLEMENTATION.md](../IMPLEMENTATION.md) içinde kaydedilir.
+Çalınmış davet, proje anahtarına sahip olma kanıtını üretebilir; bu yüzden son onayda beklenen cihazı doğrulamak gerekir. 15 dakikalık pencere davet/proje anahtarının ömrünü kısaltmaz ve eski daveti iptal etmez. Zararlı uç cihaz, yanlış kişiyi onaylama, yanlış/yerine konmuş davet paylaşımı ve pairing penceresi açıkken kaynak tüketme/DoS ayrı risklerdir. Bu sınırlar bir güvenlik denetimi veya gerçek internet saldırı doğrulaması değildir. Gerçek gözlem ve kalan doğrulama işleri yalnızca [IMPLEMENTATION.md](../IMPLEMENTATION.md) içinde kaydedilir.
 
 İki taraf otomatik eşleştirme build'ini kullanmalıdır. Eski invitation/card dosyaları uyumludur; eski uygulamayla manuel kart alışverişi **Legacy file pairing** altında kalır. `20261007` dağıtım ZIP'i otomatik protokol/CLI komutunu içermez; `20261008` AutoPairing build'i içerir, `20261009` paketi aynı EXE'lerle güncel yönergeyi taşır. [Ortak akış](README.md), [gönderen](host/README.md), [alıcı](peer/README.md).

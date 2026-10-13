@@ -21,6 +21,10 @@ pub async fn get_status(
         .try_auto_first_receive(app, &status)
         .await
         .map_err(|error| error.to_string())?;
+    desktop
+        .try_pairing_approval_status(&status)
+        .await
+        .map_err(|error| error.to_string())?;
     Ok(status)
 }
 

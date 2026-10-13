@@ -1,5 +1,5 @@
 //! Compact adapter status. Signed manifests and complete history stay outside polling.
-use crate::Engine;
+use crate::{Engine, GrantProblem};
 use anyhow::Result;
 use protocol::DeviceCard;
 use serde::Serialize;
@@ -15,6 +15,8 @@ pub struct PeerSummary {
     /// Conservative relationship from stored ancestry; never a live equality claim.
     pub known_lineage: Option<Lineage>,
     pub offline_head: Option<OfflineHead>,
+    /// Whether this Engine has fetched a head from this peer during its lifetime.
+    pub head_fetched: bool,
 }
 
 #[derive(Serialize)]
@@ -34,6 +36,7 @@ pub struct ProjectSummary {
     pub local_snapshot: Option<SnapshotInfo>,
     pub peers: Vec<PeerSummary>,
     pub pending_publications: u64,
+    pub grant_problem: Option<GrantProblem>,
     pub transfer: Option<TransferInfo>,
 }
 
@@ -90,6 +93,8 @@ impl Engine {
                         file_count: head.file_count,
                     });
                 Ok(PeerSummary {
+                    head_fetched: fetched_heads
+                        .contains_key(&(project.project_id, device.device_id)),
                     known_lineage: fetched_heads
                         .get(&(project.project_id, device.device_id))
                         .copied()
@@ -122,6 +127,7 @@ impl Engine {
             pending_publications: self
                 .store
                 .pending_publication_count(project.project_id, self.identity.device_id)?,
+            grant_problem: self.grant_problem(project.project_id)?,
             transfer: self.store.latest_transfer(project.project_id)?,
             project,
             peers,
