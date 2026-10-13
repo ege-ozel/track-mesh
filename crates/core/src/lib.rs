@@ -25,7 +25,8 @@ pub use connection::public_ipv4_addresses;
 pub mod peer;
 pub use mailbox::{MailboxRuntime, PublicationStatus, RefreshStatus};
 pub use settings::{
-    PendingGrant, ProjectBackend, ProjectBackendConfig, SupabaseDefaultConfig, SupabaseProjectState,
+    ManualPublicEndpoint, PendingGrant, ProjectBackend, ProjectBackendConfig,
+    SupabaseDefaultConfig, SupabaseProjectState,
 };
 pub use supabase::SupabaseRuntime;
 mod workflows;
@@ -319,6 +320,44 @@ impl Engine {
             .lock()
             .map_err(|_| anyhow::anyhow!("settings lock poisoned"))?
             .set_projects_location(&self.directory, location.to_string_lossy().into_owned())
+    }
+
+    pub fn manual_public_endpoint(&self) -> Result<Option<ManualPublicEndpoint>> {
+        let endpoint = self
+            .settings
+            .lock()
+            .map_err(|_| anyhow::anyhow!("settings lock poisoned"))?
+            .value
+            .manual_public_endpoint
+            .clone();
+        if let Some(value) = &endpoint {
+            public_ipv4_addresses(&value.public_ipv4, value.external_port)?;
+        }
+        Ok(endpoint)
+    }
+
+    pub fn set_manual_public_endpoint(
+        &self,
+        public_ipv4: Option<String>,
+        external_port: Option<u16>,
+    ) -> Result<()> {
+        let endpoint = match (public_ipv4, external_port) {
+            (None, None) => None,
+            (Some(public_ipv4), Some(external_port)) => {
+                public_ipv4_addresses(&public_ipv4, external_port)?;
+                Some(ManualPublicEndpoint {
+                    public_ipv4,
+                    external_port,
+                })
+            }
+            _ => {
+                anyhow::bail!("Enter both the public IPv4 address and external port, or clear both")
+            }
+        };
+        self.settings
+            .lock()
+            .map_err(|_| anyhow::anyhow!("settings lock poisoned"))?
+            .set_manual_public_endpoint(&self.directory, endpoint)
     }
 
     pub fn set_default_supabase_config(&self, config: Option<SupabaseDefaultConfig>) -> Result<()> {

@@ -9,6 +9,7 @@ fn main() {
             "choose_invite_parent_folder",
             "open_invite_parent_folder",
             "paste_invite_link",
+            "cancel_invite_link",
             "submit_action",
             "set_upnp_mapping",
             "close_app",

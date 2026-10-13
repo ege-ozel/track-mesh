@@ -278,10 +278,7 @@ impl Actor {
                 }
             }
         }
-        let mut candidates = candidates.into_iter().collect::<Vec<_>>();
-        candidates.sort();
-        candidates.truncate(protocol::MAX_ENDPOINT_ADDRESSES);
-        candidates
+        select_endpoint_candidates(candidates.into_iter().collect())
     }
 
     fn add_external_source(&mut self, address: Multiaddr, source: ExternalAddressSource) {
@@ -667,6 +664,24 @@ fn without_local_peer_suffix(address: &Multiaddr, local_peer: &str) -> String {
     let address = address.to_string();
     let suffix = format!("/p2p/{local_peer}");
     address.strip_suffix(&suffix).unwrap_or(&address).to_owned()
+}
+
+pub fn is_public_endpoint_address(address: &str) -> bool {
+    address
+        .parse::<Multiaddr>()
+        .is_ok_and(|address| is_public_remote(&address))
+}
+
+fn select_endpoint_candidates(mut candidates: Vec<String>) -> Vec<String> {
+    candidates.sort();
+    candidates.dedup();
+    let (mut public, private): (Vec<_>, Vec<_>) = candidates
+        .into_iter()
+        .partition(|address| is_public_endpoint_address(address));
+    public.extend(private);
+    public.truncate(protocol::MAX_ENDPOINT_ADDRESSES);
+    public.sort();
+    public
 }
 
 fn is_public_remote(address: &Multiaddr) -> bool {
