@@ -65,6 +65,14 @@ trackmesh-agent.exe check 550e8400-e29b-41d4-a716-446655440000 --device-id <A-de
 trackmesh-agent.exe status
 ```
 
+When histories diverge, the normal command refuses to overwrite the local version. To explicitly keep the peer's version, close the DAW and run `receive` with `--replace-local`; TrackMesh first snapshots changed local files and retains the prior folder in the transfer backup:
+
+```powershell
+trackmesh-agent.exe receive 550e8400-e29b-41d4-a716-446655440000 --device-id <A-device-UUID> --replace-local
+```
+
+This option permits a divergent target only. Unknown ancestry and a locally-ahead target remain blocked. No files are merged.
+
 Both receiving and serving processes answer authenticated peer requests. An established B → A connection carries traffic both ways after mutual project authorization. B does not need port forwarding to return traffic or serve over that existing connection; independent A → B dialing after disconnect needs B's own reachable address/relay path. Keep both runtimes active, a source snapshot ready and the receiving DAW closed; divergence and recovery rules still apply. `check` contacts the peer and reports lineage, verified equality, `DIRECT`/`RELAYED`, and transport. `status` reports local history and the last verification; it makes no assertion that an offline peer is currently up to date. Source unavailability produces an error after the connection timeout (`--connect-timeout`, default 30 seconds).
 
 QUIC addresses get a separate first attempt. Direct TCP is attempted after the QUIC handshake timeout, and relay circuits follow failed direct attempts. Local inbound firewall access must permit the chosen UDP/TCP port. There is no public DHT, multicast discovery, or swarm.

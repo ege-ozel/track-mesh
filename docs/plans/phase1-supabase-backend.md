@@ -99,6 +99,8 @@ Gönderen Core M5d wrapper'ını proje anahtarıyla XChaCha20-Poly1305 altında 
 
 Endpoint kayıtlarının retention süresi en fazla iç `expires_at` kadar olmalı; örnek tasarım limiti M5'teki maksimum 15 dakikadır. Liste cursor'u endpoint tablosuna özeldir ve announcement cursor'uyla paylaşılmaz. Supabase görebildiği metadata'ya `project_route`, `writer_device_id`, `seq`, `created_at`, istek IP'si/zamanı/boyutu ve erişim örüntülerini ekleyebilir; şifreleme bunları gizlemez.
 
+`head_records` offline hint'leri cihazın kendi authored snapshot'ını değil, o cihazın projedeki **mevcut local head**'ini bildirir. Bu nedenle cihaz, başka bir eşten aldığı imzalı snapshot'ı kendi writer kimliği ve mevcut imza/AEAD doğrulama biçimiyle yayımlayabilir; record içindeki author, writer'dan farklı olabilir. Client yazar imzasını trusted key ile doğrular ve `(project, writer)` başına en yüksek `seq` değerini tutar. Wrapper, AAD, imza byte'ları, sunucu sözleşmesi ve tablo şeması değişmez. Eski kayıtlarda `author == writer` olduğundan geriye dönük doğrulama sürer.
+
 ## 4. Şifreli davet drop ve atomik tek okuma
 
 The following first-pass proposal is retained as design history. The concrete local M6 implementation and selected limits are recorded immediately before §5; those implementation details supersede unverified rate-limit and cleanup suggestions below.

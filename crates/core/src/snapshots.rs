@@ -36,8 +36,17 @@ impl Engine {
             parent.as_ref().map(|s| &s.manifest),
             &ScanOptions::default(),
         )?;
+        ensure!(
+            !manifest.files.is_empty(),
+            "Nothing to share yet: the project folder is empty."
+        );
         if let Some(parent) = &parent {
-            if parent.manifest.files == manifest.files {
+            let previous = parent
+                .manifest
+                .files
+                .iter()
+                .filter(|file| !snapshot::is_ignored_path(&file.relative_path));
+            if previous.eq(manifest.files.iter()) {
                 return Ok(parent.clone());
             }
         }

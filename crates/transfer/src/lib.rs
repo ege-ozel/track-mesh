@@ -11,7 +11,7 @@ mod serving;
 mod verification;
 
 pub use journal::stage_path;
-pub use receiver::Receiver;
+pub use receiver::{ReceiveRefusal, Receiver};
 pub use recovery::recover_project;
 pub use serving::serve;
 pub use verification::validate_snapshot;

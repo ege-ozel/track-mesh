@@ -98,11 +98,13 @@ export type Action =
   | { kind: 'copy_invite_link'; project_id: string }
   | { kind: 'revoke' | 'check'; project_id: string; device_id: string }
   | { kind: 'receive'; project_id: string; device_id: string; snapshot_id: string | null; daw_closed: boolean }
+  | { kind: 'use_peer_version'; project_id: string; device_id: string; daw_closed: boolean }
   | { kind: 'recover'; project_id: string; daw_closed: boolean };
 
 export const getStatus = (offset: number) => invoke<DesktopStatus>('get_status', { offset });
 export const chooseFolder = () => invoke<string | null>('choose_folder');
 export const openProjectFolder = (projectId: string) => invoke<void>('open_project_folder', { projectId });
+export const openPreviousVersion = (projectId: string, transferId: string) => invoke<void>('open_previous_version', { projectId, transferId });
 export const openProjectsLocation = () => invoke<void>('open_projects_location');
 export const chooseProjectsLocation = () => invoke<string | null>('choose_projects_location');
 export const chooseInviteParentFolder = () => invoke<string | null>('choose_invite_parent_folder');

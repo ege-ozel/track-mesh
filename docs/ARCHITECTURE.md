@@ -43,6 +43,8 @@ Setup documents describe existing adapters and manual router/firewall configurat
 5. Commit snapshot, files, chunk index/catalog, and new local head in one SQLite transaction with an expected-head check.
 6. Keep authored metadata `PENDING` until the mailbox client receives a matching server ACK.
 
+The scanner omits only Ableton `.asd` analysis files, the top-level `Backup/` tree, and Windows/macOS metadata files (`desktop.ini`, `Thumbs.db`, `ehthumbs.db`, `.DS_Store`). These files neither delay save settlement nor enter new manifests. Older signed manifests remain unchanged; comparisons filter those paths on both sides, and receive leaves ignored files in the working folder without moving or overwriting them. A folder with no remaining project files cannot be shared as its first snapshot.
+
 The working folder may change after a snapshot. Retained chunk data keeps the committed snapshot retrievable. Automatic pruning is outside the current implementation.
 
 An accepted `SAVE_OBSERVED` starts a bounded project job. Observations coalesce for a two-second quiet period (60-second debounce limit); new observations during active work request a settled follow-up pass. With the same project lock/recovery guard held, a blocking worker samples path/size/mtime inventory every 500 ms until it has been unchanged for two seconds and Windows read handles deny active writers. Settlement has a 60-second wait limit and at most three guarded scanner attempts. Hashing a stable large project may exceed the wait limit; partial manifests never commit. Unchanged content reuses its head. This is triggered by IPC events, with no continuous filesystem watcher. A quiet inventory is a conservative heuristic, not proof of host save completion.
@@ -66,6 +68,8 @@ authenticate/authorize → validate signed ancestry → reject divergence/local 
 → SQLite recovery marker + APPLYING → BACKUP → INSTALL → COMMIT → DONE
 → clear recovery marker + COMPLETE → optional online peer equality ACK
 ```
+
+The normal receive path still refuses local edits and divergent histories. An explicit, confirmed “Use collaborator's version” path first snapshots changed local work without announcing it, then permits a divergent target while retaining the same signed ancestry checks, project lock, clean-base validation and apply journal. The previous files remain in the transfer's sibling `backup` folder. Projects are never merged and no divergence is silently overwritten.
 
 - A chunk is complete only after hash verification and durable chunk-store installation. SQLite progress is not a substitute for rehashing the cache on resume.
 - Staging and backups are siblings of the project on its volume. Backups are retained. Only empty directories are removed; no recursive deletion applies snapshots.

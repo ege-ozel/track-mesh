@@ -34,6 +34,7 @@ Desktop: Tauri 2, React, TypeScript, Rust. Core: Rust, Tokio, SQLite, BLAKE3, ru
 - Start with internally configurable fixed 4 MiB chunks. No content-defined chunking.
 - SQLite is authoritative local history. Snapshot creation is transactional; incomplete manifests never appear complete.
 - Divergent children of the same parent are surfaced and block silent overwrite. No automatic conflict merging.
+- A confirmed “Use collaborator's version” choice may replace a divergent working folder only after saving its current changes as a local snapshot; the prior files remain in the transfer backup, and this is never a silent overwrite.
 - Receive only missing required chunks. Verify chunk BLAKE3 before durable completion; verify full files and fsync before atomic rename. Persist enough state to resume completed chunks and recover interrupted installation.
 - Trusted peers have name, PeerId, application public key, and explicit trust. Reject unknown peers; discovery only locates already-authorized collaborators. Expose `DIRECT` versus `RELAYED`.
 

@@ -108,6 +108,18 @@ pub async fn cancel_invite_link(desktop: State<'_, Arc<Desktop>>) -> Result<(), 
 }
 
 #[tauri::command]
+pub async fn open_previous_version(
+    desktop: State<'_, Arc<Desktop>>,
+    project_id: Uuid,
+    transfer_id: Uuid,
+) -> Result<(), String> {
+    desktop
+        .open_previous_version(project_id, transfer_id)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub async fn submit_action(
     app: AppHandle,
     desktop: State<'_, Arc<Desktop>>,

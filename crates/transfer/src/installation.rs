@@ -19,6 +19,9 @@ pub(crate) fn backup_originals(
 ) -> Result<()> {
     if let Some(base) = base {
         for expected in &base.manifest.files {
+            if snapshot::is_ignored_path(&expected.relative_path) {
+                continue;
+            }
             let saved = snapshot::safe_path(backup, &expected.relative_path)?;
             let original = snapshot::safe_path(root, &expected.relative_path)?;
             if saved.exists() {
@@ -34,6 +37,9 @@ pub(crate) fn backup_originals(
     }
     let mut directories: HashSet<PathBuf> = HashSet::new();
     for relative in old_files {
+        if snapshot::is_ignored_path(relative) {
+            continue;
+        }
         let path = root.join(relative);
         for parent in path.ancestors().skip(1).take_while(|p| *p != root) {
             directories.insert(parent.to_owned());
@@ -61,6 +67,9 @@ pub(crate) fn backup_originals(
 
 pub(crate) fn install_files(root: &Path, prepared: &Path, s: &SignedSnapshot) -> Result<()> {
     for expected in &s.manifest.files {
+        if snapshot::is_ignored_path(&expected.relative_path) {
+            continue;
+        }
         let target = snapshot::safe_path(root, &expected.relative_path)?;
         let staged = snapshot::safe_path(prepared, &expected.relative_path)?;
         if !staged.exists() {
@@ -97,8 +106,13 @@ pub(crate) fn commit_snapshot(
             chunk_size: s.manifest.chunk_size,
         },
     )?;
+    let expected = s
+        .manifest
+        .files
+        .iter()
+        .filter(|file| !snapshot::is_ignored_path(&file.relative_path));
     ensure!(
-        actual.files == s.manifest.files,
+        expected.eq(actual.files.iter()),
         "installed project differs from received snapshot; backups retained"
     );
     if project.latest_local_snapshot != Some(s.manifest.snapshot_id) {

@@ -6350,6 +6350,7 @@ dependencies = [
  "trackmesh-mailbox",
  "trackmesh-network",
  "trackmesh-protocol",
+ "trackmesh-transfer",
  "uuid",
  "windows-sys 0.61.2",
  "zeroize",

@@ -76,10 +76,6 @@ pub fn wrap_head_record(
         !project_route.is_nil() && seq > 0,
         "invalid head mailbox metadata"
     );
-    ensure!(
-        record.author_device_id == identity.device_id,
-        "head author mismatch"
-    );
     let mut signed = record.clone();
     signed.signature = identity.sign(&signed.signing_bytes()?);
     let plaintext = serde_json::to_vec(&signed)?;
@@ -160,8 +156,7 @@ pub fn unwrap_head_record(
     );
     let record: HeadRecord = serde_json::from_slice(&plaintext).context("invalid head record")?;
     ensure!(
-        record.author_device_id == writer_device_id
-            && !record.snapshot_id.is_nil()
+        !record.snapshot_id.is_nil()
             && record.parent_id != Some(record.snapshot_id)
             && protocol::valid_hash(&record.manifest_hash)
             && record.total_size <= protocol::MAX_PROJECT_BYTES

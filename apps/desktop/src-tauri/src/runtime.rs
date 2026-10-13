@@ -22,6 +22,18 @@ use trackmesh_core::{
 };
 use uuid::Uuid;
 
+fn receive_blocked_or_error(error: anyhow::Error) -> Result<Value> {
+    if let Some(refusal) = error.downcast_ref::<transfer::ReceiveRefusal>() {
+        let code = match refusal {
+            transfer::ReceiveRefusal::LocalChanges => "LOCAL_CHANGES",
+            transfer::ReceiveRefusal::Diverged => "DIVERGED",
+        };
+        Ok(json!({"receive_blocked": code, "message": refusal.to_string()}))
+    } else {
+        Err(error)
+    }
+}
+
 #[derive(Clone, Parser)]
 #[command(
     name = "trackmesh-desktop",
@@ -140,6 +152,11 @@ pub enum Action {
         snapshot_id: Option<Uuid>,
         daw_closed: bool,
     },
+    UsePeerVersion {
+        project_id: Uuid,
+        device_id: Uuid,
+        daw_closed: bool,
+    },
     Recover {
         project_id: Uuid,
         daw_closed: bool,
@@ -173,6 +190,7 @@ impl Action {
             | Self::Refresh { project_id }
             | Self::Check { project_id, .. }
             | Self::Receive { project_id, .. }
+            | Self::UsePeerVersion { project_id, .. }
             | Self::Recover { project_id, .. } => Some(*project_id),
         }
     }
@@ -202,6 +220,7 @@ impl Action {
             Self::Refresh { .. } => "Refresh metadata",
             Self::Check { .. } => "Check peer",
             Self::Receive { .. } => "Receive snapshot",
+            Self::UsePeerVersion { .. } => "Use collaborator's version",
             Self::Recover { .. } => "Recover installation",
         }
     }
@@ -895,6 +914,24 @@ impl Desktop {
         Ok(())
     }
 
+    pub async fn open_previous_version(&self, project_id: Uuid, transfer_id: Uuid) -> Result<()> {
+        let engine = self
+            .lock()?
+            .engine
+            .clone()
+            .context("Engine is unavailable")?;
+        let path = tauri::async_runtime::spawn_blocking(move || -> Result<PathBuf> {
+            engine.store.project(project_id)?;
+            let stage = transfer::stage_path(&engine.directory, project_id, transfer_id)?;
+            let backup = stage.join("backup");
+            ensure!(backup.is_dir(), "Previous version backup is not available");
+            Ok(backup)
+        })
+        .await??;
+        tauri::async_runtime::spawn_blocking(move || documents::open_in_explorer(&path)).await??;
+        Ok(())
+    }
+
     pub async fn open_projects_location(&self) -> Result<()> {
         let engine = self
             .lock()?
@@ -1124,10 +1161,9 @@ impl Desktop {
                 request_id,
             } => {
                 let disk = engine.clone();
-                let had_snapshot = tauri::async_runtime::spawn_blocking(move || {
-                    Ok::<_, anyhow::Error>(
-                        disk.project_summary(project_id)?.local_snapshot.is_some(),
-                    )
+                let (had_snapshot, root_empty) = tauri::async_runtime::spawn_blocking(move || {
+                    let summary = disk.project_summary(project_id)?;
+                    Ok::<_, anyhow::Error>((summary.local_snapshot.is_some(), summary.root_empty))
                 })
                 .await??;
                 let disk = engine.clone();
@@ -1135,7 +1171,9 @@ impl Desktop {
                     disk.approve_pairing(project_id, request_id)
                 })
                 .await??;
-                if !had_snapshot {
+                if !had_snapshot && root_empty {
+                    json!({"message": "Collaborator approved. Add your project files, then Share."})
+                } else if !had_snapshot {
                     let shared = engine
                         .send_snapshot(&network, project_id, allow_http)
                         .await?;
@@ -1283,7 +1321,33 @@ impl Desktop {
                 })
                 .await??;
                 wait_for_peer(self, &network, &peer.peer_id).await?;
-                json!({"transfer_id": engine.receive_from_peer(&network, project_id, peer, snapshot_id).await?})
+                match engine
+                    .receive_from_peer(&network, project_id, peer, snapshot_id)
+                    .await
+                {
+                    Ok(transfer_id) => json!({"transfer_id": transfer_id}),
+                    Err(error) => receive_blocked_or_error(error)?,
+                }
+            }
+            Action::UsePeerVersion {
+                project_id,
+                device_id,
+                daw_closed,
+            } => {
+                ensure!(daw_closed, "Close the DAW project before receiving");
+                let disk = engine.clone();
+                let peer = tauri::async_runtime::spawn_blocking(move || {
+                    disk.paired_peer(project_id, device_id)
+                })
+                .await??;
+                wait_for_peer(self, &network, &peer.peer_id).await?;
+                match engine
+                    .receive_replacing_local(&network, project_id, peer, None)
+                    .await
+                {
+                    Ok(transfer_id) => json!({"transfer_id": transfer_id}),
+                    Err(error) => receive_blocked_or_error(error)?,
+                }
             }
             Action::Recover {
                 project_id,

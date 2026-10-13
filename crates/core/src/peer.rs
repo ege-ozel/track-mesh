@@ -548,10 +548,11 @@ impl Engine {
         source: &str,
         target: Option<Uuid>,
     ) -> Result<Option<SignedSnapshot>> {
-        ensure!(
-            self.store.authorized(project, source)?.is_some(),
-            "peer is not paired with this project"
-        );
+        let source_device = self
+            .store
+            .authorized(project, source)?
+            .context("peer is not paired with this project")?
+            .device_id;
         let response = network
             .request(
                 source,
@@ -568,13 +569,25 @@ impl Engine {
             )
             .await?;
         let snapshot = match response {
-            PeerResponse::Head { snapshot: None } if target.is_none() => return Ok(None),
+            PeerResponse::Head { snapshot: None } if target.is_none() => {
+                self.peer_heads
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("peer head lock poisoned"))?
+                    .remove(&(project, source_device));
+                return Ok(None);
+            }
             PeerResponse::Head { snapshot: Some(s) } if target.is_none() => s,
             PeerResponse::Manifest { snapshot: s } if target.is_some() => s,
             PeerResponse::Error { message } => anyhow::bail!(message),
             _ => anyhow::bail!("unexpected peer manifest response"),
         };
         transfer::validate_snapshot(&self.store, &self.identity, &snapshot, project, target)?;
+        if target.is_none() {
+            self.peer_heads
+                .lock()
+                .map_err(|_| anyhow::anyhow!("peer head lock poisoned"))?
+                .insert((project, source_device), snapshot.manifest.snapshot_id);
+        }
         self.remember_author_manifest(&snapshot)?;
         let local = self.store.project(project)?.latest_local_snapshot;
         let mut seen = HashSet::from([snapshot.manifest.snapshot_id]);

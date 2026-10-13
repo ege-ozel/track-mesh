@@ -58,7 +58,8 @@ pub struct Engine {
     settings: Mutex<settings::SettingsState>,
     supabase_states: Mutex<std::collections::HashMap<Uuid, SupabaseProjectState>>,
     upnp_mapping_enabled: AtomicBool,
-    offline_heads: Mutex<std::collections::HashMap<(Uuid, Uuid), protocol::HeadRecord>>,
+    offline_heads: Mutex<std::collections::HashMap<(Uuid, Uuid), (u64, protocol::HeadRecord)>>,
+    peer_heads: Mutex<std::collections::HashMap<(Uuid, Uuid), Uuid>>,
 }
 impl Engine {
     pub fn open(directory: PathBuf, name: &str) -> Result<Self> {
@@ -90,6 +91,7 @@ impl Engine {
             supabase_states: Mutex::new(std::collections::HashMap::new()),
             upnp_mapping_enabled: AtomicBool::new(upnp_mapping_enabled),
             offline_heads: Mutex::new(std::collections::HashMap::new()),
+            peer_heads: Mutex::new(std::collections::HashMap::new()),
         })
     }
     pub fn link(
@@ -125,7 +127,13 @@ impl Engine {
             Some(&head.manifest),
             &snapshot::ScanOptions::default(),
         )?;
-        Ok(manifest.files != head.manifest.files)
+        let expected = head
+            .manifest
+            .files
+            .iter()
+            .filter(|file| !snapshot::is_ignored_path(&file.relative_path))
+            .collect::<Vec<_>>();
+        Ok(!manifest.files.iter().eq(expected))
     }
 
     pub fn change_project_root(
@@ -164,7 +172,13 @@ impl Engine {
                 Some(&head.manifest),
                 &snapshot::ScanOptions::default(),
             )?;
-            let differs = manifest.files != head.manifest.files;
+            let expected = head
+                .manifest
+                .files
+                .iter()
+                .filter(|file| !snapshot::is_ignored_path(&file.relative_path))
+                .collect::<Vec<_>>();
+            let differs = !manifest.files.iter().eq(expected);
             ensure!(
                 !differs || confirm_difference,
                 "This folder differs from your last shared version"
@@ -204,18 +218,17 @@ impl Engine {
     pub(crate) fn remember_offline_head(
         &self,
         project: Uuid,
+        writer: Uuid,
+        seq: u64,
         record: protocol::HeadRecord,
     ) -> Result<()> {
         let mut heads = self
             .offline_heads
             .lock()
             .map_err(|_| anyhow::anyhow!("offline head lock poisoned"))?;
-        let key = (project, record.author_device_id);
-        if heads
-            .get(&key)
-            .is_none_or(|old| old.created_at <= record.created_at)
-        {
-            heads.insert(key, record);
+        let key = (project, writer);
+        if heads.get(&key).is_none_or(|(old_seq, _)| seq > *old_seq) {
+            heads.insert(key, (seq, record));
         }
         Ok(())
     }
