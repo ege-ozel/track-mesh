@@ -19,6 +19,7 @@ pub struct PeerSummary {
 #[derive(Serialize)]
 pub struct ProjectSummary {
     pub project: Project,
+    pub root_available: bool,
     pub local_snapshot: Option<SnapshotInfo>,
     pub peers: Vec<PeerSummary>,
     pub pending_publications: u64,
@@ -65,6 +66,8 @@ impl Engine {
             })
             .collect::<Result<Vec<_>>>()?;
         Ok(ProjectSummary {
+            root_available: std::fs::metadata(&project.root)
+                .is_ok_and(|metadata| metadata.is_dir()),
             local_snapshot: project
                 .latest_local_snapshot
                 .map(|id| self.store.snapshot_info(id))

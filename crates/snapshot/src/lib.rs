@@ -169,6 +169,35 @@ pub fn scan(
     parent: Option<&Manifest>,
     options: &ScanOptions,
 ) -> Result<Manifest> {
+    scan_impl(
+        root,
+        Some(chunks),
+        project_id,
+        author_device_id,
+        parent,
+        options,
+    )
+}
+
+/// Scan a folder for comparison without adding chunks to the local chunk store.
+pub fn scan_for_comparison(
+    root: &Path,
+    project_id: Uuid,
+    author_device_id: Uuid,
+    parent: Option<&Manifest>,
+    options: &ScanOptions,
+) -> Result<Manifest> {
+    scan_impl(root, None, project_id, author_device_id, parent, options)
+}
+
+fn scan_impl(
+    root: &Path,
+    chunks: Option<&ChunkStore>,
+    project_id: Uuid,
+    author_device_id: Uuid,
+    parent: Option<&Manifest>,
+    options: &ScanOptions,
+) -> Result<Manifest> {
     ensure!(
         options.chunk_size > 0 && options.chunk_size <= protocol::MAX_CHUNK_SIZE,
         "invalid scan chunk size"
@@ -225,7 +254,9 @@ pub fn scan(
             }
             hasher.update(&buffer[..filled]);
             let digest = protocol::hash(&buffer[..filled]);
-            chunks.put(&digest, &buffer[..filled])?;
+            if let Some(chunks) = chunks {
+                chunks.put(&digest, &buffer[..filled])?;
+            }
             parts.push(Chunk {
                 offset,
                 size: filled as u32,

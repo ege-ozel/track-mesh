@@ -74,6 +74,25 @@ impl Store {
         )?;
         Ok(())
     }
+    pub fn update_root(&self, id: Uuid, root: &Path) -> Result<()> {
+        let root = root.to_str().context("project folder must be Unicode")?;
+        let db = self.lock()?;
+        let conflicts: i64 = db.query_row(
+            "SELECT COUNT(*) FROM projects WHERE project_id<>?1 AND root=?2",
+            params![id.to_string(), root],
+            |row| row.get(0),
+        )?;
+        ensure!(
+            conflicts == 0,
+            "folder is already linked to another project"
+        );
+        let changed = db.execute(
+            "UPDATE projects SET root=?2 WHERE project_id=?1",
+            params![id.to_string(), root],
+        )?;
+        ensure!(changed == 1, "project UUID is not linked");
+        Ok(())
+    }
     pub fn set_project_error(&self, id: Uuid, error: Option<&str>) -> Result<()> {
         self.lock()?.execute(
             "UPDATE projects SET error=?2 WHERE project_id=?1",

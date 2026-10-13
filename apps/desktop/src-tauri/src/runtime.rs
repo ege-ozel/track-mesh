@@ -56,6 +56,10 @@ pub enum Action {
         mailbox_url: Option<String>,
         relay_address: Option<String>,
     },
+    ChangeProjectRoot {
+        project_id: Uuid,
+        folder: PathBuf,
+    },
     SetProjectBackend {
         project_id: Uuid,
         backend: ProjectBackend,
@@ -149,6 +153,7 @@ impl Action {
             | Self::SetProjectsLocation { .. }
             | Self::ExportCard => None,
             Self::Link { project_id, .. }
+            | Self::ChangeProjectRoot { project_id, .. }
             | Self::SetProjectBackend { project_id, .. }
             | Self::Pair { project_id }
             | Self::Revoke { project_id, .. }
@@ -170,6 +175,7 @@ impl Action {
     fn label(&self) -> &'static str {
         match self {
             Self::Link { .. } => "Link folder",
+            Self::ChangeProjectRoot { .. } => "Change project folder",
             Self::SetProjectBackend { .. } => "Save project backend",
             Self::SetDefaultSupabase { .. } => "Save default Supabase settings",
             Self::SetDeviceName { .. } => "Save device name",
@@ -1034,6 +1040,7 @@ impl Desktop {
             }
             action => {
                 let disk = engine.clone();
+                let dialog_app = app.clone();
                 let mut addresses = advertised_addresses(&network);
                 addresses.extend(self.options.external_address.iter().cloned());
                 addresses.sort();
@@ -1056,6 +1063,15 @@ impl Desktop {
                                 }
                             }
                             Ok(json!({"message": "Folder linked"}))
+                        }
+                        Action::ChangeProjectRoot { project_id, folder } => {
+                            let differs = disk.project_root_differs(project_id, &folder)?;
+                            if differs {
+                                let accepted = dialog_app.dialog().message("This folder differs from your last shared version").title("Change project folder?").kind(tauri_plugin_dialog::MessageDialogKind::Warning).blocking_show();
+                                ensure!(accepted, "Folder change cancelled");
+                            }
+                            disk.change_project_root(project_id, &folder, differs)?;
+                            Ok(json!({"message": "Project folder updated"}))
                         }
                         Action::SetProjectBackend { project_id, backend, supabase_url, supabase_anon_key } => {
                             disk.set_project_backend_config(project_id, ProjectBackendConfig { backend, supabase_url, supabase_anon_key })?;

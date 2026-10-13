@@ -108,6 +108,67 @@ impl Engine {
         crypto::project_key(&self.directory.join("secrets/projects"), project, None)?;
         self.store.link(project, name, &root, mailbox, relay)
     }
+
+    pub fn project_root_differs(&self, project: Uuid, root: &Path) -> Result<bool> {
+        let root = snapshot::canonical_root(root)?;
+        self.store.project(project)?;
+        let Some(head) = self.store.head(project)? else {
+            return Ok(false);
+        };
+        let manifest = snapshot::scan_for_comparison(
+            &root,
+            project,
+            head.manifest.author_device_id,
+            Some(&head.manifest),
+            &snapshot::ScanOptions::default(),
+        )?;
+        Ok(manifest.files != head.manifest.files)
+    }
+
+    pub fn change_project_root(
+        &self,
+        project: Uuid,
+        root: &Path,
+        confirm_difference: bool,
+    ) -> Result<()> {
+        let _lock = snapshot::ProjectLock::acquire(&self.directory, project)?;
+        let project_record = self.store.project(project)?;
+        ensure!(
+            !project_record.recovery_required,
+            "finish project recovery before changing its folder"
+        );
+        for transfer in self.store.transfers()? {
+            if transfer.project_id == project && transfer.state != storage::TransferState::Complete
+            {
+                anyhow::bail!("finish the active transfer or recovery before changing this folder");
+            }
+        }
+        let root = snapshot::canonical_root(root)?;
+        ensure!(
+            !self.directory.starts_with(&root) && !root.starts_with(&self.directory),
+            "project folder and agent data directory must be separate"
+        );
+        for other in self.store.projects()? {
+            if other.project_id != project && Path::new(&other.root) == root {
+                anyhow::bail!("folder is already linked to another project");
+            }
+        }
+        if let Some(head) = self.store.head(project)? {
+            let manifest = snapshot::scan_for_comparison(
+                &root,
+                project,
+                head.manifest.author_device_id,
+                Some(&head.manifest),
+                &snapshot::ScanOptions::default(),
+            )?;
+            let differs = manifest.files != head.manifest.files;
+            ensure!(
+                !differs || confirm_difference,
+                "This folder differs from your last shared version"
+            );
+        }
+        self.store.update_root(project, &root)
+    }
 }
 
 impl Engine {

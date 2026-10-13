@@ -220,6 +220,7 @@ function ConnectionAssistant({ card, status, peer, check, busy, act }: {
 function Card({ card, status, jobStartedAt, act }: { card: ProjectCard; status: DesktopStatus; jobStartedAt: Record<string, number>; act: (action: Action) => Promise<void> }) {
   const [selected, setSelected] = useState('');
   const [dawClosed, setDawClosed] = useState(false);
+  const [folderError, setFolderError] = useState('');
   const project = card.project;
   const peer = card.peers.find(p => p.device.device_id === selected) ?? card.peers[0];
   const peerId = peer?.device.device_id;
@@ -237,6 +238,13 @@ function Card({ card, status, jobStartedAt, act }: { card: ProjectCard; status: 
   const receipt = !!authoredHere && !!peer && !!card.local_snapshot && status.network?.received_snapshots.some(item => item.project_id === project.project_id && item.peer_id === peer.device.peer_id && item.snapshot_id === card.local_snapshot?.snapshot_id);
   const sharedLatest = !!card.local_snapshot && status.jobs.some(item => item.project_id === project.project_id && item.outcome?.snapshot_id === card.local_snapshot?.snapshot_id);
   const disabledReceive = busy || !peer || !online || !dawClosed || project.recovery_required || divergence;
+  const rootMissing = !card.root_available;
+  const chooseProjectRoot = async () => {
+    try {
+      const folder = await chooseFolder();
+      if (folder) await act({ kind: 'change_project_root', project_id: project.project_id, folder });
+    } catch (err) { setFolderError(String(err)); }
+  };
   const request = (kind: 'send' | 'publish' | 'refresh' | 'pair' | 'export_invite' | 'copy_invite_link') => act({ kind, project_id: project.project_id });
   const candidates = status.pairing.project_id === project.project_id ? status.pairing.requests : [];
   const inviteState = status.supabase_states[project.project_id] ?? 'NOT_CONFIGURED';
@@ -254,6 +262,8 @@ function Card({ card, status, jobStartedAt, act }: { card: ProjectCard; status: 
   return <article className="project-card">
     <header className="card-title"><div><h2>{project.name}</h2><p title={displayPath(project.root)}>{displayPath(project.root)}</p></div>
       <span className={`badge ${online ? 'online' : ''}`}>{projectStatus}</span></header>
+    {rootMissing && <section className="notice danger"><strong>Project folder not found</strong><div className="actions"><button className="primary" disabled={busy} onClick={() => void chooseProjectRoot()}>Locate folder</button></div></section>}
+    {folderError && <p className="error">{folderError}</p>}
     {candidates.length > 0 && <section className="approval-box"><h3>Approve collaborator</h3>{candidates.map(candidate => <div key={candidate.request_id}>
       <p><strong>{candidate.name}</strong> · device {short(candidate.device_id)}</p>
       <p className="muted">Confirm this is the collaborator you invited before granting project access.</p>
@@ -269,10 +279,10 @@ function Card({ card, status, jobStartedAt, act }: { card: ProjectCard; status: 
     {status.supabase_states[project.project_id] === 'WAITING_FOR_GRANT' && <p className="muted">Waiting for the invite service owner to approve this project.</p>}
     {project.recovery_required && <div className="notice danger">Close the DAW and recover this project before receiving another version.</div>}
     {peer && <section className="share-flow"><div><h3>Share current version</h3><p className="muted">Save a version here for your collaborator to receive.</p>
-      <button className="primary" disabled={busy || project.recovery_required} onClick={() => request('send')}>Share current version</button></div>
+      <button className="primary" disabled={busy || rootMissing || project.recovery_required} onClick={() => request('send')}>Share current version</button></div>
       <div><h3>Get collaborator’s version</h3><p className="muted">Receive copies the selected collaborator’s snapshot into this folder.</p>
         <label className="confirmation"><input type="checkbox" checked={dawClosed} disabled={busy} onChange={e => setDawClosed(e.target.checked)} /> I closed this project in the DAW</label>
-        <button disabled={disabledReceive} onClick={() => act({ kind: 'receive', project_id: project.project_id, device_id: peer.device.device_id, snapshot_id: resumable ? transfer.snapshot_id : null, daw_closed: dawClosed })}>{resumable ? 'Resume receive' : 'Get collaborator’s version'}</button>
+        <button disabled={disabledReceive || rootMissing} onClick={() => act({ kind: 'receive', project_id: project.project_id, device_id: peer.device.device_id, snapshot_id: resumable ? transfer.snapshot_id : null, daw_closed: dawClosed })}>{resumable ? 'Resume receive' : 'Get collaborator’s version'}</button>
         {!online && <p className="muted">Open TrackMesh on both PCs to receive files.</p>}</div></section>}
     {authoredHere && sharedLatest && peer && card.local_snapshot && !receipt && <InProgress>Waiting for {peer.device.name} to get this version…</InProgress>}
     {receipt && peer && <div className="delivery-receipt" role="status">Received by {peer.device.name} ✓</div>}
@@ -291,6 +301,7 @@ function Card({ card, status, jobStartedAt, act }: { card: ProjectCard; status: 
       <ProjectBackendSettings projectId={project.project_id} config={status.project_backends[project.project_id]} defaultSupabase={status.default_supabase} state={status.supabase_states[project.project_id] ?? 'NOT_CONFIGURED'} busy={busy} act={act} />
       <p>UUID <code>{project.project_id}</code></p><p>Mailbox <code>{project.mailbox_url ?? 'Not configured'}</code></p><p>Relay <code>{project.relay_address ?? 'Not configured'}</code></p>
       <p>Mailbox stores encrypted metadata and snapshot announcements only. A configured private relay provides a peer connection path when direct connection fails; files still transfer directly from an online collaborator.</p>
+      <button disabled={busy} onClick={() => void chooseProjectRoot()}>{rootMissing ? 'Locate folder' : 'Change folder'}</button>
       {peer && <p>Device ID <code>{peer.device.device_id}</code> · Identity <code>{peer.device.peer_id}</code></p>}
       </section>
       <section className="advanced-group"><h3>Manual invitation (without invite service)</h3>

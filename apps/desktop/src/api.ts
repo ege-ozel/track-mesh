@@ -20,6 +20,7 @@ export interface ProjectCard {
   project: { project_id: string; name: string; root: string; latest_local_snapshot: string | null;
     last_verified_at: string | null; verified_peer_id: string | null; verified_snapshot_id: string | null;
     recovery_required: boolean; mailbox_url: string | null; relay_address: string | null; error: string | null };
+  root_available: boolean;
   local_snapshot: SnapshotInfo | null; peers: Peer[]; pending_publications: number; transfer: Transfer | null;
 }
 export type ProjectBackend = 'NONE' | 'SELF_HOSTED_MAILBOX' | 'SUPABASE';
@@ -74,6 +75,7 @@ export interface DesktopStatus {
 }
 export type Action =
   | { kind: 'link'; project_id: string; name: string; folder: string; mailbox_url: string | null; relay_address: string | null }
+  | { kind: 'change_project_root'; project_id: string; folder: string }
   | { kind: 'set_project_backend'; project_id: string; backend: ProjectBackend; supabase_url: string | null; supabase_anon_key: string | null }
   | { kind: 'set_default_supabase'; url: string | null; publishable_key: string | null }
   | { kind: 'set_device_name'; name: string }
