@@ -75,7 +75,9 @@ export interface DesktopStatus {
   default_supabase: SupabaseDefaultConfig | null;
   supabase_states: Record<string, 'NOT_CONFIGURED' | 'UNKNOWN' | 'CLAIMED' | 'MEMBER' | 'ROUTE_TAKEN' | 'WAITING_FOR_GRANT' | 'UNREACHABLE'>;
   invite_pending: boolean;
+  invite_needs_service_fields: boolean;
   upnp_mapping_asked: boolean;
+  manual_public_endpoint: { public_ipv4: string; external_port: number } | null;
 }
 export type Action =
   | { kind: 'link'; project_id: string; name: string; folder: string; mailbox_url: string | null; relay_address: string | null }
@@ -84,6 +86,7 @@ export type Action =
   | { kind: 'set_default_supabase'; url: string | null; publishable_key: string | null }
   | { kind: 'set_device_name'; name: string }
   | { kind: 'set_projects_location'; location: string }
+  | { kind: 'set_manual_public_endpoint'; public_ipv4: string | null; external_port: number | null }
   | { kind: 'join'; folder: string }
   | { kind: 'complete_invite_link'; supabase_url?: string; supabase_anon_key?: string }
   | { kind: 'export_card' }
@@ -105,6 +108,7 @@ export const chooseProjectsLocation = () => invoke<string | null>('choose_projec
 export const chooseInviteParentFolder = () => invoke<string | null>('choose_invite_parent_folder');
 export const openInviteParentFolder = () => invoke<void>('open_invite_parent_folder');
 export const pasteInviteLink = () => invoke<void>('paste_invite_link');
+export const cancelInviteLink = () => invoke<void>('cancel_invite_link');
 export const submitAction = (action: Action) => invoke<string>('submit_action', { action });
 export const setUpnpMapping = (enabled: boolean) => invoke<void>('set_upnp_mapping', { enabled });
 export const closeApp = () => invoke<void>('close_app');

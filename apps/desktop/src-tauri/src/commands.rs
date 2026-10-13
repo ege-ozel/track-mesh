@@ -95,13 +95,16 @@ pub async fn paste_invite_link(
     app: AppHandle,
     desktop: State<'_, Arc<Desktop>>,
 ) -> Result<(), String> {
-    desktop.paste_invite_link(&app).map_err(|error| {
-        if error.to_string() == "An invite is already open" {
-            "An invite is already open".to_owned()
-        } else {
-            "No TrackMesh invite link on the clipboard".to_owned()
-        }
-    })
+    desktop
+        .paste_invite_link(&app)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn cancel_invite_link(desktop: State<'_, Arc<Desktop>>) -> Result<(), String> {
+    desktop
+        .cancel_invite_link()
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]

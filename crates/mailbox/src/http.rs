@@ -64,6 +64,13 @@ pub fn validate_supabase_project_url(base: &str) -> Result<()> {
     Ok(())
 }
 
+/// Return the parsed, normalized host of a hosted Supabase project URL.
+pub fn supabase_project_host(base: &str) -> Result<String> {
+    validate_supabase_project_url(base)?;
+    let url = Url::parse(base).context("invalid Supabase project URL")?;
+    Ok(url.host_str().unwrap_or_default().to_ascii_lowercase())
+}
+
 impl MailboxClient {
     pub fn new(base: &str, project: Uuid, allow_loopback_http: bool) -> Result<Self> {
         let mut url = parse_url(base, allow_loopback_http)?;

@@ -160,7 +160,7 @@ pub fn clear_if_matches(link: &str, sequence: u32) -> Result<()> {
 }
 
 /// Read and consume a valid invite link without exposing its payload to the webview.
-pub fn take_invite_link() -> Result<(String, Zeroizing<[u8; 32]>)> {
+pub fn take_invite_link() -> Result<crate::uri::ParsedInviteLink> {
     let fail = || anyhow::anyhow!("No TrackMesh invite link on the clipboard");
     if unsafe { OpenClipboard(ptr::null_mut()) } == 0 {
         return Err(fail());
@@ -176,7 +176,8 @@ pub fn take_invite_link() -> Result<(String, Zeroizing<[u8; 32]>)> {
                 Err(fail())
             } else {
                 let size = global_size(data);
-                let result = if !(2..=512).contains(&size) || !size.is_multiple_of(2) {
+                // A 512-byte ASCII URI occupies 1024 UTF-16 bytes, plus a possible terminator.
+                let result = if !(2..=1026).contains(&size) || !size.is_multiple_of(2) {
                     Err(fail())
                 } else {
                     let units = std::slice::from_raw_parts(memory.cast::<u16>(), size / 2);

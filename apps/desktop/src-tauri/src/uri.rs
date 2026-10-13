@@ -1,6 +1,7 @@
 //! Per-user `trackmesh://` association used by the native invite handler.
 use anyhow::{ensure, Context, Result};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use mailbox::validate_supabase_publishable_key;
 use std::ptr;
 use windows_sys::Win32::System::Registry::{
     RegCloseKey, RegCreateKeyExW, RegSetValueExW, HKEY, HKEY_CURRENT_USER, KEY_SET_VALUE,
@@ -16,43 +17,83 @@ pub fn register_protocol() -> Result<()> {
     set_default(r"Software\Classes\trackmesh\shell\open\command", &command)
 }
 
+/// Prefix check only: a malformed link must still reach the running app as a visible error,
+/// never fall through to startup argument parsing.
 pub fn is_invite_link(value: &str) -> bool {
-    value.starts_with("trackmesh://invite/")
+    value
+        .get(.."trackmesh://".len())
+        .is_some_and(|scheme| scheme.eq_ignore_ascii_case("trackmesh://"))
 }
 
-pub fn parse_invite_link(value: &str) -> Result<(String, Zeroizing<[u8; 32]>)> {
-    ensure!(value.len() <= 256, "invalid invitation link");
+pub struct InviteService {
+    pub ref_name: String,
+    pub publishable_key: String,
+}
+
+pub struct ParsedInviteLink {
+    pub service: Option<InviteService>,
+    pub id: String,
+    pub key: Zeroizing<[u8; 32]>,
+}
+
+pub fn parse_invite_link(value: &str) -> Result<ParsedInviteLink> {
+    // All accepted URI components are ASCII. This bounds both clipboard allocation and parsing.
+    ensure!(
+        value.len() <= 512 && value.is_ascii(),
+        "invalid invitation link"
+    );
     let body = value
         .strip_prefix("trackmesh://invite/")
         .context("invalid invitation link")?;
-    let (id, key) = body.split_once('#').context("invalid invitation link")?;
-    ensure!(
-        id.len() == 43
-            && id
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
-            && key.len() == 43,
-        "invalid invitation link"
-    );
-    let decoded_id = URL_SAFE_NO_PAD
-        .decode(id)
-        .context("invalid invitation link")?;
-    ensure!(
-        decoded_id.len() == 32 && URL_SAFE_NO_PAD.encode(decoded_id) == id,
-        "invalid invitation link"
-    );
+    let (route, fragment) = body.split_once('#').context("invalid invitation link")?;
+    ensure!(!fragment.contains('#'), "invalid invitation link");
+    let (service, id) = if let Some(v2) = route.strip_prefix("v2/") {
+        let mut fields = v2.split('/');
+        let ref_name = fields.next().context("invalid invitation link")?;
+        let publishable_key = fields.next().context("invalid invitation link")?;
+        let id = fields.next().context("invalid invitation link")?;
+        ensure!(fields.next().is_none(), "invalid invitation link");
+        ensure!(
+            (1..=63).contains(&ref_name.len())
+                && ref_name
+                    .bytes()
+                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit()),
+            "invalid invitation link"
+        );
+        validate_supabase_publishable_key(publishable_key).context("invalid invitation link")?;
+        (
+            Some(InviteService {
+                ref_name: ref_name.to_owned(),
+                publishable_key: publishable_key.to_owned(),
+            }),
+            id,
+        )
+    } else {
+        ensure!(!route.contains('/'), "invalid invitation link");
+        (None, route)
+    };
+    let key = decode_component(id)?;
+    let decoded_key = decode_component(fragment)?;
+    Ok(ParsedInviteLink {
+        service,
+        id: URL_SAFE_NO_PAD.encode(key),
+        key: decoded_key,
+    })
+}
+
+fn decode_component(value: &str) -> Result<Zeroizing<[u8; 32]>> {
+    ensure!(value.len() == 43, "invalid invitation link");
     let decoded = Zeroizing::new(
         URL_SAFE_NO_PAD
-            .decode(key)
+            .decode(value)
             .context("invalid invitation link")?,
     );
     ensure!(decoded.len() == 32, "invalid invitation link");
-    let canonical_key = Zeroizing::new(URL_SAFE_NO_PAD.encode(&*decoded));
-    ensure!(canonical_key.as_str() == key, "invalid invitation link");
-    let mut key = [0u8; 32];
-    key.copy_from_slice(&decoded);
-    let key = Zeroizing::new(key);
-    Ok((id.to_owned(), key))
+    let canonical = Zeroizing::new(URL_SAFE_NO_PAD.encode(&*decoded));
+    ensure!(canonical.as_str() == value, "invalid invitation link");
+    let mut result = [0u8; 32];
+    result.copy_from_slice(&decoded);
+    Ok(Zeroizing::new(result))
 }
 
 fn set_default(path: &str, value: &str) -> Result<()> {

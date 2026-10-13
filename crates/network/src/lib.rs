@@ -10,7 +10,7 @@ mod identity;
 mod portmap;
 mod status;
 
-pub use actor::start;
+pub use actor::{is_public_endpoint_address, start};
 pub use config::NetworkConfig;
 pub use handle::{Incoming, IncomingRequest, Network};
 pub use identity::{keypair, peer_id, validate_card, validate_endpoint_record};

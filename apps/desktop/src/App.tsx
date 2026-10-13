@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { chooseFolder, chooseInviteParentFolder, chooseProjectsLocation, closeApp, getStatus, openInviteParentFolder, openProjectFolder, openProjectsLocation, pasteInviteLink, setUpnpMapping, submitAction } from './api';
+import { cancelInviteLink, chooseFolder, chooseInviteParentFolder, chooseProjectsLocation, closeApp, getStatus, openInviteParentFolder, openProjectFolder, openProjectsLocation, pasteInviteLink, setUpnpMapping, submitAction } from './api';
 import type { Action, CheckView, DesktopStatus, ProjectBackend, ProjectBackendConfig, ProjectCard, SnapshotInfo, SupabaseDefaultConfig } from './api';
 
 const short = (id: string | null | undefined) => id ? id.slice(0, 8) : '—';
@@ -460,7 +460,7 @@ export default function App() {
     setScreen('projects');
     setOffset(0);
     focusBaseline.current = new Set(status?.page?.projects.map(item => item.project.project_id) ?? []);
-    try { await pasteInviteLink(); setError(''); await poll(); } catch { setError('No TrackMesh invite link on the clipboard'); }
+    try { await pasteInviteLink(); setError(''); await poll(); } catch (err) { setError(String(err)); }
   };
   const busy = !status?.ready || status.closing || status.jobs.some(j => j.running);
   const browse = async () => {
@@ -493,14 +493,16 @@ export default function App() {
       <div className="device"><span className={`status-dot ${status?.ready ? 'active' : ''}`} />{status?.device?.name ?? 'Starting device…'}<small>{short(status?.device?.device_id)}</small></div></header>
       {(error || status?.error || status?.network?.error) && <div className="notice danger" role="alert">{error || status?.error || status?.network?.error}</div>}
       {status?.invite_pending && <div className="invite-overlay"><section className="invite-dialog" role="dialog" aria-modal="true" aria-labelledby="invite-title"><h2 id="invite-title">Accept invite link</h2>
+        {status.jobs.filter(job => job.label === 'Accept invite link' && job.error).slice(-1).map(job => <div className="notice danger" role="alert" key={job.job_id}><strong>{job.error}</strong><p>The link may have expired or already been used. Ask for a new link, or Cancel.</p></div>)}
         <p>The invitation will create a project folder under <button className="path-link" title="Open in Explorer" onClick={() => void openInviteParentFolder().catch(err => setError(String(err)))}>{displayPath(inviteParentFolder ?? status.projects_location)}\[project name]</button>. You can choose a different parent folder below.</p>
-        {!status.default_supabase && <><label className="field">Supabase Project URL<input autoComplete="off" value={inviteServiceUrl} onChange={event => setInviteServiceUrl(event.target.value)} placeholder="https://your-project.supabase.co" /></label>
+        {status.invite_needs_service_fields && <><label className="field">Supabase Project URL<input autoComplete="off" value={inviteServiceUrl} onChange={event => setInviteServiceUrl(event.target.value)} placeholder="https://your-project.supabase.co" /></label>
         <label className="field">Publishable key<input type="password" autoComplete="new-password" value={inviteServiceKey} onChange={event => setInviteServiceKey(event.target.value)} /></label></>}
-        <div className="actions"><button className="primary" disabled={busy || (!status.default_supabase && (!inviteServiceUrl.trim() || !inviteServiceKey.trim()))} onClick={() => {
+        <div className="actions"><button className="primary" disabled={busy || (status.invite_needs_service_fields && (!inviteServiceUrl.trim() || !inviteServiceKey.trim()))} onClick={() => {
           setSetup(null); setScreen('projects'); setOffset(0);
           focusBaseline.current = new Set(status.page?.projects.map(item => item.project.project_id) ?? []);
-          void act({ kind: 'complete_invite_link', ...(!status.default_supabase ? { supabase_url: inviteServiceUrl.trim(), supabase_anon_key: inviteServiceKey.trim() } : {}) });
+          void act({ kind: 'complete_invite_link', ...(status.invite_needs_service_fields ? { supabase_url: inviteServiceUrl.trim(), supabase_anon_key: inviteServiceKey.trim() } : {}) });
         }}>Accept</button>
+          <button disabled={!status.ready || status.closing || status.jobs.some(job => job.running && job.label === 'Accept invite link')} onClick={() => void cancelInviteLink().then(poll).catch(err => setError(String(err)))}>Cancel</button>
           <button disabled={busy} onClick={async () => { try { const value = await chooseInviteParentFolder(); if (value) setInviteParentFolder(value); } catch (err) { setError(String(err)); } }}>Choose another folder</button></div>
       </section></div>}
       {upnpConsentPrompt && <div className="invite-overlay"><section className="invite-dialog upnp-consent-dialog" role="dialog" aria-modal="true" aria-labelledby="upnp-consent-title"><h2 id="upnp-consent-title">Router setup</h2>
@@ -514,6 +516,7 @@ export default function App() {
           <DeviceNameSettings name={status?.device?.name ?? ''} busy={busy} act={act} />
           <div className="settings-block"><h3>Projects location</h3><p className="muted">New invitations create a named project folder here.</p><div className="input-row"><button className="path-link" title="Open in Explorer" onClick={() => void openProjectsLocation().catch(err => setError(String(err)))}>{displayPath(projectsLocation)}</button><button disabled={busy} onClick={async () => { try { const value = await chooseProjectsLocation(); if (value) { setProjectsLocation(value); await poll(); } } catch (err) { setError(String(err)); } }}>Browse…</button></div></div>
           <DefaultSupabaseSettings config={status?.default_supabase ?? null} busy={busy} act={act} />
+          <ManualPortForwardingSettings endpoint={status?.manual_public_endpoint ?? null} listenPort={status?.listen_port ?? 43101} busy={busy} act={act} />
           <p className="muted">Supabase publishable key is public project configuration. Never enter a secret key here.</p>
           <section className="global-advanced"><h3>Advanced tools</h3><p className="muted">For older builds or custom network setups.</p><div className="actions"><button disabled={busy} onClick={() => { setScreen('projects'); setSetup('join'); setFolder(''); }}>Accept invitation file</button></div></section>
         </details></section> : <>
@@ -535,6 +538,29 @@ export default function App() {
       </>}
       <footer><div><span className="muted">Data directory</span><code>{status?.data_directory ?? 'Opening protected local storage…'}</code></div><div className="actions"><button title="Close the window. Active DAW sessions, transfers and pending publication keep TRACKMESH running; it exits 60 seconds after work finishes. Reopen desktop to return." disabled={status?.closing} onClick={() => void closeApp().catch(err => setError(String(err)))}>Close safely</button></div></footer>
     </main></div>;
+}
+
+function ManualPortForwardingSettings({ endpoint, listenPort, busy, act }: {
+  endpoint: { public_ipv4: string; external_port: number } | null;
+  listenPort: number;
+  busy: boolean;
+  act: (action: Action) => Promise<boolean>;
+}) {
+  const [ip, setIp] = useState(endpoint?.public_ipv4 ?? '');
+  const [port, setPort] = useState(endpoint ? String(endpoint.external_port) : '43101');
+  useEffect(() => {
+    setIp(endpoint?.public_ipv4 ?? '');
+    setPort(endpoint ? String(endpoint.external_port) : '43101');
+  }, [endpoint?.public_ipv4, endpoint?.external_port]);
+  const validPort = /^\d{1,5}$/.test(port) && Number(port) > 0 && Number(port) <= 65535;
+  const valid = publicIpv4(ip.trim()) && validPort;
+  return <section className="settings-block"><h3>Manual port forwarding</h3>
+    <p className="muted">Use only when TCP and UDP listen port {listenPort} are forwarded on your router by hand; update this when your public IP changes.</p>
+    <div className="connection-inputs"><label className="field">Public IPv4<input value={ip} maxLength={15} disabled={busy} onChange={event => setIp(event.target.value)} placeholder="203.0.113.1" /></label>
+      <label className="field">External port<input type="number" min={1} max={65535} value={port} disabled={busy} onChange={event => setPort(event.target.value)} /></label></div>
+    <div className="actions"><button className="primary" disabled={busy || !valid} onClick={() => void act({ kind: 'set_manual_public_endpoint', public_ipv4: ip.trim(), external_port: Number(port) })}>Save</button>
+      <button disabled={busy || !endpoint} onClick={() => void act({ kind: 'set_manual_public_endpoint', public_ipv4: null, external_port: null })}>Clear</button></div>
+  </section>;
 }
 
 function DeviceNameSettings({ name, busy, act }: { name: string; busy: boolean; act: (action: Action) => Promise<boolean> }) {

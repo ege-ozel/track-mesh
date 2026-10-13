@@ -154,7 +154,13 @@ pub(crate) async fn run_endpoint_publisher(
         }
         addresses.sort();
         addresses.dedup();
-        addresses.truncate(protocol::MAX_ENDPOINT_ADDRESSES);
+        let (mut public, private): (Vec<_>, Vec<_>) = addresses
+            .into_iter()
+            .partition(|address| network::is_public_endpoint_address(address));
+        public.extend(private);
+        public.truncate(protocol::MAX_ENDPOINT_ADDRESSES);
+        public.sort();
+        let addresses = public;
 
         let direct_peers = network
             .status()

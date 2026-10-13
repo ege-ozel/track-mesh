@@ -10,7 +10,7 @@ use std::{
 };
 use uuid::Uuid;
 
-const VERSION: u32 = 3;
+const VERSION: u32 = 4;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE", deny_unknown_fields)]
@@ -47,6 +47,13 @@ pub struct ProjectBackendConfig {
 pub struct SupabaseDefaultConfig {
     pub url: String,
     pub publishable_key: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ManualPublicEndpoint {
+    pub public_ipv4: String,
+    pub external_port: u16,
 }
 
 fn compiled_default_supabase() -> Option<SupabaseDefaultConfig> {
@@ -86,6 +93,8 @@ pub(super) struct Settings {
     pub device_name: Option<String>,
     #[serde(default)]
     pub projects_location: Option<String>,
+    #[serde(default)]
+    pub manual_public_endpoint: Option<ManualPublicEndpoint>,
 }
 
 impl Default for Settings {
@@ -100,6 +109,7 @@ impl Default for Settings {
             default_supabase: compiled_default_supabase(),
             device_name: None,
             projects_location: None,
+            manual_public_endpoint: None,
         }
     }
 }
@@ -197,6 +207,16 @@ impl SettingsState {
     pub fn set_projects_location(&mut self, directory: &Path, location: String) -> Result<()> {
         let mut candidate = self.value.clone();
         candidate.projects_location = Some(location);
+        self.commit(directory, candidate)
+    }
+
+    pub fn set_manual_public_endpoint(
+        &mut self,
+        directory: &Path,
+        endpoint: Option<ManualPublicEndpoint>,
+    ) -> Result<()> {
+        let mut candidate = self.value.clone();
+        candidate.manual_public_endpoint = endpoint;
         self.commit(directory, candidate)
     }
 

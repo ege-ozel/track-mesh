@@ -46,6 +46,7 @@ pub fn run() {
             commands::choose_invite_parent_folder,
             commands::open_invite_parent_folder,
             commands::paste_invite_link,
+            commands::cancel_invite_link,
             commands::submit_action,
             commands::set_upnp_mapping,
             commands::close_app

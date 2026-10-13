@@ -76,6 +76,10 @@ pub enum Action {
     SetProjectsLocation {
         location: PathBuf,
     },
+    SetManualPublicEndpoint {
+        public_ipv4: Option<String>,
+        external_port: Option<u16>,
+    },
     Join {
         folder: PathBuf,
     },
@@ -150,6 +154,7 @@ impl Action {
             | Self::SetDefaultSupabase { .. }
             | Self::SetDeviceName { .. }
             | Self::SetProjectsLocation { .. }
+            | Self::SetManualPublicEndpoint { .. }
             | Self::ExportCard => None,
             Self::Link { project_id, .. }
             | Self::ChangeProjectRoot { project_id, .. }
@@ -179,6 +184,7 @@ impl Action {
             Self::SetDefaultSupabase { .. } => "Save default Supabase settings",
             Self::SetDeviceName { .. } => "Save device name",
             Self::SetProjectsLocation { .. } => "Save Projects location",
+            Self::SetManualPublicEndpoint { .. } => "Save manual port forwarding",
             Self::Join { .. } => "Accept invitation and request pairing",
             Self::CompleteInviteLink { .. } => "Accept invite link",
             Self::Pair { .. } => "Complete pairing",
@@ -262,6 +268,8 @@ pub struct DesktopStatus {
     pub supabase_states: HashMap<Uuid, SupabaseProjectState>,
     pub invite_pending: bool,
     pub upnp_mapping_asked: bool,
+    pub manual_public_endpoint: Option<trackmesh_core::ManualPublicEndpoint>,
+    pub invite_needs_service_fields: bool,
 }
 
 struct Checked {
@@ -299,7 +307,14 @@ struct Session {
 struct PendingInviteLink {
     id: String,
     key: zeroize::Zeroizing<[u8; 32]>,
+    service: Option<PendingInviteService>,
     parent_folder: Option<PathBuf>,
+}
+
+#[derive(Clone)]
+struct PendingInviteService {
+    url: String,
+    publishable_key: String,
 }
 
 pub struct Desktop {
@@ -531,13 +546,25 @@ impl Desktop {
             }
             None => HashMap::new(),
         };
-        let upnp_mapping_asked = match state_engine {
+        let upnp_mapping_asked = match state_engine.clone() {
             Some(engine) => {
                 tauri::async_runtime::spawn_blocking(move || engine.upnp_mapping_asked()).await??
             }
             None => false,
         };
+        let manual_public_endpoint = match state_engine {
+            Some(engine) => {
+                tauri::async_runtime::spawn_blocking(move || engine.manual_public_endpoint())
+                    .await??
+            }
+            None => None,
+        };
         let mut state = self.lock()?;
+        let invite_needs_service_fields = state
+            .pending_invite
+            .as_ref()
+            .is_some_and(|pending| pending.service.is_none())
+            && default_supabase.is_none();
         let mut network = state.network.as_ref().map(Network::status);
         if state.peer.as_ref().is_some_and(PeerRuntime::is_finished) {
             if let Some(network) = &mut network {
@@ -665,6 +692,8 @@ impl Desktop {
             supabase_states,
             invite_pending: state.pending_invite.is_some(),
             upnp_mapping_asked,
+            invite_needs_service_fields,
+            manual_public_endpoint,
         })
     }
 
@@ -836,6 +865,22 @@ impl Desktop {
         Ok(())
     }
 
+    pub fn cancel_invite_link(&self) -> Result<()> {
+        let mut state = self.lock()?;
+        ensure!(
+            !state
+                .jobs
+                .iter()
+                .any(|job| job.running && job.label == "Accept invite link"),
+            "An invite is being accepted; wait for it to finish"
+        );
+        ensure!(
+            state.pending_invite.take().is_some(),
+            "No invite link is open"
+        );
+        Ok(())
+    }
+
     pub async fn open_project_folder(&self, project_id: Uuid) -> Result<()> {
         let engine = self
             .lock()?
@@ -956,7 +1001,7 @@ impl Desktop {
                 supabase_url,
                 supabase_anon_key,
             } => {
-                let (id, key, pending_parent) = {
+                let (id, key, pending_parent, linked_service) = {
                     let state = self.lock()?;
                     let pending = state
                         .pending_invite
@@ -966,28 +1011,26 @@ impl Desktop {
                         pending.id.clone(),
                         pending.key.clone(),
                         pending.parent_folder.clone(),
+                        pending.service.clone(),
                     )
                 };
                 let disk = engine.clone();
                 let configured =
                     tauri::async_runtime::spawn_blocking(move || disk.default_supabase_config())
                         .await??;
-                let config = match configured {
-                    Some(config) => config,
-                    None => {
-                        let config = SupabaseDefaultConfig {
-                            url: supabase_url.context("Enter the Supabase Project URL")?,
-                            publishable_key: supabase_anon_key
-                                .context("Enter the Supabase publishable key")?,
-                        };
-                        let disk = engine.clone();
-                        let saved = config.clone();
-                        tauri::async_runtime::spawn_blocking(move || {
-                            disk.set_default_supabase_config(Some(saved))
-                        })
-                        .await??;
-                        config
-                    }
+                let save_default_after_validation = configured.is_none();
+                let config = match (linked_service, configured) {
+                    (Some(service), _) => SupabaseDefaultConfig {
+                        url: service.url,
+                        publishable_key: service.publishable_key,
+                    },
+                    (None, Some(config)) => config,
+                    // Saved as the default only after the signed invite confirms this service.
+                    (None, None) => SupabaseDefaultConfig {
+                        url: supabase_url.context("Enter the Supabase Project URL")?,
+                        publishable_key: supabase_anon_key
+                            .context("Enter the Supabase publishable key")?,
+                    },
                 };
                 let parent = if let Some(parent) = pending_parent {
                     parent
@@ -1013,9 +1056,6 @@ impl Desktop {
                 )
                 .await
                 .map_err(|_| anyhow::anyhow!("Invite link is invalid, expired, or unavailable"))?;
-                if let Ok(mut state) = self.lock() {
-                    state.pending_invite = None;
-                }
                 let ciphertext = zeroize::Zeroizing::new(downloaded.ciphertext);
                 let mut invite =
                     crypto::decrypt_invite_drop(&id, &downloaded.expires_at, &ciphertext, &key)
@@ -1025,6 +1065,27 @@ impl Desktop {
                 if crypto::verify_project_invite(&invite).is_err() {
                     crypto::zeroize_project_invite(&mut invite);
                     anyhow::bail!("Invite link is invalid, expired, or unavailable");
+                }
+                let signed_backend_matches = invite.backend.as_ref().is_some_and(|backend| {
+                    backend.backend == protocol::InviteBackend::Supabase
+                        && backend.supabase_anon_key.as_str() == config.publishable_key.as_str()
+                        && mailbox::supabase_project_host(&backend.supabase_url).ok()
+                            == mailbox::supabase_project_host(&config.url).ok()
+                });
+                if !signed_backend_matches {
+                    crypto::zeroize_project_invite(&mut invite);
+                    anyhow::bail!("Invite link is invalid, expired, or unavailable");
+                }
+                if save_default_after_validation {
+                    let disk = engine.clone();
+                    let saved = config.clone();
+                    tauri::async_runtime::spawn_blocking(move || {
+                        disk.set_default_supabase_config(Some(saved))
+                    })
+                    .await??;
+                }
+                if let Ok(mut state) = self.lock() {
+                    state.pending_invite = None;
                 }
                 let name = sanitize_project_name(&invite.project_name);
                 let folder = tauri::async_runtime::spawn_blocking(move || {
@@ -1097,7 +1158,17 @@ impl Desktop {
                 let anon_key = config
                     .supabase_anon_key
                     .context("Supabase is not configured")?;
-                let addresses = advertised_addresses(&network);
+                mailbox::validate_supabase_project_url(&url)?;
+                mailbox::validate_supabase_publishable_key(&anon_key)?;
+                let ref_name = invite_service_ref(&url)?;
+                wait_for_mapping_if_requested(&network).await?;
+                let addresses = invite_addresses(
+                    &engine,
+                    &network,
+                    &self.options.external_address,
+                    Vec::new(),
+                )
+                .await?;
                 let disk = engine.clone();
                 let mut invite = tauri::async_runtime::spawn_blocking(move || {
                     disk.export_invite(project_id, addresses)
@@ -1122,7 +1193,9 @@ impl Desktop {
                     sealed.key.as_slice(),
                 ));
                 let link = zeroize::Zeroizing::new(format!(
-                    "trackmesh://invite/{}#{}",
+                    "trackmesh://invite/v2/{}/{}/{}#{}",
+                    ref_name,
+                    anon_key,
                     sealed.id,
                     encoded_key.as_str(),
                 ));
@@ -1224,11 +1297,39 @@ impl Desktop {
             action => {
                 let disk = engine.clone();
                 let dialog_app = app.clone();
-                let mut addresses = advertised_addresses(&network);
-                addresses.extend(self.options.external_address.iter().cloned());
-                addresses.sort();
-                addresses.dedup();
-                addresses.truncate(16);
+                let invite_export = matches!(&action, Action::ExportInvite { .. });
+                if invite_export {
+                    wait_for_mapping_if_requested(&network).await?;
+                }
+                let explicit = match &action {
+                    Action::ExportInvite {
+                        public_ip: Some(ip),
+                        external_port: Some(port),
+                        ..
+                    } => trackmesh_core::public_ipv4_addresses(ip, *port)?,
+                    Action::ExportInvite {
+                        public_ip: None,
+                        external_port: None,
+                        ..
+                    }
+                    | Action::ExportCard => Vec::new(),
+                    Action::ExportInvite { .. } => {
+                        anyhow::bail!("Public IPv4 and external port must be supplied together")
+                    }
+                    _ => Vec::new(),
+                };
+                let addresses =
+                    if matches!(&action, Action::ExportInvite { .. } | Action::ExportCard) {
+                        invite_addresses(
+                            &engine,
+                            &network,
+                            &self.options.external_address,
+                            explicit,
+                        )
+                        .await?
+                    } else {
+                        Vec::new()
+                    };
                 tauri::async_runtime::spawn_blocking(move || -> Result<Value> {
                     match action {
                         Action::Link { project_id, name, folder, mailbox_url, relay_address } => {
@@ -1277,6 +1378,10 @@ impl Desktop {
                             disk.set_projects_location(&location)?;
                             Ok(json!({"message": "Projects location saved"}))
                         }
+                        Action::SetManualPublicEndpoint { public_ipv4, external_port } => {
+                            disk.set_manual_public_endpoint(public_ipv4, external_port)?;
+                            Ok(json!({"message": "Manual port forwarding settings saved"}))
+                        }
                         Action::OpenPairing { project_id } => {
                             disk.open_pairing_window(project_id)?;
                             Ok(json!({"message": "Pairing window open for 10 minutes. Ask your collaborator to accept the invitation or retry automatic pairing. Verify the arriving device before approving."}))
@@ -1302,19 +1407,7 @@ impl Desktop {
                             disk.revoke(project_id, device_id)?;
                             Ok(json!({"message": "Project access revoked locally. The service operator must also update infrastructure ACLs."}))
                         }
-                        Action::ExportInvite { project_id, public_ip, external_port } => {
-                            match (public_ip, external_port) {
-                                (Some(ip), Some(port)) => {
-                                    // Keep the explicitly entered endpoints ahead of the bounded local list.
-                                    let mut external = trackmesh_core::public_ipv4_addresses(&ip, port)?;
-                                    addresses.retain(|address| !external.contains(address));
-                                    external.extend(addresses);
-                                    addresses = external;
-                                    addresses.truncate(16);
-                                }
-                                (None, None) => {}
-                                _ => anyhow::bail!("Public IPv4 and external port must be supplied together"),
-                            }
+                        Action::ExportInvite { project_id, .. } => {
                             let invite = disk.export_invite(project_id, addresses)?;
                             let path = documents::write_document(&app, "trackmesh-invite.json", &invite)?;
                             disk.open_pairing_window(project_id)?;
@@ -1361,11 +1454,9 @@ impl Desktop {
                 tauri::async_runtime::spawn_blocking(move || disk.paired_peer(project, device))
                     .await??;
             wait_for_peer(self, network, &peer.peer_id).await?;
-            let mut addresses = advertised_addresses(network);
-            addresses.extend(self.options.external_address.iter().cloned());
-            addresses.sort();
-            addresses.dedup();
-            addresses.truncate(16);
+            let addresses =
+                invite_addresses(engine, network, &self.options.external_address, Vec::new())
+                    .await?;
             engine
                 .request_pairing(network, project, device, addresses)
                 .await
@@ -1413,11 +1504,24 @@ impl Desktop {
         let parsed = crate::uri::parse_invite_link(&value);
         if let Ok(mut state) = self.lock() {
             state.work_epoch = state.work_epoch.wrapping_add(1);
-            if let Ok((id, key)) = parsed {
-                if state.pending_invite.is_none() {
+            let accepting = state
+                .jobs
+                .iter()
+                .any(|job| job.running && job.label == "Accept invite link");
+            if let Ok(parsed) = parsed {
+                if !accepting {
+                    let service = parsed.service.map(|service| PendingInviteService {
+                        url: format!("https://{}.supabase.co", service.ref_name),
+                        publishable_key: service.publishable_key,
+                    });
+                    // A replaced link must not show the previous link's failure.
+                    state
+                        .jobs
+                        .retain(|job| job.running || job.label != "Accept invite link");
                     state.pending_invite = Some(PendingInviteLink {
-                        id,
-                        key,
+                        id: parsed.id,
+                        key: parsed.key,
+                        service,
                         parent_folder: None,
                     });
                     return;
@@ -1431,8 +1535,11 @@ impl Desktop {
                 running: false,
                 outcome: None,
                 error: Some(
-                    "This invite link could not be opened. Open one link at a time and try again."
-                        .to_owned(),
+                    if accepting {
+                        "An invite is being accepted. Wait for it to finish before opening another link.".to_owned()
+                    } else {
+                        "This invite link could not be opened. Check the link and try again.".to_owned()
+                    }
                 ),
                 completed_at: None,
             });
@@ -1441,13 +1548,25 @@ impl Desktop {
     pub fn paste_invite_link(&self, app: &AppHandle) -> Result<()> {
         self.reopen(app);
         let mut state = self.lock()?;
-        ensure!(state.pending_invite.is_none(), "An invite is already open");
-        let (id, key) = crate::clipboard::take_invite_link()
-            .map_err(|_| anyhow::anyhow!("No TrackMesh invite link on the clipboard"))?;
+        ensure!(
+            !state
+                .jobs
+                .iter()
+                .any(|job| job.running && job.label == "Accept invite link"),
+            "An invite is being accepted; wait for it to finish"
+        );
+        let parsed = crate::clipboard::take_invite_link()?;
         state.work_epoch = state.work_epoch.wrapping_add(1);
+        state
+            .jobs
+            .retain(|job| job.running || job.label != "Accept invite link");
         state.pending_invite = Some(PendingInviteLink {
-            id,
-            key,
+            id: parsed.id,
+            key: parsed.key,
+            service: parsed.service.map(|service| PendingInviteService {
+                url: format!("https://{}.supabase.co", service.ref_name),
+                publishable_key: service.publishable_key,
+            }),
             parent_folder: None,
         });
         Ok(())
@@ -1590,12 +1709,137 @@ async fn wait_for_peer(desktop: &Desktop, network: &Network, peer: &str) -> Resu
     Ok(())
 }
 
-fn advertised_addresses(network: &Network) -> Vec<String> {
-    network
-        .status()
-        .addresses
-        .into_iter()
-        .filter(|address| !address.contains("/ip4/0.0.0.0/") && !address.contains("/ip6/::/"))
-        .take(16)
-        .collect()
+fn invite_service_ref(url: &str) -> Result<String> {
+    mailbox::validate_supabase_project_url(url)?;
+    let raw_host = url
+        .strip_prefix("https://")
+        .context("Invite links require a Supabase project URL of https://<ref>.supabase.co")?;
+    ensure!(
+        raw_host
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'.'),
+        "Invite links require a Supabase project URL of https://<ref>.supabase.co"
+    );
+    let raw_reference = raw_host
+        .strip_suffix(".supabase.co")
+        .context("Invite links require a Supabase project URL of https://<ref>.supabase.co")?;
+    let host = mailbox::supabase_project_host(url)?;
+    let reference = host
+        .strip_suffix(".supabase.co")
+        .context("Invite links require a Supabase project URL of https://<ref>.supabase.co")?;
+    ensure!(
+        (1..=63).contains(&reference.len())
+            && reference
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit()),
+        "Invite links require a lowercase single-label Supabase project host"
+    );
+    ensure!(
+        raw_reference == reference
+            && raw_host == format!("{reference}.supabase.co")
+            && host == format!("{reference}.supabase.co"),
+        "Invite links require a single-label Supabase project host"
+    );
+    Ok(reference.to_owned())
+}
+
+async fn wait_for_mapping_if_requested(network: &Network) -> Result<()> {
+    let status = network.status();
+    if !status.port_mapping.consent_enabled
+        || !matches!(
+            status.port_mapping.state.as_str(),
+            "DISCOVERING" | "NOT_ATTEMPTED"
+        )
+    {
+        return Ok(());
+    }
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+    let before = tokio::time::timeout_at(deadline, network.endpoint_addresses())
+        .await
+        .ok()
+        .and_then(Result::ok)
+        .unwrap_or_default();
+    let mut state = status.port_mapping.state;
+    while tokio::time::Instant::now() < deadline {
+        if !matches!(state.as_str(), "DISCOVERING" | "NOT_ATTEMPTED") {
+            break;
+        }
+        tokio::time::sleep_until(std::cmp::min(
+            tokio::time::Instant::now() + Duration::from_millis(150),
+            deadline,
+        ))
+        .await;
+        state = network.status().port_mapping.state;
+    }
+    if state == "MAPPED" {
+        let initial = before
+            .iter()
+            .any(|address| network::is_public_endpoint_address(address));
+        if !initial {
+            let address_deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+            while tokio::time::Instant::now() < address_deadline {
+                let current =
+                    tokio::time::timeout_at(address_deadline, network.endpoint_addresses())
+                        .await
+                        .ok()
+                        .and_then(Result::ok)
+                        .unwrap_or_default();
+                if current.iter().any(|address| {
+                    network::is_public_endpoint_address(address) && !before.contains(address)
+                }) {
+                    break;
+                }
+                tokio::time::sleep_until(std::cmp::min(
+                    tokio::time::Instant::now() + Duration::from_millis(100),
+                    address_deadline,
+                ))
+                .await;
+            }
+        }
+    }
+    Ok(())
+}
+
+async fn invite_addresses(
+    engine: &Arc<Engine>,
+    network: &Network,
+    startup_external: &[String],
+    explicit: Vec<String>,
+) -> Result<Vec<String>> {
+    let disk = engine.clone();
+    let manual =
+        tauri::async_runtime::spawn_blocking(move || disk.manual_public_endpoint()).await??;
+    let endpoint_addresses = network.endpoint_addresses().await?;
+    let mut output: Vec<String> = Vec::new();
+    let mut add = |address: String, validate: bool| {
+        if (!validate || protocol::validate_endpoint_address(&address).is_ok())
+            && !output.contains(&address)
+        {
+            output.push(address);
+        }
+    };
+    for address in explicit {
+        add(address, true);
+    }
+    if let Some(manual) = manual {
+        for address in
+            trackmesh_core::public_ipv4_addresses(&manual.public_ipv4, manual.external_port)?
+        {
+            add(address, true);
+        }
+    }
+    // Operator-supplied startup addresses (possibly DNS) are kept as before this helper.
+    for address in startup_external {
+        add(address.clone(), false);
+    }
+    let mut dynamic = endpoint_addresses;
+    dynamic.extend(network.status().addresses);
+    dynamic.retain(|address| protocol::validate_endpoint_address(address).is_ok());
+    dynamic.sort_by_key(|address| !network::is_public_endpoint_address(address));
+    for address in dynamic {
+        add(address, true);
+    }
+    output.truncate(16);
+    output.sort();
+    Ok(output)
 }
