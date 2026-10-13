@@ -292,6 +292,7 @@ struct Session {
     error: Option<String>,
     pending_invite: Option<PendingInviteLink>,
     auto_receive_attempted: HashSet<(Uuid, Uuid)>,
+    head_pulled_at: HashMap<(Uuid, Uuid), Instant>,
 }
 
 struct PendingInviteLink {
@@ -666,12 +667,12 @@ impl Desktop {
         let Some(page) = status.page.as_ref() else {
             return Ok(());
         };
-        let network = {
+        let (network, engine) = {
             let state = self.lock()?;
-            let Some(network) = &state.network else {
+            let (Some(network), Some(engine)) = (&state.network, &state.engine) else {
                 return Ok(());
             };
-            network.clone()
+            (network.clone(), engine.clone())
         };
         for item in &page.projects {
             if item.local_snapshot.is_some()
@@ -690,12 +691,33 @@ impl Desktop {
                 continue;
             }
             for peer in &item.peers {
-                let Some(snapshot) = peer.announcement.as_ref() else {
-                    continue;
-                };
                 if !network.online(&peer.device.peer_id) {
                     continue;
                 }
+                let Some(snapshot) = peer.announcement.as_ref() else {
+                    // Without a mailbox nothing pushes the collaborator's head; pull it with
+                    // the existing Head request, at most every 10 s per project and peer.
+                    let key = (item.project.project_id, peer.device.device_id);
+                    {
+                        let mut state = self.lock()?;
+                        if state
+                            .head_pulled_at
+                            .get(&key)
+                            .is_some_and(|at| at.elapsed() < Duration::from_secs(10))
+                        {
+                            continue;
+                        }
+                        state.head_pulled_at.insert(key, Instant::now());
+                    }
+                    let (engine, network) = (engine.clone(), network.clone());
+                    let (project, source) = (item.project.project_id, peer.device.peer_id.clone());
+                    tauri::async_runtime::spawn(async move {
+                        let _ = engine
+                            .fetch_snapshot_chain(&network, project, &source, None)
+                            .await;
+                    });
+                    continue;
+                };
                 let key = (item.project.project_id, snapshot.snapshot_id);
                 {
                     let mut state = self.lock()?;
