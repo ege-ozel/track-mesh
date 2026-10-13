@@ -202,41 +202,27 @@ impl Engine {
     /// Preserve the current folder as a local snapshot before explicitly replacing a divergent
     /// history with the collaborator's version.
     pub async fn receive_replacing_local(
-        &self,
+        self: &std::sync::Arc<Self>,
         network: &Network,
         project: Uuid,
         peer: DeviceCard,
         target: Option<Uuid>,
     ) -> Result<Uuid> {
-        let project_record = self.store.project(project)?;
-        anyhow::ensure!(
-            !project_record.recovery_required,
-            "receive recovery must finish before replacing the local version"
-        );
-        let local_head = self.store.head(project)?;
-        let current = snapshot::scan_for_comparison(
-            std::path::Path::new(&project_record.root),
-            project,
-            local_head
-                .as_ref()
-                .map(|snapshot| snapshot.manifest.author_device_id)
-                .unwrap_or(self.identity.device_id),
-            local_head.as_ref().map(|snapshot| &snapshot.manifest),
-            &snapshot::ScanOptions::default(),
-        )?;
-        let differs = if let Some(head) = &local_head {
-            let expected = head
-                .manifest
-                .files
-                .iter()
-                .filter(|file| !snapshot::is_ignored_path(&file.relative_path));
-            !expected.eq(current.files.iter())
-        } else {
-            !current.files.is_empty()
-        };
-        if differs {
-            self.snapshot(project)?;
-        }
+        // Scanning and hashing are blocking disk work. `snapshot` reuses the head when nothing
+        // changed, so the folder is hashed once; an empty folder has nothing to preserve.
+        let engine = self.clone();
+        tokio::task::spawn_blocking(move || -> Result<()> {
+            let project_record = engine.store.project(project)?;
+            anyhow::ensure!(
+                !project_record.recovery_required,
+                "receive recovery must finish before replacing the local version"
+            );
+            if !snapshot::is_empty(std::path::Path::new(&project_record.root))? {
+                engine.snapshot(project)?;
+            }
+            Ok(())
+        })
+        .await??;
 
         let snapshot = self
             .fetch_snapshot_chain(network, project, &peer.peer_id, target)

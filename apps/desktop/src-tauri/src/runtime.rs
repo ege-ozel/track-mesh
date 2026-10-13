@@ -24,11 +24,18 @@ use uuid::Uuid;
 
 fn receive_blocked_or_error(error: anyhow::Error) -> Result<Value> {
     if let Some(refusal) = error.downcast_ref::<transfer::ReceiveRefusal>() {
-        let code = match refusal {
-            transfer::ReceiveRefusal::LocalChanges => "LOCAL_CHANGES",
-            transfer::ReceiveRefusal::Diverged => "DIVERGED",
+        // The core message advises snapshotting first; the card offers the explicit choice instead.
+        let (code, message) = match refusal {
+            transfer::ReceiveRefusal::LocalChanges => (
+                "LOCAL_CHANGES",
+                "This folder has changes you haven't shared. Choose which version to keep.",
+            ),
+            transfer::ReceiveRefusal::Diverged => (
+                "DIVERGED",
+                "Both versions changed. Choose which version to keep.",
+            ),
         };
-        Ok(json!({"receive_blocked": code, "message": refusal.to_string()}))
+        Ok(json!({"receive_blocked": code, "message": message}))
     } else {
         Err(error)
     }
@@ -921,8 +928,9 @@ impl Desktop {
             .clone()
             .context("Engine is unavailable")?;
         let path = tauri::async_runtime::spawn_blocking(move || -> Result<PathBuf> {
-            engine.store.project(project_id)?;
-            let stage = transfer::stage_path(&engine.directory, project_id, transfer_id)?;
+            // Same location the apply journal uses: a sibling of the project folder.
+            let root = PathBuf::from(engine.store.project(project_id)?.root);
+            let stage = transfer::stage_path(&root, project_id, transfer_id)?;
             let backup = stage.join("backup");
             ensure!(backup.is_dir(), "Previous version backup is not available");
             Ok(backup)

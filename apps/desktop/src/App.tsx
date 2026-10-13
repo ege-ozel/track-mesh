@@ -312,6 +312,7 @@ function Card({ card, status, jobStartedAt, focusProjectId, act }: { card: Proje
     {peer && (resolveDivergence || resolveLocalChanges) && <section className="notice resolution-box" role="region" aria-label="Resolve project versions">
       <h3>{resolveLocalChanges && !resolveDivergence ? "This folder has changes you haven't shared" : `Your version and ${peer.device.name}'s version both changed`}</h3>
       <p>TrackMesh does not merge projects. Choose which version to keep.</p>
+      {(!online || !dawClosed) && <p className="muted">{!online ? `Open TrackMesh on both PCs to use ${peer.device.name}'s version.` : 'Close the project in your DAW and tick “I closed this project in the DAW” below.'}</p>}
       <div className="actions">
         <button className="primary" disabled={busy || !online || !dawClosed} onClick={() => window.confirm(`Replace this folder with ${peer.device.name}'s version? Your current files are saved first and kept next to the project.`) && act({ kind: 'use_peer_version', project_id: project.project_id, device_id: peer.device.device_id, daw_closed: dawClosed })}>Use {peer.device.name}'s version</button>
         <button disabled={busy || rootMissing || project.recovery_required} onClick={() => { setKeepMinePending(true); void act({ kind: 'send', project_id: project.project_id }); }}>Keep mine</button>
@@ -320,7 +321,9 @@ function Card({ card, status, jobStartedAt, focusProjectId, act }: { card: Proje
     </section>}
     {peer && usedTransferId && <div className="delivery-receipt" role="status">Now using {peer.device.name}'s version ✓ <button className="text-button" onClick={() => void openPreviousVersion(project.project_id, usedTransferId).catch(error => setFolderError(String(error)))}>Open my previous files</button></div>}
     {peer && <section className="share-flow"><div><h3>Share current version</h3><p className="muted">Save a version here for your collaborator to receive.</p>
-      {!firstShareBlocked && <button className={remoteAhead ? '' : 'primary'} disabled={busy || rootMissing || project.recovery_required} onClick={() => request('send')}>Share current version</button>}</div>
+      {firstShareBlocked
+        ? <p className="muted">{card.root_empty && !card.peers.some(item => !!item.announcement || !!item.offline_head || !!item.known_lineage) ? 'Add your project files to this folder first.' : `Get ${peer.device.name}'s version first.`}</p>
+        : <button className={remoteAhead ? '' : 'primary'} disabled={busy || rootMissing || project.recovery_required} onClick={() => request('send')}>Share current version</button>}</div>
       <div><h3>Get collaborator’s version</h3><p className="muted">Receive copies the selected collaborator’s snapshot into this folder.</p>
         <label className="confirmation"><input type="checkbox" checked={dawClosed} disabled={busy} onChange={e => setDawClosed(e.target.checked)} /> I closed this project in the DAW</label>
         <button className={remoteAhead ? 'primary' : ''} disabled={disabledReceive || rootMissing} onClick={() => act({ kind: 'receive', project_id: project.project_id, device_id: peer.device.device_id, snapshot_id: resumable ? transfer.snapshot_id : null, daw_closed: dawClosed })}>{resumable ? 'Resume receive' : 'Get collaborator’s version'}</button>

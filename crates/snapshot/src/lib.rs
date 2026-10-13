@@ -189,8 +189,34 @@ fn inventory(root: &Path) -> Result<Vec<FileStamp>> {
 }
 
 /// Check whether a project contains any files visible to TrackMesh without hashing them.
+/// Stops at the first visible entry, so status polling does not walk a full sample tree.
+/// Anything a scan would reject (reparse point, odd name) counts as content, not as empty.
 pub fn is_empty(root: &Path) -> Result<bool> {
-    Ok(inventory(root)?.is_empty())
+    let mut directories = vec![root.to_owned()];
+    while let Some(directory) = directories.pop() {
+        for entry in fs::read_dir(directory)? {
+            let path = entry?.path();
+            let metadata = fs::symlink_metadata(&path)?;
+            let Some(relative) = path
+                .strip_prefix(root)?
+                .to_str()
+                .map(|value| value.replace('\\', "/"))
+            else {
+                return Ok(false);
+            };
+            if is_reparse(&metadata) {
+                return Ok(false);
+            }
+            if metadata.is_dir() {
+                if !is_backup_tree_path(&relative) {
+                    directories.push(path);
+                }
+            } else if !is_ignored_path(&relative) {
+                return Ok(false);
+            }
+        }
+    }
+    Ok(true)
 }
 
 pub struct ScanOptions {

@@ -653,3 +653,11 @@ TrackMesh now ignores only Ableton `.asd` analysis files, the top-level `Backup/
 Added an explicit “Use collaborator's version” flow for divergent history. It saves changed local work as a local snapshot before receiving, allows only the divergent lineage case under explicit user action, and retains the previous files in the normal transfer backup. “Keep mine” uses the existing Share flow. Desktop exposes resolution and backup-open actions, and CLI `receive --replace-local` provides the same explicit override. Peer summaries use the last fetched peer head, and encrypted offline head hints now represent the writer's current project head while preserving existing signing bytes and storage schema.
 
 Checks actually run on the final implementation tree: `cargo fmt --all -- --check`; locked/offline `cargo check` and strict Clippy (`-D warnings`) for `trackmesh-snapshot`, `trackmesh-transfer`, `trackmesh-crypto`, `trackmesh-core`, and `trackmesh-desktop`; locked/offline Windows-target Desktop `cargo check`; Desktop `npm run typecheck` and `npm run build`; and `git diff --check`. Vite warned that Node 22.11.0 is below its stated 22.12+ requirement, but the production build passed. No automated tests or benchmarks were run. **Live two-instance check not done.**
+
+Review follow-up:
+- "Open my previous files" now resolves the transfer backup beside the project folder, the same location the apply journal uses; it previously pointed beside the data directory.
+- The local snapshot taken before "Use collaborator's version" runs in a blocking worker, and the folder is hashed only once.
+- The empty-folder status check stops at the first visible file instead of walking the whole project on every status poll.
+- Blocked Get notices no longer advise snapshotting first. The card explains when "Use …'s version" needs the collaborator online or the DAW-closed confirmation, and why Share is hidden before the first version.
+
+Checks: `cargo fmt --all -- --check`; locked/offline `cargo check` and strict Clippy for snapshot, transfer, crypto, core and desktop; Desktop `npm run typecheck` and `npm run build` (Node 22.11.0); `git diff --check`. Live two-instance check not done.
