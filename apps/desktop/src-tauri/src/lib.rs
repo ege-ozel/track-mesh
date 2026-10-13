@@ -40,6 +40,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::get_status,
             commands::choose_folder,
+            commands::paste_invite_link,
             commands::submit_action,
             commands::set_upnp_mapping,
             commands::close_app

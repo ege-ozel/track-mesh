@@ -205,6 +205,27 @@ impl Engine {
         self.identity.set_name(&normalized)
     }
 
+    pub fn projects_location(&self) -> Result<Option<String>> {
+        Ok(self
+            .settings
+            .lock()
+            .map_err(|_| anyhow::anyhow!("settings lock poisoned"))?
+            .value
+            .projects_location
+            .clone())
+    }
+
+    pub fn set_projects_location(&self, location: &Path) -> Result<()> {
+        ensure!(
+            location.is_absolute(),
+            "Projects location must be an absolute path"
+        );
+        self.settings
+            .lock()
+            .map_err(|_| anyhow::anyhow!("settings lock poisoned"))?
+            .set_projects_location(&self.directory, location.to_string_lossy().into_owned())
+    }
+
     pub fn set_default_supabase_config(&self, config: Option<SupabaseDefaultConfig>) -> Result<()> {
         if let Some(config) = &config {
             ::mailbox::validate_supabase_project_url(&config.url)?;

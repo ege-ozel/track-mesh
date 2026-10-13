@@ -59,7 +59,8 @@ export interface DesktopStatus {
   ready: boolean; closing: boolean; error: string | null;
   device: { device_id: string; name: string; peer_id: string } | null;
   data_directory: string | null;
-  network: { addresses: string[]; error: string | null; peers: Record<string, Connection>; port_mapping: { consent_enabled: boolean; state: string; tcp: string; udp: string; detail: string | null; external_ip_state: string }; reachability: { state: string; peer: string | null; transport: string | null; at_unix_seconds: number | null } } | null;
+  projects_location: string;
+  network: { addresses: string[]; error: string | null; peers: Record<string, Connection>; received_snapshots: { peer_id: string; project_id: string; snapshot_id: string }[]; port_mapping: { consent_enabled: boolean; state: string; tcp: string; udp: string; detail: string | null; external_ip_state: string }; reachability: { state: string; peer: string | null; transport: string | null; at_unix_seconds: number | null } } | null;
   peer_states: Record<string, 'CONNECTED' | 'OFFLINE'>;
   port_status: 'UNVERIFIED' | 'VERIFIED_INBOUND' | null;
   network_observation: NetworkObservation;
@@ -76,8 +77,9 @@ export type Action =
   | { kind: 'set_project_backend'; project_id: string; backend: ProjectBackend; supabase_url: string | null; supabase_anon_key: string | null }
   | { kind: 'set_default_supabase'; url: string | null; publishable_key: string | null }
   | { kind: 'set_device_name'; name: string }
+  | { kind: 'set_projects_location'; location: string }
   | { kind: 'join'; folder: string }
-  | { kind: 'complete_invite_link'; supabase_url?: string; supabase_anon_key?: string }
+  | { kind: 'complete_invite_link'; supabase_url?: string; supabase_anon_key?: string; parent_folder?: string | null }
   | { kind: 'export_card' }
   | { kind: 'open_pairing' | 'close_pairing'; project_id: string }
   | { kind: 'approve_pairing' | 'reject_pairing'; project_id: string; request_id: string }
@@ -91,6 +93,7 @@ export type Action =
 
 export const getStatus = (offset: number) => invoke<DesktopStatus>('get_status', { offset });
 export const chooseFolder = () => invoke<string | null>('choose_folder');
+export const pasteInviteLink = () => invoke<void>('paste_invite_link');
 export const submitAction = (action: Action) => invoke<string>('submit_action', { action });
 export const setUpnpMapping = (enabled: boolean) => invoke<void>('set_upnp_mapping', { enabled });
 export const closeApp = () => invoke<void>('close_app');

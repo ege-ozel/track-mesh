@@ -27,6 +27,16 @@ pub async fn choose_folder(app: AppHandle) -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
+pub async fn paste_invite_link(
+    app: AppHandle,
+    desktop: State<'_, Arc<Desktop>>,
+) -> Result<(), String> {
+    desktop
+        .paste_invite_link(&app)
+        .map_err(|_| "No TrackMesh invite link on the clipboard".to_owned())
+}
+
+#[tauri::command]
 pub async fn submit_action(
     app: AppHandle,
     desktop: State<'_, Arc<Desktop>>,

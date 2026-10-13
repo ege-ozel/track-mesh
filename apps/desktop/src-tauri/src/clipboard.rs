@@ -159,6 +159,50 @@ pub fn clear_if_matches(link: &str, sequence: u32) -> Result<()> {
     Ok(())
 }
 
+/// Read and consume a valid invite link without exposing its payload to the webview.
+pub fn take_invite_link() -> Result<(String, Zeroizing<[u8; 32]>)> {
+    let fail = || anyhow::anyhow!("No TrackMesh invite link on the clipboard");
+    if unsafe { OpenClipboard(ptr::null_mut()) } == 0 {
+        return Err(fail());
+    }
+    let sequence = unsafe { GetClipboardSequenceNumber() };
+    let parsed = unsafe {
+        let data = GetClipboardData(CF_UNICODETEXT);
+        if data.is_null() {
+            Err(fail())
+        } else {
+            let memory = GlobalLock(data);
+            if memory.is_null() {
+                Err(fail())
+            } else {
+                let size = global_size(data);
+                let result = if !(2..=512).contains(&size) || !size.is_multiple_of(2) {
+                    Err(fail())
+                } else {
+                    let units = std::slice::from_raw_parts(memory.cast::<u16>(), size / 2);
+                    let end = units
+                        .iter()
+                        .position(|unit| *unit == 0)
+                        .unwrap_or(units.len());
+                    let link = Zeroizing::new(String::from_utf16_lossy(&units[..end]));
+                    crate::uri::parse_invite_link(&link).map_err(|_| fail())
+                };
+                GlobalUnlock(data);
+                result
+            }
+        }
+    };
+    if parsed.is_ok() && unsafe { GetClipboardSequenceNumber() } == sequence {
+        unsafe {
+            EmptyClipboard();
+        }
+    }
+    unsafe {
+        CloseClipboard();
+    }
+    parsed
+}
+
 unsafe fn allocate_bytes(bytes: &[u8]) -> Result<*mut c_void> {
     let handle = GlobalAlloc(GMEM_MOVEABLE, bytes.len());
     ensure!(!handle.is_null(), "clipboard allocation failed");
