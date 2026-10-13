@@ -53,11 +53,14 @@ impl Engine {
         })
         .await??;
         self.notify_snapshot_available(network.clone(), project, snapshot_id);
-        let (publication, publication_error) =
+        let (publication, publication_error) = if self.mailbox_enabled(project)? {
             match self.publish_metadata(project, allow_loopback_http).await {
                 Ok(status) => (Some(status), None),
                 Err(error) => (None, Some(error.to_string())),
-            };
+            }
+        } else {
+            (None, None)
+        };
         Ok(SendStatus {
             snapshot_id,
             publication,

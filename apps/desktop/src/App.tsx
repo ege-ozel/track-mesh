@@ -67,8 +67,8 @@ function ConnectionSetup({ status, projectId, busy, act }: { status: DesktopStat
   </details>;
 }
 
-function Snapshot({ value, empty }: { value: SnapshotInfo | null; empty: string }) {
-  return value ? <><div className="snapshot-id">{short(value.snapshot_id)} <span>{value.metadata_status}</span></div>
+function Snapshot({ value, empty, mailboxEnabled }: { value: SnapshotInfo | null; empty: string; mailboxEnabled: boolean }) {
+  return value ? <><div className="snapshot-id">{short(value.snapshot_id)} {mailboxEnabled && <span>{value.metadata_status}</span>}</div>
     <p>{value.author_name} · {time(value.created_at)}</p>
     <p>{value.file_count} files · {bytes(value.total_size)} · {bytes(value.changed_bytes)} changed</p></>
     : <p className="muted">{empty}</p>;
@@ -344,8 +344,8 @@ function Card({ card, status, jobStartedAt, focusProjectId, act }: { card: Proje
     {job && !(job.label === 'Copy invite link' && (job.running || copyInviteSuccess)) && <JobNotice job={job} startedAt={jobStartedAt[job.job_id]} collaboratorName={peer?.device.name} />}
     <details className="setup advanced-card"><summary>Advanced</summary>
       <section className="advanced-group"><h3>Connection details</h3>
-      <div className="snapshots"><section><h3>LOCAL SNAPSHOT</h3><Snapshot value={card.local_snapshot} empty="No local snapshot yet." /></section>
-        <section><h3>KNOWN REMOTE METADATA</h3><Snapshot value={peer?.announcement ?? null} empty="No remote snapshot metadata yet." />{peer && peer.history.length > 1 && <details><summary>{peer.history.length} recent snapshots</summary><ol>{peer.history.map(snapshot => <li key={snapshot.snapshot_id}><code>{short(snapshot.snapshot_id)}</code> · {time(snapshot.created_at)}</li>)}</ol></details>}</section></div>
+      <div className="snapshots"><section><h3>LOCAL SNAPSHOT</h3><Snapshot value={card.local_snapshot} empty="No local snapshot yet." mailboxEnabled={card.mailbox_enabled} /></section>
+        <section><h3>KNOWN REMOTE METADATA</h3><Snapshot value={peer?.announcement ?? null} empty="No remote snapshot metadata yet." mailboxEnabled={card.mailbox_enabled} />{peer && peer.history.length > 1 && <details><summary>{peer.history.length} recent snapshots</summary><ol>{peer.history.map(snapshot => <li key={snapshot.snapshot_id}><code>{short(snapshot.snapshot_id)}</code> · {time(snapshot.created_at)}</li>)}</ol></details>}</section></div>
       <div className={`verification ${divergence ? 'danger' : ''}`}>{check?.fresh ? `Current comparison: ${snapshotStatus?.replaceAll('_', ' ') ?? 'not available'}` : 'No current comparison for this collaborator'}</div>
       <ConnectionAssistant card={card} status={status} peer={peer} check={check} busy={busy} act={act} />
       {project.recovery_required && <button disabled={busy || !dawClosed} onClick={() => act({ kind: 'recover', project_id: project.project_id, daw_closed: dawClosed })}>Recover locally</button>}

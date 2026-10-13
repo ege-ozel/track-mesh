@@ -23,6 +23,13 @@ pub struct RefreshStatus {
 }
 
 impl Engine {
+    /// Legacy mailbox metadata is independent of Supabase endpoint/head hints.
+    pub fn mailbox_enabled(&self, project: Uuid) -> Result<bool> {
+        Ok(
+            self.project_backend_config(project)?.backend != crate::ProjectBackend::Supabase
+                && self.store.project(project)?.mailbox_url.is_some(),
+        )
+    }
     fn metadata_gate(&self, project: Uuid) -> Result<Arc<tokio::sync::Mutex<()>>> {
         let mut jobs = self
             .metadata_jobs
@@ -31,6 +38,10 @@ impl Engine {
         Ok(jobs.entry(project).or_default().clone())
     }
     fn mailbox_client(&self, project: Uuid, allow_loopback_http: bool) -> Result<MailboxClient> {
+        ensure!(
+            self.mailbox_enabled(project)?,
+            "legacy mailbox is disabled for this project"
+        );
         let project = self.store.project(project)?;
         let url = project.mailbox_url.context("project has no mailbox URL")?;
         MailboxClient::new(&url, project.project_id, allow_loopback_http)
@@ -199,7 +210,10 @@ impl MailboxRuntime {
                 let engine_for_disk = engine.clone();
                 let projects =
                     tokio::task::spawn_blocking(move || engine_for_disk.store.projects()).await??;
-                for project in projects.into_iter().filter(|p| p.mailbox_url.is_some()) {
+                for project in projects {
+                    if !engine.mailbox_enabled(project.project_id)? {
+                        continue;
+                    }
                     let operation = async {
                         if engine
                             .publish_metadata(project.project_id, allow_loopback_http)
