@@ -1,32 +1,23 @@
-# TrackMesh: aynı Wi-Fi üzerinde iki bilgisayarla ilk deneme
+# Aynı Wi-Fi üzerinde iki bilgisayarla ilk deneme
 
-Bu belge, **A (gönderen)** ve **B (alan)** bilgisayarında ilk dosya aktarımını tek sırada yapmak içindir. İki bilgisayar Windows 10/11 x64 kullanmalı ve aynı normal Wi-Fi ağına bağlı olmalıdır. Küçük bir **test projesi kopyası** kullanın; gerçek çalışma klasörünü deneme için değiştirmeyin. İlk aktarımda VST3, mailbox, relay, public IP ve modem port yönlendirmesi gerekmez.
-
-Hazır paket kullanıyorsanız Rust veya Node kurmanız gerekmez. İki bilgisayarda da **otomatik eşleştirmeyi destekleyen aynı güncel Desktop build'i** çalışmalı. Eski bir TrackMesh penceresi arka planda kaldıysa yeni EXE aynı profilde eski işlemi öne getirebilir; sürümü değiştirmeden önce eski işlemin güvenli biçimde kapandığını kontrol edin. Desktop için WebView2 gerekir. Uygulama paketi, TrackMesh veri profili ve DAW proje klasörü birbirinden ayrı tutulmalıdır.
+A ilk gönderen, B ilk alıcıdır. Bu yönerge güncel Desktop bağlantı akışını kullanır. Henüz güncel bir trial paketi yoktur; aynı build incelenmiş master'dan hazırlanır. VST3 veya arkadaş bilgisayarında Rust/Node gerekmez. Bu deneme internet erişilebilirliği kanıtı değildir.
 
 ## Sırayla yapın
 
-1. **A ve B:** Aynı Wi-Fi ağına bağlanın; konuk/guest ağı veya cihazlar arası iletişimi engelleyen *client isolation* kullanmayın. B'de uygulama yoksa A aynı güncel paketi B'ye ulaştırsın; B ZIP'i yazılabilir bir klasöre çıkarsın ve `trackmesh-desktop.exe` dosyasını ZIP içinden çalıştırmasın. İki bilgisayarda TrackMesh Desktop'ı açın. B, ilk aktarım için **boş bir hedef klasör** oluştursun; mevcut dosyaları silerek klasör boşaltmayın.
-2. **A:** Test projesini kendi klasörüne kaydedin. TrackMesh'te **Link folder → New UUID → Browse… → Link project** ile klasörü bağlayın. Proje zaten bağlıysa mevcut UUID'yi koruyun; aynı klasöre yeni UUID vermeyin.
-3. **A:** **Collaboration & connection details → Connection setup** bölümünü açın. Wi-Fi/router ile aynı ağdaki yerel IPv4 adresini ve *local listen port* değerini kontrol edin. Örneğin `192.168.1.50:43101`; ekranda görünen gerçek değerleri kullanın. Sanal adaptörün veya başka ağın IP'sini seçmeyin.
-4. **A:** Windows, TrackMesh için ağ erişimi sorarsa bulunduğunuz Wi-Fi ağının profilinde izin verin. Önceden elle firewall kuralı açmanız şart olmayabilir; bağlantı başarısız olursa aşağıdaki sorun giderme adımına geçin.
-5. **A:** **Export invitation with current addresses** seçip daveti yeni bir `.json` dosyasına kaydedin. **Export invitation with public addresses** seçmeyin. Davet dosyasını B'ye özel kanaldan gönderin. Davet proje anahtarı taşıyan özel bir belgedir; içeriğini sohbete, loga veya repoya yapıştırmayın. Export, A'da 10 dakikalık eşleştirme penceresi açar. A, TrackMesh'i açık tutsun.
-6. **B:** **Accept invitation** seçin, boş hedef klasörü gösterin ve **Accept invitation & connect…** ile A'nın `.json` davet dosyasını açın. B kendi başına **New UUID/Link folder** yapmasın. Uygulama A'ya bağlanıp cihaz isteğini otomatik gönderir. A'nın `Collaborator` listesinde görünmesi, bağlantının ve dosya aktarımının tamamlandığı anlamına gelmez.
-7. **A:** Proje kartında **Pair collaborator** bölümündeki isteği açın. B ile ekrandaki **Device/Identity** değerlerini karşılaştırın; beklenen cihazsa **Approve device** seçin. Yalnızca görünen cihaz adına güvenmeyin. B onayı 60 saniyeye kadar bekler. Pencere süresi dolduysa A **Open pairing window**, B **Retry automatic pairing** seçsin; projeyi veya profili sıfırlamayın.
-8. **A:** Test projesini kaydedin; ilk denemede DAW'ı kapatın. **Send Snapshot** seçin ve **LOCAL SNAPSHOT** bilgisinin oluştuğunu kontrol edin. TrackMesh açık kalsın. Mailbox kurulmadıysa `PENDING` metadata uyarısı dosya aktarımının başarısız olduğu anlamına gelmez.
-9. **B:** Doğru A cihazını seçin. Proje kartındaki **Connection check** bölümünden **Run connection check** seçin; bu, **Check peer** işlemini çalıştırır ve bağlantı/snapshot durumuna göre bir sonraki adımı gösterir. Bağlantı denemesi 30 saniyeye kadar sürebilir. Kaynak snapshot görünür ve **Receive** uygunsa DAW projesini kapatın, **I closed this project in the DAW before Receive or Recovery** kutusunu işaretleyin ve **Receive** seçin. Aktarım/kurulum bitmeden uygulamayı zorla kapatmayın; A da açık kalsın.
-10. **B:** Receive tamamlanınca yeniden **Check peer** yapın. Güncel doğrulanmış **UP TO DATE** sonucunu, gelen dosyaları ve snapshot/transfer ID'sini kontrol edin. Ardından projeyi DAW'da açıp sample eksikliği veya açılış sorunu olup olmadığını ayrıca inceleyin. A bu sırada yeni snapshot oluşturursa eşitlik sonucu değişebilir.
+1. İki cihazda güncel Desktop'ı açın. Normal aynı Wi-Fi/LAN kullanın; guest/client isolation bağlantıyı engelleyebilir.
+2. A küçük bir proje kopyasını **+ Link folder → Link project** ile bağlasın. B'nin projesi kendi yerel veri profilinden ayrı bir klasörde oluşturulsun.
+3. A kendi Supabase servis ayarını kontrol edip **Invite collaborator** seçsin. İlk Invite/Accept, **Router setup** ile UPnP iznini sorar. Aynı LAN için public adres/port yönlendirmesi gerekmez.
+4. A 15 dakikalık tek kullanımlık bağlantıyı özel kanaldan B'ye iletsin.
+5. B Windows'ta açsın veya **Paste invite link** kullansın; **Accept invite link** penceresinde oluşturulacak klasörün üst dizinini kontrol edip **Accept** seçsin; **Choose another folder** üst dizini değiştirir. Ajan bağlamına link veya davet içeriği vermeyin.
+6. A **Approve collaborator** içindeki public kimlikleri B ile karşılaştırsın ve **Approve** seçsin.
+7. A'nın klasöründe dosyalar ve henüz sürüm yoksa onay ilk snapshot'ı oluşturur. B'nin boş, daha önce sürüm almamış klasörüne ilk sürüm otomatik kurulur. İki uygulama açık kalsın.
+8. Dosyalar geldikten sonra B **Check connection** ile fresh karşılaştırmayı kontrol etsin. Ardından DAW'da açılış ve sample'lar ayrıca incelensin.
+9. Sonraki sürümlerde A **Share current version**, B DAW kapalı onayıyla **Get collaborator's version** kullanır.
+
+Servis olmadan deneme gerekiyorsa [ortak rehberdeki Advanced dosya daveti yolunu](README.md#advanced-ve-legacy-yollar) izleyin. Kart dosyası geri gönderme normal akışın parçası değildir.
 
 ## Takılırsanız
 
-| Belirti | İlk kontrol / sonraki adım |
-| --- | --- |
-| B, A'ya bağlanamıyor veya **Check peer** timeout oluyor | Önce iki cihazın aynı normal Wi-Fi ağında olduğuna, guest/client isolation bulunmadığına, A'nın açık olduğuna ve davette A'nın güncel Wi-Fi IP'sinin yer aldığına bakın. Sonra A'da Windows Firewall iznini kontrol edin. İzin yoksa `Win + R → wf.msc → Gelen Kuralları → Yeni Kural → Bağlantı Noktası` yoluyla paneldeki yerel port için ayrı TCP ve UDP **Allow the connection** kuralları ekleyin; aktif Wi-Fi profiline uygulayın. Firewall'ı tamamen kapatmayın. Bir ayarı değiştirip yeniden deneyin. |
-| Cihaz isteği A'da görünmüyor | A'da eşleştirme penceresini açın; B'de **Retry automatic pairing** seçin. İki bilgisayarda da otomatik eşleştirmeyi destekleyen build çalıştığını doğrulayın. |
-| B onay beklerken süre doluyor | A isteği onayladıktan sonra B'de **Retry automatic pairing** seçin. Yeniden davet import etmek veya yeni UUID oluşturmak gerekmez. |
-| **Receive** pasif veya reddediliyor | A'nın snapshot oluşturduğunu, B'de doğru peer seçildiğini, DAW-closed kutusunu ve gösterilen yerel değişiklik/divergence/recovery mesajlarını kontrol edin. Proje dosyalarını otomatik birleştirmeyin. |
-| Aktarım duraklıyor veya recovery isteniyor | Aynı snapshot için **Resume receive** kullanın. Recovery gerekiyorsa DAW kapalıyken **Recover locally** seçin; staging/backup klasörlerini, veri profilini veya veritabanını silmeyin. |
+Onay süresi dolduysa A **Reopen approval window**, B **Try again** seçsin. Profil/UUID'yi sıfırlamayın. Windows Firewall kontrolü (`Win + R → wf.msc`), TCP/UDP ve router adımları tek yerde [Bağlantı kurulamazsa](README.md#bağlantı-kurulamazsa) bölümündedir.
 
-**Başarı ölçütü:** Cihazlar karşılıklı eşleştirilmiş, B A'ya bağlanabilmiş, A'nın snapshot'ı B'ye tamamen kurulmuş, son **Check peer** güncel **UP TO DATE** göstermiş ve proje DAW'da açılmış olmalıdır. Bu belge deneme adımlarını anlatır; gerçek deneme sonucu ve kullanılan build bilgisi yalnızca repository'deki `docs/IMPLEMENTATION.md` içine kaydedilir.
-
-**Connection check sınırı:** Uygulama kendi network oturumunu, seçilen cihazla bağlantıyı, eşleştirme adayını ve güncel peer/snapshot kontrolünü gösterebilir. Zaman aşımı tek başına A'nın Windows Firewall'u, davette eski IP, guest Wi-Fi izolasyonu veya karşı bilgisayarın kapalı olması arasından kesin bir neden seçtirmez. Panel bunlar için sırayla kontrol edilecek adımları gösterir; firewall/router ayarlarını değiştirmez.
+Başarıyı onay, tamamlanan dosya kurulumu, fresh Check connection ve DAW açılışıyla ayrı ayrı değerlendirin. Kaynak yeni sürüm paylaşmışsa güncel eşitlik değişebilir. Bu sayfa yönergedir; gerçek deneme ve kullanılan build yalnız [IMPLEMENTATION.md](../IMPLEMENTATION.md) içinde kaydedilir.

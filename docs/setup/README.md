@@ -1,143 +1,86 @@
 # TrackMesh: iki bilgisayarda kurulum ve ilk deneme
 
-Henüz setup/MSI yok; Windows executable ile elle deneme yapıyoruz. Küçük bir test projesi kullanın. İlk aktarım için VST3 kurulumu gerekmez. Gerçek doğrulama sonuçları yalnızca [IMPLEMENTATION.md](../IMPLEMENTATION.md) içinde tutulur.
+Bu rehber Windows Desktop'ın güncel bağlantı akışını anlatır. Henüz güncel bir deneme paketi yoktur; gerektiğinde incelenmiş `master` üzerinden yeni paket hazırlanır. Eski paketler bağlantı akışını içermez. İki cihaz aynı güncel build'i kullansın. Hazır executable için Rust/Node gerekmez; Desktop WebView2 ister.
 
-**Aynı Wi-Fi üzerindeki iki bilgisayarla ilk deneme:** A ve B adımlarını tek sırada veren [tek belgeyi](AYNI-WIFI-DENEMESI.md) izleyin.
+Küçük bir proje kopyası ve boş alıcı klasörü kullanın. VST3 ilk aktarım için gerekli değildir. Bu sayfa yönergedir; gerçek kontrollerin sonuçları yalnızca [IMPLEMENTATION.md](../IMPLEMENTATION.md) içindedir.
 
-## Davet dosyası veya tek kullanımlık link
+## Rolünü seç
 
-Gönderen, özel `ProjectInvite` dosyasını kaydedip mevcut dosya akışıyla paylaşabilir. Supabase projesi ayarlı ve durum `CLAIMED`/`MEMBER` olduğunda **Copy invite link** de kullanılabilir. Yeni v2 linki 15 dakika geçerlidir, bir kez açılır ve hem kendi Supabase servisini hem de erişilebilir bağlantı adreslerini taşır; Windows uygulaması linki native olarak işler. Alıcı yeni link için URL veya key girmez. Linkteki servis, çözülen imzalı davetin Supabase host ve publishable key'iyle doğrulanır; alıcıda varsayılan servis yoksa linkteki servis global varsayılan olur, mevcut farklı varsayılan değiştirilmez. Eski biçimli linkler geriye dönük desteklenir ve varsayılan servisi kullanır; varsayılan yoksa bir kez URL/key ister. Bu alanlar proje backend ayarlarından ayrıdır. Public `sb_publishable_...` anahtarı **Project Settings → API Keys** içindedir. `sb_secret_...` anahtarını veya veritabanı parolasını kullanıcıya/istemciye vermeyin. Derleme varsayılanları `TRACKMESH_DEFAULT_SUPABASE_URL` ve `TRACKMESH_DEFAULT_SUPABASE_PUBLISHABLE_KEY` ortam değişkenlerinden de sağlanabilir; gerçek değerleri depoya eklemeyin. Davet çözüldükten sonra imzalı içerikteki proje backend ayarları otomatik kaydedilir. Pairing yine challenge/proof ve gönderenin açık onayı gerektirir. Elle port yönlendirme gerekiyorsa public IPv4 ve dış portu **Settings → Advanced → Manual port forwarding** içinde kaydedin; yalnız TCP ve UDP dinleme portunu yönlendirdiğinizde kullanın ve public IP değişince güncelleyin. Linki yalnız özel kanaldan paylaşın; fragment anahtarı, davet dosyası ve payload'ı chat'e/agent'a/loglara yapıştırmayın. Supabase servisi deploy edilmemişse dosya daveti kullanılabilir.
-
-## Önce kendi rolünü seç
-
-| Rol | Okunacak belge | Yapılacak işler |
+| Rol | Rehber | İlk işi |
 | --- | --- | --- |
-| **Ana bilgisayar / A / gönderen** | [host/README.md](host/README.md) | Projeyi link et, adresleri belirle, modem/firewall hazırla, daveti gönder, gelen cihaz isteğini doğrulayıp onayla, snapshot oluştur |
-| **Peer / B / alıcı** | [peer/README.md](peer/README.md) | Paketi aç, daveti import et, otomatik eşleştirme isteğini gönder, Check connection → Get collaborator's version → son check yap |
-| **Peer tarafında terminal agentı** | [peer/CLAUDE.md](peer/CLAUDE.md) | Davet içeriğini okumadan native CLI ile join/request-pairing/check/receive |
+| Host / A / ilk gönderen | [host/README.md](host/README.md) | Klasörü bağlar, davet bağlantısını paylaşır ve cihazı onaylar. |
+| Peer / B / ilk alıcı | [peer/README.md](peer/README.md) | Bağlantıyı açar, oluşturulacak klasörün üst dizinini kontrol eder ve onayı bekler. |
+| Paketle çalışan terminal ajanı | [peer/CLAUDE.md](peer/CLAUDE.md) | Advanced CLI dosya daveti, `join`, `status`, `request-pairing`, `check` ve `receive` kullanır. |
 
-“Ana bilgisayar” ilk aktarımın kaynağıdır; merkezi sunucu veya kalıcı master rolü değildir. İlk bağlantıyı B, A'ya başlatır. B'nin normal dışarı bağlantısı varsa bu ilk Receive için kendi modeminde port açması gerekmez. Kurulmuş bağlantı iki yönlü kullanılabilir; A'nın sonradan B'ye bağımsız yeni bağlantı başlatması için B'nin erişilebilirliği ayrıca hazırlanır.
+Host merkezi sunucu veya kalıcı master değildir. İlk bağlantıyı B, A'ya başlatır. Kurulu bağlantı iki yönde kullanılabilir. Bağlantı kesildikten sonra A'nın B'ye bağımsız ulaşması için B'nin erişilebilir yolu da gerekir.
 
-**Karşı tarafı beklerken:** A uygulamayı açık tutsun ve doğru davetin B'ye özel kanaldan ulaştığını kontrol etsin. B daveti kabul edince cihaz isteği otomatik gelir. A kimliği kontrol edip **Approve** ve **Share current version** yapar; B **Check connection** / **Get collaborator's version** / son check ile devam eder. Aynı klasörü yeniden link etmek veya yeni UUID oluşturmak gerekmez.
+## Güncel Desktop akışı
 
-## Peer benim bilgisayarımı ve projemi nasıl görecek?
+1. A **+ Link folder** seçer, proje adı ve klasörü girer, **Link project** ile bağlar.
+2. A proje kartında **Invite collaborator** seçer. İsteğe bağlı davet servisi için kullanıcının kendi Supabase projesi ayarlanmış olmalıdır. A bunu **Settings → Advanced → Default Supabase service** bölümünde yapılandırabilir; proje ayarları **Advanced → Connection details → ENDPOINT BACKEND** altındadır.
+3. İlk Invite veya Accept işlemi **Router setup** onayını sorar. **Allow (recommended)** süreli UPnP eşlemesine izin verir; **Not now** eşleme yapmaz. Tercih sonradan **Settings → Set up router automatically (UPnP)** ile değişir. Eşleme başarısı internet erişimi kanıtı değildir.
+4. A bağlantıyı özel kanaldan B'ye gönderir. V2 bağlantı 15 dakika geçerlidir ve bir kez tüketilir. Servis referansı, publishable key ve drop kimliğini taşır; ayrı çözme anahtarı fragment içindedir. Davet, Supabase'de küçük bir şifreli drop olarak tutulur.
+5. B bağlantıyı Windows'ta açar veya **Paste invite link** kullanır. **Accept invite link** penceresinde oluşturulacak proje klasörünün üst dizinini kontrol edip **Accept** der. **Choose another folder** üst dizini değiştirir; native uygulama burada proje adına göre boş bir alt klasör oluşturur. Yeni v2 bağlantı için URL/key girmesi gerekmez. Davet içeriğini veya bağlantıyı ajan bağlamına yapıştırmayın.
+6. B'nin imzalı cihaz isteği otomatik gider. A, **Approve collaborator** bölümündeki public Device/Identity değerlerini B ile karşılaştırıp **Approve** seçer; beklenmeyen isteği **Reject** eder. Yalnızca isim yeterli değildir.
+7. A'nın klasöründe dosyalar ve henüz bir sürüm yoksa onay ilk snapshot'ı oluşturur. B'nin boş, daha önce sürüm almamış klasörüne ilk sürüm otomatik alınır. İki uygulama da açık kalsın; işlem bitene kadar DAW'da hedefi açmayın.
+8. Sonraki değişikliklerde kaynak **Share current version** seçer. Alıcı DAW projesini kapatır, **I closed this project in the DAW** kutusunu işaretler ve **Get collaborator's version** seçer. **Check connection** güncel bağlantı ve karşılaştırmayı kontrol eder.
 
-1. **A güncel Desktop'ı açar ve projeyi link eder.** Uygulamayı açmak B'ye otomatik bildirim göndermez; kullanıcıların listelendiği merkezi bir rehber yoktur.
-2. **A güncel adreslerle davet export eder ve dosyayı özel gönderir.** Davet proje UUID/adı, A'nın imzalı cihaz kimliği/PeerId'si ve bağlantı adreslerini içerir. Native uygulamanın okuyacağı özel proje capability'sini de taşır; B veya agent dosya içeriğini chat'e yapıştırmaz.
-3. **B daveti boş yerel hedefe import eder.** Kendi proje kartında aynı proje adını/UUID'sini ve `Collaborator` listesinde A'nın cihazını görür. Bu yerel kayıt, A'nın o anda online olduğu veya dosyaların indirildiği anlamına gelmez.
-4. **B'nin uygulaması davetteki adreslerden A'ya bağlanır.** Ayrı internetlerde yol public IP/dış port → modem → A'nın LAN IP/local portudur. A online ve 15 dakikalık eşleştirme penceresi açık olmalı. Bağlantı için 30 saniyeye kadar beklenebilir.
-5. **A gelen cihaz isteğini doğrular ve onaylar.** B kart dosyası geri göndermez. B'nin onay bekleme süresi 60 saniyeye kadardır; geç onayda Try again kullanılabilir.
-6. **A Share current version yapar; B Check connection → Get collaborator's version → son check yapar.** Onay, bağlantı, sürümün hazır olması ve dosya teslimi ayrı durumlardır. Get tamamlanmadan B'de proje dosyaları hazır sayılmaz.
+Davet penceresi 15 dakikadır. Onay geç kaldıysa A **Reopen approval window**, B **Try again** kullanır. Aynı projede pencereyi yeniden açmak bekleyen istekleri korur; başka proje için açmak önceki onaysız istekleri temizler. Pencere kapanışı, süre sonu veya restart onaysız istekleri kalıcı bir kuyruğa yazmaz. Onaylı cihaz her açılışta tekrar onay istemez.
 
-İlk davet import edildikten sonra aynı veri profili ve güncel bağlantı adresleri korunuyorsa tekrar New UUID/davet import gerekmez. İkiniz de online olduğunuzda B, bilinen A adreslerine yeniden bağlanmayı dener. Yeni eşleştirme penceresi yalnızca onaysız bir cihazı kaydetmek içindir; onaylanmış cihaz her açılışta tekrar onay istemez. B CLI kullanıyorsa `request-pairing`/`check`/`receive` yalnızca kendi komutu boyunca network session tutar; komut bitince kalıcı online kalmaz. Sürekli açık deneme için aynı profille Desktop veya açık `serve` oturumu kullanılır; aynı anda iki owner çalıştırılmaz.
+Divergence varsa **Use <name>'s version** açık onayla karşı tarafın sürümünü kurar; yerel değişikliklerin snapshot'ı alınır ve önceki dosyalar backup'ta korunur. **Keep mine** yerel sürümü paylaşır. Otomatik birleştirme yoktur.
 
-## Panelde hangi cihaz ve durum görünür?
+## Davet servisi ve erişim sınırları
 
-| Görünen bilgi | Anlamı |
+Supabase yalnız küçük şifreli invite drop, endpoint kaydı ve head hint'i tutar. Dosyalar ve sample'lar servise yüklenmez. Proje anahtarı yalnız şifreli davetin içindedir; açık anahtar ve çözülmüş davet servise gönderilmez. Servis kaydı tek başına NAT engelini aşmaz ve offline kaynağın dosyalarını indirmez.
+
+**Approve** yerel yetkiyi verir ve üyelik grant'ini otomatik kuyruğa alır. Projeyi oluşturan cihazdaki **Revoke**, yerel erişimi kaldırır ve Supabase üyelik revoke'unu kuyruğa alır. İçe aktarılan projede başka cihazı servis üyeliğinden çıkarma isteği gönderilmez. Revoke anahtarı değiştirmez: çıkarılan cihaz daha önce aldığı dosyaları ve anahtarı elinde tutar. Yeni import'lar sahiplenme isteği göndermez; #42 öncesi import'ların kökeni geriye dönük tahmin edilmez.
+
+Servis problemi ve eksik fonksiyon adları proje kartındaki **Advanced → Connection details → ENDPOINT BACKEND** altında görünür. URL olarak `https://<project-ref>.supabase.co` ve yeni biçimli `sb_publishable_...` kullanılır. Secret key veya veritabanı parolası istemciye verilmez. [Supabase kurulum belgesi](../../services/supabase/README.md) deployment adımlarını anlatır. Public release kişisel Supabase projesi içermemelidir; derleme varsayılanları yalnız özel build içindir.
+
+## Panel, çevrimdışı bilgi ve ağ değişimi
+
+`Collaborator` yerelde bilinen cihazı gösterir. Bu kayıt, bağlantı veya dosya teslimi değildir. **Waiting for … to approve this device…** onay beklenmesini gösterir. Seçili cihazın bağlantısı ve güncel **Check connection** sonucu ayrı bilgilerdir. Offline head hint'i son bilinen sürümü gösterir; dosyalar için yetkili kaynak online olmalıdır.
+
+Uygulamayı açmak davet almayan birine bildirim veya public kişi listesi oluşturmaz. Public rehber, browser deployment, offline pairing kuyruğu, kalıcı Windows arka plan servisi ve sürekli senkronizasyon yoktur. `services/relay` kodu vardır; desteklenen kurulumda relay fallback yoktur ve post-1.0'a ertelenmiştir. Legacy relay alanını bağlantı çözümü olarak doldurmayın.
+
+UPnP ve imzalı endpoint yayını, değişen erişilebilir adresleri güncellemeye çalışır. Gerçek WAN/ağ geçişi davranışı doğrulanmış sayılmaz. Elle yönlendirme kullanılıyorsa yeni public IPv4/dış portu Settings'te güncelleyin. Yeni ağ erişilemiyorsa önce aşağıdaki sırayı izleyin. Profil, proje UUID'si ve anahtarları sıfırlamayın. Dosya davetinin adresleri gerçekten eskidiyse güncel dosyayı aynı profil/proje/hedefe native import edin; sıradan timeout için yeniden import yapmayın.
+
+Açık A–B bağlantısı iki yöndeki yetkili istekleri taşır. B kaynak olacaksa **Share current version** yapıp uygulamasını açık tutar; A sonraki sürümü Get ile alır. CLI network komutu tamamlanınca kendi bağlantısını kapatır. Açık Desktop veya `serve` oturumu olmadan o cihaz kalıcı online kaynak değildir.
+
+## Bağlantı kurulamazsa
+
+Her seferinde tek koşulu değiştirip **Check connection** ile tekrar deneyin. İlk uzak bağlantıda alıcı normal dışarı erişim kullanır; alıcıda port yönlendirmesi bu yönün önkoşulu değildir. En az bir cihazın erişilebilir yolu gerekir.
+
+1. Doğru proje/cihaz ve aynı build kullanılıyor mu, A açık mı, cihaz onaylandı mı, paylaşılabilir sürüm var mı kontrol edin. Bekleyen onay için **Reopen approval window** / **Try again** kullanın.
+2. Aynı LAN'da guest Wi-Fi/client isolation erişimi kesebilir. Aynı normal ağda deneyin. İnternet port yönlendirmesi aynı LAN için gerekmez.
+3. İlk onayda UPnP'ye izin verilmişse proje kartındaki **Advanced → Manual invitation (without invite service) → Connection setup** gözlemlerini kontrol edin. `MAPPED` yalnız router eşlemesi demektir; `UNVERIFIED` internet erişimi ispatı değildir.
+4. Gönderende `Win + R → wf.msc → Gelen Kuralları → Yeni Kural → Bağlantı Noktası` ile uygulamanın yerel dinleme portuna ayrı TCP ve UDP izinleri verin. Aktif Private/Public ağ profilini kontrol edin. Gözlem paneli kural oluşturmaz; firewall'ı tamamen kapatmayın.
+5. UPnP uygun değilse router'da elle yönlendirme yapın. A'nın router'a bağlı LAN adresini panelden belirleyin ve DHCP rezervasyonu yapın. TCP `<external-port> → <PC-LAN-IP>:<local-port>` ve UDP için aynı eşlemeyi oluşturun; varsayılan yerel port 43101'dir. **Settings → Advanced → Manual port forwarding** içinde **Public IPv4** ve **External port** değerlerini **Save** ile kaydedin. Bu alanlar router kuralını kendileri oluşturmaz.
+6. TP-Link arayüzünde modeline göre **Advanced → NAT Forwarding → Virtual Servers / Port Forwarding** bölümünü açın. TCP/UDP kurallarını doğru iç IP/portla etkinleştirip kaydedin. Başka kullanıcıya ait kuralı değiştirmeyin. Menü kilitliyse ISP/ağ yöneticisinden erişim isteyin. [Üretici rehberi](https://www.tp-link.com/uk/support/faq/785/) model farklarını açıklamak için kullanılabilir.
+7. Dış port çakışıyorsa boş bir dış port seçin; yerel dinleme portu aynı kalabilir. UI'daki dış port router kuralıyla aynı olsun. Yeni public IP veya portu Settings'te güncelleyin.
+8. Router WAN adresi özel/CGNAT aralığındaysa yerel kural upstream NAT'ı açmaz. ISP'den erişilebilir public IPv4 veya erişilebilir başka ağ isteyin. Supabase ve relay alanı bu engeli çözmez; transfer garantisi yoktur.
+
+| Belirti | Sonraki somut adım |
 | --- | --- |
-| Pair collaborator altında isim, Device ve Identity ile istek | Davet sahipliği kanıtı doğrulanmış, onay bekleyen aday; dosya yetkisi yoktur. İsim yerine public kimliği arkadaşınla karşılaştır. |
-| Collaborator listesindeki cihaz | Yerelde kayıtlı/eşleştirilmiş cihaz. B import sonrası A'yı görür; A onay sonrası B'yi görür. |
-| Seçili cihazda `DIRECT` / `RELAYED` ve transport | Şu an kurulu peer bağlantısı. Dosya teslimi veya fresh eşitlik kanıtı değildir. |
-| `OFFLINE` / last-known | Şu an bağlantı yok; varsa geçmiş metadata gösterilir. Check connection en fazla 30 saniyelik bağlantı denemesi yapar. |
-| Fresh `UP TO DATE` / CLI `verified_equal: true` | Kontrol sırasında karşılaştırılan snapshot'ların güncel bağlantı üzerinden eşitliği doğrulanmıştır. |
+| Invite kullanılamıyor / eksik fonksiyon | Default Supabase service ve proje ENDPOINT BACKEND durumunu kontrol edin; deployment için servis belgesine bakın. |
+| Link kullanılmış veya süresi dolmuş | A yeni bağlantı oluştursun. Decrypt/import edilmiş projeyi sıradan retry için silmeyin. |
+| Onay penceresi kapalı / onay bekleniyor | A pencereyi yeniden açsın, B Try again seçsin ve kimlik karşılaştırmasını tamamlasın. |
+| Kaynak offline / sürüm yok | Kaynak uygulamayı açıp sürümü paylaşsın; hint dosya teslimi değildir. |
+| Yerel değişiklik / divergence | Açık Use …'s version veya Keep mine kararını verin; mevcut dosyaları silmeyin. |
+| Aktarım PAUSED | Aynı hedef/snapshot için Resume receive kullanın. |
+| RECOVERY_REQUIRED | DAW kapalıyken Recover locally kullanın; journal, staging ve backup'ı koruyun. |
+| Aynı profilde başka owner açık | İşin/kurulumun güvenli bitmesini bekleyin; apply sırasında process'i öldürmeyin. |
 
-Onay bekleyen aday, bağlantısı kesilse de pencere kapanana kadar listede kalabilir; aday satırında canlı online göstergesi yoktur. Henüz daveti açmayan kişiyi, başarısız/yetkisiz bütün giriş denemelerini veya kalıcı bağlantı geçmişini gösteren bir panel yoktur. Eski native pencere açıksa yeni EXE'yi başlatmak eski owner'ı öne getirebilir; iki tarafta güncel build'in gerçekten çalıştığını kontrol edin.
+## Advanced ve legacy yollar
 
-## Açık bağlantıda iki yöne dosya göndermek
+Davet servisi kullanılamıyorsa **Advanced → Manual invitation (without invite service)** içinde **Export invitation with current addresses** kullanılabilir. Public adresli dosya için aynı bölümde **Save invitation file with public addresses** vardır. Bunlar mevcut UI etiketleridir. Dosya daveti ayrı özel kanaldan paylaşılır; native import da otomatik istek ve açık onay gerektirir.
 
-B → A bağlantısı kurulmuş ve iki cihaz aynı proje için yetkiliyse, aynı bağlantı üzerinden A → B ve B → A peer istekleri taşınabilir. B'nin mevcut bağlantıda kaynak olması için ayrıca modem portu açması önkoşul değildir. B değişikliğini kaydedip **Share current version** yapar; A doğru B cihazını seçip DAW kapalıyken **Check connection** → **Get collaborator's version** → son check yapar. Yerel değişiklik, ancestry/divergence ve recovery kontrolleri iki yönde de geçerlidir; aynı anda iki tarafın bağımsız değişikliklerini otomatik birleştirmeyin.
+CLI'nin davet bağlantısı tüketme akışı yoktur. Dosya daveti ile `join`, güvenli `status` ve `request-pairing` kullanır; ardından `check`/`receive` yapılır. [Paket ajan şablonu](peer/CLAUDE.md) komutları ve tek-owner kuralını anlatır. Manuel imzalı kart alışverişi **Legacy file pairing** yoludur. Foundation self-hosted mailbox/relay servislerinin public-card ACL hazırlığı ayrı operatör işidir; Supabase otomatik grant'i bu legacy ACL'lerin yerine geçmez.
 
-Bağlantı kapanmışsa B, erişilebilir A'ya yeniden bağlanabilir. A'nın B'ye tek başına yeni inbound yol açması için B'nin public port yönlendirmesi veya hazırlanmış relay yolu gerekir. B'nin CLI komutu bittiyse o cihazın açık Desktop/serve session'ı olmadan kaynak online sayılmaz.
+## Denemeyi bitirme ve paket bakımı
 
-## IP veya internet bağlantısı değişince
+Aktarım/kurulum bitince dosyaları ve fresh Check connection sonucunu kontrol edin; DAW'da açılış/sample kontrolü ayrı manuel iştir. Uygulama kapanırken kabul edilmiş işlerin bitmesini bekleyin. Recovery verisini temizlik olarak silmeyin.
 
-- **Yalnızca A'nın LAN IP'si değişti:** modem hedefini yeni PC IP'sine yönelt; local port/firewall aynı kalsın. Public IP/dış port da değişmediyse bunlar için yeni davet gerekmez. LAN'dan bağlanan B'nin eski yerel adresi güncel değilse güncel adresli davet çıkar.
-- **A'nın public IP'si veya dış portu değişti:** erişilebilirliği yeniden hazırla, yeni adreslerle davet export et; B aynı profil/proje/hedef klasörüne native import ile adresleri güncellesin. Proje UUID'sini veya kimlik profilini sıfırlama. Yalnızca pairing timeout nedeniyle tekrar import yapılmaz; bu adım değişen adres içindir.
-- **A telefon hotspot'una veya başka router'a geçti:** eski modemdeki port yönlendirmesi yeni ağa uygulanmaz. CGNAT/private WAN nedeniyle yeni public IP bilinmesi de yeterli olmayabilir; erişilebilir ağ veya hazırlanmış özel relay gerekir.
-- **B alıcı olarak ağ değiştirdi:** A'nın güncel adreslerine yeni dışarı bağlantı deneyebilir. B'ye bağımsız gelen bağlantı gerektiğinde B'nin yeni ağ erişimi ayrıca değerlendirilir.
+Sorun bildirirken build/commit, Windows sürümü, aynı LAN mı ayrı ağ mı, son tamamlanan adım ve güvenli hata metni yeterlidir. Davet, anahtar, `secrets`, veritabanı veya kullanıcı proje dosyası göndermeyin.
 
-## Browser deployment ve database sınırı
-
-TrackMesh Windows Desktop olarak çalışır; bu deneme için UI'ı tarayıcıya deploy etmek gerekmez. Yerel SQLite zaten proje, trust, snapshot ve transfer kayıtlarını tutar. İki bilgisayarın açık olması tek başına erişimi kanıtlamaz; güncel adres, doğru yönlendirme/firewall, onay ve hazır snapshot da gerekir.
-
-| Parça | Şu anki rol / sınır |
-| --- | --- |
-| Davet + direct bağlantı | Merkezi database olmadan ilk adresi/kimliği taşır; varsayılan denemede değişen public adres yeni davetle güncellenir. |
-| Private rendezvous | Yapılandırılmış, erişilebilir ve yetkilendirilmiş servis üzerinden trusted cihazlar adres keşfi yapabilir. Repo desteği vardır; public deployment ve ağ değişimi entegrasyonu doğrulanmamıştır. |
-| Private relay | Direct yol kurulamadığında şifreli trafiğe geçiş noktası sağlar; iki uç yine online olmalı. Database kaydı NAT engelini tek başına aşmaz. |
-| Mailbox + servis SQLite | Şifreli snapshot duyurularını tutar; proje dosyaları ve offline eşleştirme istekleri için storage değildir. |
-| Supabase | M5d endpoint mailbox ve M6 encrypted invite drop yerel olarak entegredir; canlı deployment doğrulanmamıştır. Invite link direct bağlantı/relay sağlamaz. |
-
-Altyapı işletimi [PHASE3.md](../PHASE3.md) içinde; varsayılan trial'da hazır servis olmadan relay/mailbox alanını doldurmayın. Yeni peer'ın altyapıya ilk erişim yetkisi de operatör tarafından hazırlanmalıdır; uygulamadaki onay servis ACL'lerini otomatik güncellemez.
-
-## Hızlı deneme: sırayla yapacaklarımız
-
-İki farklı internet bağlantısı için bağlantı yolu: **B → A'nın public IP'si ve dış portu → A'nın modemi → A'nın yerel PC IP'si ve local portu → TrackMesh**. Windows Firewall da bu PC'ye gelen bağlantıya izin vermeli. Bir noktadaki engel tüm yolu kesebilir; Check connection timeout tek başına hangi noktanın hatalı olduğunu söylemez.
-
-1. **İkiniz de uygulamayı açın.** Aynı sürümü kullanın. A küçük bir deneme klasörünü **Link folder** ile bağlasın; B almak için boş bir klasör hazırlasın. İlk denemede mailbox/relay boş kalabilir.
-2. **A yerel IP/portu not etsin.** **Collaboration & connection details → Connection setup** içinde örneğin `192.168.1.50:43101` görürsünüz. Bu IP modemde hedef olacak. Kendi IP'nizi kullanın.
-3. **A firewall iznini versin.** Gelen TCP `43101` ve UDP `43101` için izin kuralı oluşturun; kurallar aktif Windows ağ profilinde geçerli olsun. Uygulama bunu otomatik yapmaz.
-4. **A modemden port yönlendirsin.** TCP `43101 → PC_IP:43101` ve UDP `43101 → PC_IP:43101` kurallarını etkinleştirip kaydedin. Modemin WAN adresinin public IPv4 olup olmadığını kontrol edin. Aynı LAN'daysanız bu adımı atlayın.
-5. **Daveti gönderin ve eşleştirin.** Ayrı internetlerde A, public IP + dış portu girip **Export invitation with public addresses** kullansın. Aynı LAN'da **Export invitation with current addresses** yeterli. Export, A'da 15 dakikalık eşleştirme penceresini açar. B daveti kabul edince imzalı cihaz kimliği ve davet sahipliği kanıtı otomatik gönderilir. A beklenen kimliği doğrulayıp **Approve** seçsin. B kart dosyası göndermez; yalnızca ilk daveti özel paylaşın.
-6. **A → Share current version.** Yerel snapshot oluşmasını bekleyin. Mailbox yoksa `PENDING` dosya aktarımının kesin başarısız olduğu anlamına gelmez.
-7. **B → Check connection → Get collaborator's version.** Check connection için 30 saniyeye kadar bekleyin. Erişim sağlandıysa B DAW'ı kapatıp onay kutusunu işaretlesin ve Get collaborator's version seçsin. İkiniz de uygulamayı açık tutun. Bitince dosyaları ve yeniden Check connection sonucunu kontrol edin.
-
-Local portunuz farklıysa `43101` yerine paneldeki portu kullanın. Her değişiklikten sonra B'den Check connection'ı yeniden deneyin; aynı anda birden çok ayarı değiştirmeyin.
-
-### Takılırsak: belirti → sonraki adım
-
-Tabloyu sırayla inceleyin; size uymayan satırı geçin. İnternete geçmeden aynı LAN'da deneme yapabiliyorsanız, LAN'da çalışan aktarım uygulama/pairing tarafını ayırmaya yardımcı olur.
-
-| Takıldığımız yer | Şimdi ne yapacağız? |
-| --- | --- |
-| **Firewall izni hiç verilmedi / izin penceresi gelmedi** | A'da Windows Güvenliği → Firewall → Gelişmiş ayarlar → Gelen Kuralları üzerinden TCP ve UDP local port izinlerini elle ekleyin. Popup gelmesini beklemeyin; firewall'ı tamamen kapatmayın. |
-| **Firewall kuralını ekleyemiyoruz veya hâlâ engelleniyor** | Windows yönetici yetkisini, kuralın etkinliğini ve aktif Private/Public ağ profilini kontrol edin. Kurumsal politika/başka güvenlik yazılımı yönetiyorsa yetkili kişiden izin isteyin. |
-| **Modemde port-forward kapalı / menü yok / erişim reddedildi** | Kuralı ve varsa port-forward özelliğini etkinleştirin. Ayar ISP/yönetici tarafından kilitliyse onlardan açılmasını isteyin. Yetki alınamıyorsa erişilebilir başka ağ veya hazır özel relay gerekir; uygulamadan bu kilidi açamayız. |
-| **Modem “port kullanımda” diyor** | Çakışan kuralı kontrol edin. Kullanılmayan bir dış port seçebilirsiniz: örneğin TCP ve UDP `45000 → PC_IP:43101`. UI'da External router port `45000` olur; firewall local portu `43101` kalır. Yeni public-address davetini B'ye gönderin. |
-| **Kural kaydoldu ama Check connection timeout oluyor** | A açık mı ve pairing iki yönde tamam mı? Sonra hedef LAN IP, iç/dış port, TCP ve UDP kurallarının etkinliği ve firewall profilini kontrol edin. B gerçekten ayrı internetten denesin. Kuralın kaydolması dışarıdan erişildiğini kanıtlamaz. |
-| **WAN IP 100.64–100.127 ile başlıyor; ISP CGNAT olduğunu doğruluyor** | Kendi modeminizde port açmak ISP'nin NAT katmanını açmaz. ISP'den erişilebilir public IPv4 isteyin; alamıyorsanız hazır özel relay veya uygun başka ağ kullanın. Aynı port kuralını tekrar tekrar değiştirmek çözmez. |
-| **WAN IP 10.x / 172.16–31.x / 192.168.x** | Önde başka router mı var, yoksa ISP özel IP mi veriyor, belirleyin. İki yerel router varsa iki katmanda yönlendirme gerekir; ISP tarafındaysa public IPv4/relay yoluna geçin. |
-| **Daha önce çalıştı, bugün çalışmıyor** | A'nın LAN IP'si veya public IP'si değişmiş olabilir. LAN IP için modem hedefini/adres rezervasyonunu düzeltin; public IP/dış port değiştiyse yeni daveti çıkarıp B'de aynı proje klasörüne import edin. |
-| **Check connection çalışıyor ama Get collaborator's version pasif/reddediliyor** | Modem ayarını değiştirmeden A'da snapshot olduğunu, B'de doğru peer ve DAW-closed onayını, yerel değişiklik/divergence/recovery mesajlarını kontrol edin. |
-| **Your version and X's version both changed / divergence** | Desktop'taki resolution box'ta **Use X's version** ile mevcut dosyaları önce yerel geçmişe kaydedip X'in sürümünü açıkça seçin; DAW kapalı olmalı. Veya **Keep mine** ile snapshot'ınızı paylaşın ve X'ten kendi sürümünüzü seçmesini isteyin. Otomatik birleştirme yapılmaz. |
-| **This folder has changes you haven't shared** | Bunları korumak için resolution box'ta **Keep mine** ile paylaşın; karşı tarafın sürümünü seçerseniz TrackMesh önce yerel değişikliklerin snapshot'ını alıp eski dosyaları transfer yedeğinde tutar. |
-| **Ableton `.asd` / `Backup/` or OS metadata appears in the folder** | These generated files are ignored by TrackMesh; `Ableton Project Info/`, `Samples/` and project/audio files are still included. |
-
-Modem arızalarını ayırmak için [üreticinin port-forward sorun giderme rehberi](https://www.tp-link.com/uk/support/faq/785/) de WAN IP, upstream NAT ve firewall kontrollerini anlatır; menü adları sizin modeminizde farklı olabilir. Ayrıntılar rolünüze ait rehberdedir. Henüz hazır relay'iniz yoksa bunu anında kullanılabilecek bir fallback gibi düşünmeyin; önce operatör kurulumu ve erişim izinleri gerekir.
-
-## Tek eşleştirme akışı
-
-Yeni Desktop yanıtı şifreli peer bağlantısından otomatik gönderir; A'nın son onayı korunur. Alıcı, istek gönderildikten sonra onayı 60 saniyeye kadar sorgular. A offline/pencere kapalıysa import korunur; A **Reopen approval window**, B **Try again** ile devam eder. Tek projede 15 dakikalık pencere vardır; aynı proje için yeniden açmak bekleyen istekleri koruyup süreyi uzatır. Farklı proje için açmak önceki projenin bekleyen isteklerini temizler. Süre bitince, kapanınca veya restart olunca onaysız istekler temizlenir. Bu süre davet/proje anahtarını iptal etmez. Eski invitation/card formatları ve transfer protokolü korunur; ayrı `/trackmesh/pairing/1` kanalı eklenir. İki tarafta da otomatik eşleştirme build'i gerekir: `20261007` ZIP'i bunu içermez, `20261008` AutoPairing paketi içerir, `20261009` paketi aynı EXE'lerle güncel yönergeyi taşır; `20261010` ConnectionCheck paketi yeni Desktop bağlantı yardımcısını ekler. Eski cihazlarla manuel kart yolu **Legacy file pairing** altında bulunur; `join`/`card` komutları değişmez, CLI'ye `request-pairing` eklenir. [Güvenlik sınırları](PAIRING_SECURITY.md).
-
-## Ortak çalışma kuralları
-
-- İki taraf aynı uygulama sürümünü kullansın. Windows 10/11 x64 ve Desktop için WebView2 gerekir; CLI WebView2 kullanmaz. Installer veya otomatik firewall/router ayarı yoktur.
-- Desktop varsayılan profili `%LOCALAPPDATA%\TrackMesh`, peer CLI deneme profili `%LOCALAPPDATA%\TrackMeshPeerTrial` olur. Aynı profilde Desktop/CLI serve/check/receive/plugin owner aynı anda network runtime açmasın. DAW proje klasörü, veri profili ve executable paketi ayrı olsun.
-- Schema v3 kullanan yeni sürüme ilk geçişten önce uygulamayı kapatıp `%LOCALAPPDATA%\TrackMesh` profil klasörünün yedeğini alın. Yeni veritabanını eski v2 binary açamaz; geri dönüşte uygulamayı kapatıp yedeği geri yükleyin.
-- Davet private capability/proje anahtarı içerir. Yalnızca özel kanaldan dosya olarak paylaşın; payload'ı clipboard, chat, agent context, log veya repoya koymayın. Native dialog veya CLI `join --invite-file` kullanın. Profil, veritabanı ve secrets paylaşılmaz.
-- Dosya eklemek otomatik sync değildir; A **Share current version**, B **Get collaborator's version** yapar. `2 publications pending` iki authored snapshot'ın metadata duyurusunun ACK beklemesidir; dosya sayısı veya teslim sonucu değildir.
-- Mailbox yalnızca encrypted metadata/snapshot announcement tutar. `PUBLISHED` dosyaların B'ye ulaştığını göstermez. Mailbox yokken yerel snapshot hazırsa direct Receive denenebilir.
-- Özel relay direct bağlantı başarısız olursa peer bağlantısına geçiş noktası olabilir. Hazır servis, pinned PeerId ve izinler gerekir; bir alan doldurmak relay kurmaz. Kaynak yine online olmalıdır. Operatör rehberi: [PHASE3.md](../PHASE3.md).
-
-## Sorun olursa ve denemeyi bitirirken
-
-| Belirti | İlk kontrol |
-| --- | --- |
-| Check connection timeout / offline | Kaynak açık mı, pairing iki yönde tamam mı, davette güncel public IP var mı, modem ve firewall doğru PC/local portu gösteriyor mu? Ayrı ağdan B → A denemesini kullanın; aynı LAN'dan public-IP denemesi router'ın NAT loopback desteğine takılabilir. |
-| Public export düğmesi pasif | Public IPv4 ve 1–65535 arası dış port girin. LAN/CGNAT adresi public alanına yazılmaz. |
-| Export dosyası kaydedilemiyor | Yeni bir `.json` dosya adı seçin. Mevcut dosyalar üzerine yazılmaz. |
-| Receive pasif veya reddediliyor | Doğru peer, online bağlantı, DAW-closed kutusu, yerel değişiklikler ve divergence/recovery mesajlarını kontrol edin. Divergence otomatik birleştirilmez. |
-| Recovery gerekiyor | DAW'ı kapatıp **Recover locally** kullanın. Staging/backup klasörlerini veya veritabanını silmeyin. |
-| Farklı local portla açmak istiyorsunuz | Runtime'da değişmez. Mevcut owner ve işlerinin güvenli şekilde bitmesini bekleyip `trackmesh-desktop.exe --port 43102` gibi bir başlangıçla yeniden açın; firewall ve iç port eşlemesini güncelleyin. İkinci launch mevcut owner'ın portunu değiştirmez. |
-
-**Close safely** pencereyi gizler; aktif iş/plugin session/pending publication process'i açık tutabilir. İşler bittikten sonra 60 saniye idle grace vardır. Mailbox yoksa/erişilemiyorsa pending publication bu kapanışı geciktirebilir. Yeniden açarak durumu inceleyin; dosya kurulumu sürerken process'i zorla sonlandırmayın.
-
-Proje sahibine executable sürümü/commit, Windows sürümü, aynı LAN mı ayrı internet mi, hangi adımda durduğu, hata metni, transfer/snapshot ID ve ekrandaki bağlantı durumunu bildirin. Davet içeriği, anahtarlar, `secrets` veya veritabanı göndermeyin; ekran görüntüsünde IP, kullanıcı adı ve özel dosya yollarını gerektiğinde gizleyin.
-
-Denemenin başarı ölçütü: iki cihaz karşılıklı paired, B A'ya ulaşabiliyor, A'nın snapshot'ı B'ye tamamlanarak alınıyor ve fresh Check connection sonucu doğrulanıyor. Bu belge bir yönergedir; iki gerçek PC'de bu kontrollerin yapıldığına dair sonuç kaydı değildir.
-
-## Belge ve paket bakımı
-
-Rol rehberleri bu klasörde tutulur; geliştirme/build ayrıntıları [DEVELOPMENT.md](../DEVELOPMENT.md), mimari sınırlar [ARCHITECTURE.md](../ARCHITECTURE.md) içindedir. Eski MANUAL_TRIAL, TWO_PC_CHECKLIST ve PEER_TRIAL_CLAUDE adresleri yönlendirme sayfalarıdır.
-
-Peer paketine `peer/CLAUDE.md` dosyasını **paket kökünde `CLAUDE.md`** olarak kopyalayın. Repo kökündeki `CLAUDE.md` geliştirme girişidir; pakete onu koymayın. Paket yalnızca aynı build'in EXE/DLL'leri, yönerge, public build metadata ve checksum dosyalarını içersin; davet ayrı gönderilir. Dağıtım yönergesi değiştiğinde yeni paket adı/metadata ve checksum üretin; daha önce gönderilmiş ZIP'i sessizce değiştirmeyin.
+Paket kökündeki `CLAUDE.md`, [peer/CLAUDE.md](peer/CLAUDE.md) şablonundan hazırlanır; repo geliştirme talimatı pakete kopyalanmaz. Aynı build'in EXE/DLL'leri, taşınabilir rehberleri, public build metadata ve checksum'ları eklenir. Özel davet paketten ayrı kalır. Daha önce gönderilmiş ZIP sessizce değiştirilmez. Build adımları [DEVELOPMENT.md](../DEVELOPMENT.md) içindedir.
