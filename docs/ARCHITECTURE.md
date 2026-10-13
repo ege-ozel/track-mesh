@@ -1,5 +1,7 @@
 # Architecture and invariants
 
+Foundation phases 1–8 name the original CLI/Desktop/VST3 and infrastructure implementation. Aşama 1 M0–M10 names the direct-P2P plan; #NN identifies review/UX tasks. [IMPLEMENTATION.md](IMPLEMENTATION.md) records validation and remaining integrations.
+
 ## Responsibility boundaries
 
 ```mermaid
@@ -9,8 +11,8 @@ flowchart TD
     Core --> Transfer[Transfer engine]
     Core --> Storage[SQLite storage]
     Core --> Crypto[Identity and cryptography]
-    Core --> Mailbox[Bounded HTTPS mailbox client]
-    Mailbox --> Metadata[Separate opaque metadata service]
+    Core --> Mailbox[Bounded HTTPS metadata clients]
+    Mailbox --> Metadata[Opaque mailbox / encrypted Supabase records]
     Transfer --> Network[Single libp2p actor]
     Transfer --> Snapshot
     Transfer --> Storage
@@ -22,17 +24,19 @@ flowchart TD
 
 All crates use shared protocol types as needed. Storage persists domain records; it does not open peer connections. Snapshot code handles local files; it does not publish metadata. Core coordinates workflows. Desktop commands and the VST3 Named Pipe bridge are adapters sharing their owner's Engine and network handle. Networking, blocking disk work, plugin IPC and UI remain separately owned; the audio callback only passes audio buffers.
 
-Private peers authenticate through QUIC or Noise. TCP uses Yamux. A pinned relay/rendezvous service helps trusted peers connect; the client has no public DHT or multicast discovery. Project data may cross a relay fallback, with authenticated peer transport. The mailbox stores encrypted announcements only.
+Private peers authenticate through QUIC or Noise. TCP uses Yamux. The supported setup transfers files directly between online collaborators, with no public DHT or multicast discovery. Private relay/rendezvous code remains a legacy infrastructure option, outside the supported setup and [deferred to post-1.0](plans/post-1.0.md#relay). The self-hosted mailbox stores encrypted announcements; optional per-user Supabase stores small encrypted invite drops, endpoint records and head hints.
 
 ## Setup roles and documentation
 
 The [setup entry point](setup/README.md) separates [sender/host preparation](setup/host/README.md) from [receiving peer preparation](setup/peer/README.md). Host means the source of the first snapshot, not a central server or a persistent master role. The receiver initiates the first connection to the reachable source. An established connection carries authorized project requests both ways; independent reverse dialing after disconnect needs its own reachable path. Each CLI network job stops its runtime on completion; Desktop/serve keep explicit sessions.
 
-Initial discovery uses the invitation's signed inviter identity and addresses. Import persists a local project/peer row, not an online/equality claim; starting Desktop alone notifies no recipient. In the default direct trial, changed public IP/port is updated by native import of a new invitation into the same profile/project/folder. Configured private rendezvous/relay provide trusted discovery/reservations, with separate operator ACLs; they are not deployed/validated simply by filling a UI field. Local SQLite already owns trust/history/transfer data. Browser hosting, Supabase and offline enrollment storage are not integrated; mailbox SQLite stores encrypted snapshot announcements only.
+Current Desktop setup is Link folder → Invite collaborator → open or paste the v2 link → Accept → automatic signed device request → explicit Approve. The link carries the Supabase service reference, publishable key and drop ID, with the invite decryption key in its fragment. Its encrypted drop can be consumed once within 15 minutes. Native code downloads, decrypts and validates the signed invitation without exposing it to React. Import persists the local project/peer row; connection and verified equality remain separate facts. Supabase endpoint records provide authenticated updates for existing collaborators after address changes. Starting Desktop alone notifies no uninvited recipient.
 
-Pending pairing candidates are proof-verified public identities held only in an ephemeral core window, with no per-candidate live indicator or audit history. Approved peers appear in the local collaborator list; Desktop displays current route/transport for the selected peer. Unimported recipients and all unauthorized network attempts are not exposed as an inbox. Native approval changes local project authorization and never automatically grants private infrastructure access.
+Approval creates the first snapshot when the inviter has files and no snapshot. An empty, available, never-received folder receives its first version automatically from an approved online peer. Later receives require Get collaborator's version and the DAW-closed confirmation. Divergence requires Use …'s version or Keep mine. Native invitation files and CLI join/request-pairing remain Advanced paths; manual card exchange is legacy. There is no public directory, browser deployment, offline pairing queue, permanent background service or automatic merge.
 
-Setup documents describe existing adapters and manual router/firewall configuration. They do not introduce another swarm, installer, continuous sync or automatic network administration. [The peer package template](setup/peer/CLAUDE.md) drives native CLI operations without exposing invitation payloads to the agent; the root [CLAUDE.md](../CLAUDE.md) instead routes repository development. Actual validation evidence remains in [IMPLEMENTATION.md](IMPLEMENTATION.md).
+Pending pairing candidates are proof-verified public identities held only in an ephemeral core window, with no per-candidate live indicator or audit history. Approved peers appear in the local collaborator list; Desktop displays current route/transport for the selected peer. Unimported recipients and unauthorized network attempts are not exposed as an inbox. Native approval changes local project authorization and automatically queues a Supabase membership grant when configured. Separate self-hosted infrastructure requires operator ACL provisioning.
+
+The first Invite or Accept asks permission to attempt a time-limited UPnP mapping. Settings → Advanced holds manual port forwarding; shared router/firewall troubleshooting lives in the setup entry point. Windows Firewall rules are observed, not changed. [The peer package template](setup/peer/CLAUDE.md) drives native CLI operations without exposing invitation payloads to the agent; the root [CLAUDE.md](../CLAUDE.md) routes repository development.
 
 ## Local snapshot commit
 
@@ -51,13 +55,17 @@ An accepted `SAVE_OBSERVED` starts a bounded project job. Observations coalesce 
 
 ## Metadata publication and refresh
 
+The optional Supabase backend uses signed claim, grant, revoke, endpoint and head operations. A persisted imported-project marker prevents an invite recipient from claiming ownership; locally created projects claim first. Membership grants and creator-side revokes share a durable actor sequence and retry queue. Revoke removes local trust immediately and queues the server operation; it does not rotate the project key. Removed devices retain previously received files and keys. A missing background Edge Function is shown by name in Advanced.
+
+Supabase head hints are encrypted, signed metadata held in memory after validation. They do not advance local history or establish online equality. Their presence can show a newer offline version; the source must be online to transfer its files. The self-hosted snapshot-announcement mailbox has the distinct durable publication flow below.
+
 Core persists one encrypted signed envelope before its first POST and reuses it after failure or ACK loss. The service authenticates a short-lived signed request against its explicit project/device ACL, durably rejects nonce replay, and returns an idempotent sequence/ACK only after the opaque record commits. The agent's ACK update matches its durable envelope. HTTP authentication has a separate domain/model; existing envelope/signing/AAD serialization is unchanged.
 
 Refresh verifies ordered bounded records, project membership, paired author/key, signature, AEAD, and immutable-history consistency. Storage checks authorization again under the transaction and commits the complete page plus its expected cursor together. It does not change the project head, local chunk availability, or verified equality. Disk/SQLite/DPAPI operations run in blocking workers outside the swarm. `MailboxRuntime` retries every 30 seconds while its desktop/CLI owner is active; committed pending envelopes survive restart. Plugin owners remain alive while authored publication is pending, even after DAW/window closure. A narrow SQLite EXISTS query runs in a blocking worker; no manifest/history scan is needed for lifetime.
 
-Desktop close hides the window and releases its explicit window session. Starting desktop again shows that same owner and retains an explicit window session until the next close. Plugin-launched desktop uses `--plugin-owner`; repeat plugin launches do not manufacture an explicit window session. With no window session, bound plugin, accepted desktop/plugin job, active peer response or pending authored publication, 60 quiet seconds precede shutdown. Plugin and responder activity epochs capture short operations between lifetime polls. Idle IPC shutdown claims the same lock as connection/job acceptance. Shutdown drains local work before stopping metadata and the single peer runtime. Pending publication with an unavailable or missing mailbox retains the owner until ACK or explicit process interruption; there is no installed permanent service.
+Desktop close hides the window and releases its explicit window session. Starting desktop again shows that same owner and retains an explicit window session until the next close. Plugin-launched desktop uses `--plugin-owner`; repeat plugin launches do not manufacture an explicit window session. With no window session, bound plugin, accepted desktop/plugin job, active peer response or pending authored publication, 60 quiet seconds precede shutdown. Plugin and responder activity epochs capture short operations between lifetime polls. Idle IPC shutdown claims the same lock as connection/job acceptance. Shutdown drains local work before stopping metadata and the single peer runtime. Pending publication retains the owner only for projects with a configured mailbox URL; an unreachable configured mailbox still retains it until ACK or explicit process interruption. There is no installed permanent service.
 
-The Axum service binds loopback behind HTTPS; its SQLite data is independent from local history. The private relay/rendezvous runs in another process with a retained DPAPI identity and a fail-closed signed-card allow-list. It has no transfer-serving behavior. Operator workflow and limits are in [PHASE3.md](PHASE3.md).
+The separate Axum service binds loopback behind HTTPS; its SQLite data is independent from local history. Legacy private relay/rendezvous code runs in another process with a retained DPAPI identity and a fail-closed signed-card allow-list. It is outside the supported setup. Foundation infrastructure details are in [PHASE3.md](PHASE3.md).
 
 ## Receive and recovery
 

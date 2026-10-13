@@ -4,9 +4,9 @@
 
 Use `D:\CodeSpace\track-mesh`, Rust for Windows, and Visual Studio C++ build tools. SQLite is bundled. Run the build commands from an x64 Visual Studio developer shell so the MSVC compiler/linker and Windows SDK header/library paths are initialized. Private device/project material uses current-user Windows DPAPI; a sandbox account may be unable to decrypt another account's data. There is no plaintext-key fallback.
 
-The last successful implementation build used Rust 1.98.1. The workspace declares `rust-version = "1.88"` because igd-next 0.18 requires 1.88; this minimum has not been separately verified. Use the known working toolchain unless the task is explicitly minimum-version compatibility work.
+The recorded successful builds used Rust 1.98.1. The workspace declares `rust-version = "1.88"` because igd-next 0.18 requires 1.88; the Desktop crate declares 1.90. These minimum versions have not been separately verified. Use the recorded working toolchain unless the task is explicitly minimum-version compatibility work.
 
-The Windows desktop package separately requires Rust 1.90, WebView2 and a supported Node/npm runtime. Phase 4 uses React/TypeScript/Vite and bundled static assets. Before checking the complete workspace, run `npm ci`, `npm run typecheck`, and `npm run build` in `apps/desktop`; no development server/watcher is needed. See [PHASE4.md](PHASE4.md) for the known local Node 24.19 fallback and native operation. Core-only CLI/service builds do not need frontend assets.
+The Windows Desktop requires WebView2 and a supported Node/npm runtime. Vite 8 supports Node `^20.19.0 || >=22.12.0`; use Node 22.12 or later for this workflow. Recent checks used Node 22.11.0, below that requirement: builds completed with a Vite warning, which does not establish support for that version. Foundation phase 4 uses React/TypeScript/Vite and bundled static assets. Before checking the complete workspace, run `npm ci`, `npm run typecheck`, and `npm run build` in `apps/desktop`; no development server/watcher is needed. See [PHASE4.md](PHASE4.md) for historical native operation. Core-only CLI/service builds do not need frontend assets.
 
 ## Build and static checks
 
@@ -28,9 +28,28 @@ target\debug\trackmesh-desktop.exe --help
 
 Do not add/run automated tests or benchmarks for this MVP. Formatting, compilation, static analysis, code inspection, and explicitly authorized manual operation provide the current checks. Report actual evidence and limitations. Historical loopback checks in `IMPLEMENTATION.md` do not establish real NAT traversal or validate a later refactor.
 
+## Release build for a private trial
+
+From an x64 Visual Studio developer shell, start with a clean, committed Desktop manifest and run:
+
+```powershell
+cd apps/desktop
+npm ci
+npm run typecheck
+npm run build
+npx tauri build --no-bundle
+cd ../..
+git diff -- apps/desktop/src-tauri/Cargo.toml
+git checkout -- apps/desktop/src-tauri/Cargo.toml
+```
+
+The release executable is `target/release/trackmesh-desktop.exe`. The Tauri configuration runs the frontend build and uses its bundled assets. Restore a Tauri CLI rewrite of `apps/desktop/src-tauri/Cargo.toml` after building; never commit that generated change. The #43 documentation work did not run a release build or inspect the exact manifest rewrite. No current trial package is published; create a new package from reviewed `master` when needed.
+
+A public release must not embed a personal Supabase project. `TRACKMESH_DEFAULT_SUPABASE_URL` and `TRACKMESH_DEFAULT_SUPABASE_PUBLISHABLE_KEY` are for private builds only. Supply shared service settings through the native app for a public build; keep actual values out of source, documents and distribution instructions.
+
 ## Data and manual operation
 
-Phase 5 VST3 builds separately through CMake/Ninja with the pinned official SDK. Build Rust core/desktop and static frontend first; follow [PHASE5.md](PHASE5.md). CMake disables validator execution and installed-folder links. Build only requested plugin/manual editor-host targets; do not run SDK test suites or benchmarks. On this host, Ninja avoids inherited duplicate `Path`/`PATH` entries that made MSBuild reject its compiler launch; no machine-wide environment change is required.
+Foundation phase 5 VST3 builds separately through CMake/Ninja with the pinned official SDK. Build Rust core/desktop and static frontend first; follow [PHASE5.md](PHASE5.md). CMake disables validator execution and installed-folder links. Build only requested plugin/manual editor-host targets; do not run SDK test suites or benchmarks. On this host, Ninja avoids inherited duplicate `Path`/`PATH` entries that made MSBuild reject its compiler launch; no machine-wide environment change is required.
 
 - Default data: `%LOCALAPPDATA%\TrackMesh`; override with `--data-dir` or `TRACKMESH_DATA_DIR`.
 - Local storage: `trackmesh.db`, `chunks`, protected `secrets`, and per-project lock files. Keep it separate from DAW project folders.
@@ -38,8 +57,8 @@ Phase 5 VST3 builds separately through CMake/Ninja with the pinned official SDK.
 - Invitations contain a shared project key. Exchange them privately; never print them into logs or commit them.
 - Receive and recover require closing the DAW project. Preserve `.trackmesh-<project>-<transfer>` staging/backup data if recovery is pending.
 - Logs go to stderr; CLI JSON goes to stdout. For transfer details use `$env:RUST_LOG='trackmesh_transfer=info,trackmesh_network=info'`.
-- Follow [current setup](setup/README.md) for automatic native invitation/request/approval and [PHASE2.md](PHASE2.md) for CLI commands and explicitly chosen legacy cards. CLI `serve` alone cannot open/approve enrollment windows. Safe `status` supplies public project/sender UUIDs; never read invitation payloads into agent context. Do not install a permanent daemon or introduce file watchers while debugging.
-- Follow [PHASE3.md](PHASE3.md) for mailbox ACLs, HTTPS, publication/refresh, and the separate private relay. Keep service and simulated-device data in separate directories.
+- Follow [current setup](setup/README.md) for the Desktop invite-link/request/Approve flow and [PHASE2.md](PHASE2.md) for Advanced CLI commands and explicitly chosen legacy cards. The CLI has no invite-link flow; `serve` alone cannot open/approve enrollment windows. Safe `status` supplies public project/sender UUIDs; never read invitation payloads into agent context. Do not install a permanent daemon or introduce file watchers while debugging.
+- [PHASE3.md](PHASE3.md) describes foundation mailbox and relay/rendezvous service code. These legacy infrastructure instructions are outside the supported direct setup; relay support is deferred to post-1.0. Keep service and simulated-device data in separate directories.
 
 ## Local phase branches
 

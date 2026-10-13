@@ -1,12 +1,12 @@
 # Peer terminal yönergesi
 
-Dağıtım paketinin agent yönergesi [setup/peer/CLAUDE.md](setup/peer/CLAUDE.md) dosyasına taşındı. Pakette kök CLAUDE.md olarak kullanılır. Eski bağlantıları korumak için bu sayfa yönlendirme olarak tutulur.
+Dağıtım paketinin ajan yönergesi [setup/peer/CLAUDE.md](setup/peer/CLAUDE.md) şablonudur; pakette kök CLAUDE.md olarak kullanılır ve repo checkout'u gerektirmez. Bu sayfa eski bağlantıları korur.
 
-Güncel template native `join`, güvenli `status`, `request-pairing` ve gönderen onayından sonra check/receive/check kullanır. Davet içeriğini agente okutmaz, normal akışta kart dosyası geri göndermez. Template değiştiğinde yeni yönergeli paket/checksum hazırlanır; eski ZIP değiştirilmez.
+Ana Desktop akışı özel davet bağlantısı, otomatik cihaz isteği, açık **Approve** ve boş hedefe otomatik ilk sürümdür. CLI'nin bağlantı akışı yoktur; Advanced dosya davetiyle native `join`, güvenli `status`, `request-pairing`, `check`/`receive` kullanır. Davet payload'ı, anahtarlar ve proje dosyaları ajan bağlamına girmez.
 
-- [Ortak sıra ve sorun giderme](setup/README.md)
-- [Ana bilgisayar / gönderen](setup/host/README.md)
-- [Peer / alıcı](setup/peer/README.md)
-- [Peer terminal agent yönergesi](setup/peer/CLAUDE.md)
+- [Ortak sıra ve tek sorun giderme bölümü](setup/README.md)
+- [Host / ilk gönderen](setup/host/README.md)
+- [Peer / ilk alıcı](setup/peer/README.md)
+- [Advanced CLI paket şablonu](setup/peer/CLAUDE.md)
 
-Gerçek doğrulama sonuçları [IMPLEMENTATION.md](IMPLEMENTATION.md) içinde tutulur.
+Henüz güncel paket yoktur. Gerektiğinde incelenmiş master'dan yeni build, yönerge ve checksum hazırlanır; eski ZIP sessizce değiştirilmez. Gerçek doğrulama sonuçları [IMPLEMENTATION.md](IMPLEMENTATION.md) içinde tutulur.

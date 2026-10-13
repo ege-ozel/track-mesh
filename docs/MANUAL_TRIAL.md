@@ -1,12 +1,10 @@
 # İlk deneme yönergeleri
 
-Bu rehber rol bazlı klasörlere taşındı. Eski bağlantıları korumak için bu sayfa yönlendirme olarak tutulur.
+Güncel Windows Desktop akışı bağlantıyla başlar: **Link folder → Invite collaborator → bağlantıyı aç/yapıştır → Approve → otomatik ilk sürüm**. Sonraki sürümler **Share current version / Get collaborator's version** ve DAW kapalı onayıyla aktarılır. Bu sayfa eski bağlantıları koruyan yönlendirmedir.
 
-Güncel akış: özel davet → otomatik cihaz isteği → gönderenin kimlik doğrulaması/onayı → snapshot/check/receive. Kart dosyasını geri gönderme yalnızca legacy seçenektir. Peer'ın seni nasıl bulduğu, paneldeki durumlar ve IP değişimi ortak rehberdedir.
+- [Ortak sıra ve tek sorun giderme bölümü](setup/README.md)
+- [Host / ilk gönderen](setup/host/README.md)
+- [Peer / ilk alıcı](setup/peer/README.md)
+- [Advanced CLI paket şablonu](setup/peer/CLAUDE.md)
 
-- [Ortak sıra ve sorun giderme](setup/README.md)
-- [Ana bilgisayar / gönderen](setup/host/README.md)
-- [Peer / alıcı](setup/peer/README.md)
-- [Peer terminal agent yönergesi](setup/peer/CLAUDE.md)
-
-Gerçek doğrulama sonuçları [IMPLEMENTATION.md](IMPLEMENTATION.md) içinde tutulur.
+Dosya daveti ve CLI Advanced, manuel kart alışverişi legacy yoldur. Henüz güncel trial paketi yoktur; incelenmiş master'dan gerektiğinde hazırlanır. Gerçek kontrol sonuçları [IMPLEMENTATION.md](IMPLEMENTATION.md) içinde tutulur.

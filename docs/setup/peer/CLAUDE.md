@@ -1,30 +1,25 @@
-# TrackMesh: arkadaş bilgisayarında ilk Receive
+# TrackMesh: arkadaş bilgisayarında ilk sürümü alma
 
-Bu belge dağıtım paketinde `CLAUDE.md` adıyla bulunur. Paket bir installer değildir: Windows x64 için `trackmesh-desktop.exe`, terminal işlemleri için `trackmesh-agent.exe`, gereken app-local Visual C++ runtime DLL'leri ve bu yönergeyi içerir. Aynı Wi-Fi denemesi için paketteki `AYNI-WIFI-DENEMESI.md` belgesini izleyebilirsiniz. EXE/DLL dosyalarını aynı klasörde tutun. Rust/Node/repo arkadaş bilgisayarında gerekmez. Desktop [Microsoft WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) ister; CLI WebView2 kullanmaz. Eksik DLL veya açılış hatası varsa hatayı gönderene bildirin; rastgele DLL indirmeyin.
+Bu belge dağıtım paketinde kök `CLAUDE.md` olarak kullanılır ve repo checkout'u gerektirmez. Henüz güncel bir deneme paketi yoktur; gerektiğinde incelenmiş master'dan yeni paket hazırlanır. Eski paketler güncel davet bağlantısı akışını içermez. Güncel pakette aynı build'in `trackmesh-desktop.exe`, `trackmesh-agent.exe`, gereken app-local Visual C++ DLL'leri ve taşınabilir rehberler bulunur. EXE/DLL'leri birlikte tutun. Arkadaş bilgisayarında Rust/Node gerekmez. Desktop [Microsoft WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) ister; CLI WebView2 kullanmaz.
 
-## Arkadaşın başlayacağı yer
+## Önce Desktop bağlantı akışı
 
-1. ZIP'i normal, yazılabilir bir klasöre çıkarın. ZIP'in içinden doğrudan çalıştırmayın.
-2. Gönderenden özel davet `.json` dosyasını ayrıca alın. Dosyayı Claude'a eklemeyin/içeriğini yapıştırmayın; yalnızca yerel dosya yolunu verin.
-3. Bu paket klasöründe PowerShell açın. Claude Code kurulu ve giriş yapılmışsa `claude` komutuyla başlatın. Proje dizinindeki `CLAUDE.md` başlangıçta talimat olarak okunur; MD bir executable değildir. [Claude Code belgesi](https://code.claude.com/docs/en/memory).
-4. Claude'a şunu söyleyin: **“CLAUDE.md yönergesine göre TrackMesh denemesini başlat. Davet dosyamın yolunu ve boş hedef klasörümü sor; eşleştirme isteğini otomatik gönderelim. Gönderen cihazımı onaylayıp snapshot oluşturunca dosyaları alacağız.”**
-5. Gönderen cihaz isteğinde kimliğinizi doğrulayıp **Approve** seçsin, **Share current version** yapsın ve uygulamasını açık tutsun. Kart dosyası göndermezsiniz. Sonra Claude'a **“Gönderen cihazımı onayladı ve sürümü paylaştı. DAW kapalı; seçtiğim hedef klasöre Get collaborator's version yap.”** deyin.
+Gönderen **+ Link folder → Link project** ile projeyi bağlar, **Invite collaborator** seçer ve v2 bağlantıyı özel kanaldan paylaşır. Alıcı Windows'ta açar veya **Paste invite link** kullanır; **Accept invite link** penceresinde oluşturulacak proje alt klasörünün üst dizinini kontrol edip **Accept** seçer; **Choose another folder** üst dizini değiştirir. Yeni bağlantı servis bilgisini taşır, URL/key girişi gerekmez. 15 dakika geçerlidir ve bir kez tüketilir. İlk Invite/Accept **Router setup** ile süreli UPnP için **Allow (recommended)** / **Not now** sorusunu gösterir.
 
-Bağlantı başarılı olursa Receive proje dosyalarını seçilen klasöre indirir, doğrular ve yerleştirir. Paket tek başına projeye erişim vermez; davet, karşılıklı pairing, kaynak snapshot ve erişilebilir/online kaynak gerekir. Sürekli sync veya otomatik DAW açma yoktur.
+İmzalı cihaz isteği otomatik gider. Gönderen public Device/Identity değerlerini alıcıyla karşılaştırıp **Approve** seçer. İlk sürüm boş, daha önce sürüm almamış klasöre otomatik kurulur. Sonraki sürümlerde kaynak **Share current version**, alıcı DAW kapalı onayıyla **Get collaborator's version** kullanır. CLI bu link tüketme ve otomatik ilk alma akışını içermez.
 
-## Birleşik eşleştirme akışı
+Davet servisi isteğe bağlıdır; kullanıcının kendi Supabase projesi yalnız küçük şifreli invite drop, endpoint kaydı ve head hint'i tutar. Dosyalar cihazlar arasında aktarılır. Onay üyelik grant'ini kuyruğa alır; projeyi oluşturan cihazdaki Revoke üyelik revoke'unu kuyruğa alır. Davetle alınan projeler #42 sonrası köken işareti taşır ve sahiplenme isteği göndermez. Revoke proje anahtarını değiştirmez; çıkarılan kişi aldığı dosyaları ve anahtarı elinde tutar.
 
-Yeni Desktop daveti kabul edince cihaz isteğini şifreli bağlantıdan otomatik gönderir. CLI'de `join`, güvenli `status` ve yeni `request-pairing` aynı işi yapar. Gönderenin 15 dakikalık eşleştirme penceresi açık olmalı; aynı proje için yeniden açmak bekleyen istekleri koruyup süreyi uzatır. Farklı proje için açmak önceki projenin bekleyen isteklerini temizler. Son yetki için cihaz kimliğini doğrulayıp onaylaması gerekir. Alıcı onayı 60 saniyeye kadar sorgular; sonra Try again seçilebilir. Proje anahtarı pairing mesajıyla gönderilmez ve agent context'ine girmez; ilk davet dosyası özel kanaldan paylaşılır ve yalnızca native import tarafından okunur. Her iki tarafta otomatik eşleştirme build'i gerekir; `20261007` paketi `request-pairing` içermez. `20261010` ConnectionCheck paketi yeni Desktop bağlantı yardımcısını içerir; önceki `20261009` paketinde bu panel yoktur. Kullanıcı eski build ile kalmayı seçerse manuel `card --output`/Import collaborator card eski akışı kullanılabilir; otomatik başarı diye raporlama.
+## Bu ajan için Advanced CLI yolu
 
-## Göndereni nasıl buluruz; panel ne gösterir?
+CLI kullanmayı seçen kullanıcı gönderenden ayrı özel davet dosyasını alsın. Daveti, bağlantıyı, anahtarları veya proje dosyalarını ajan sohbetine eklemesin; yalnız dosya ve boş hedef klasörün yerel yollarını versin. Dosyayı native `join` okur. Manuel kart alışverişi yalnız legacy seçenektir.
 
-Gönderenin uygulamayı açması bildirim/public kişi listesi oluşturmaz. Davetin native import'u proje adını/UUID'sini, gönderenin imzalı cihaz kimliğini/PeerId'sini ve adreslerini yerelde kaydeder. Desktop'ta `Collaborator` listesinde, CLI'de güvenli `status` içinde gönderen görünür. Native network komutu bu adreslere bağlanır. Kaydın görünmesi online bağlantı veya dosya teslimi değildir.
+Paket klasöründe PowerShell açın. Claude Code kurulu ve giriş yapılmışsa `claude` çalıştırın; MD talimat dosyasıdır. Ajanı davet içeriğini okumadan `join`/`status`/`request-pairing` ile ilerletin. Gönderen aynı güncel build'in Desktop'ını ve 15 dakikalık onay penceresini açık tutsun. A **Approve** seçtikten ve kaynak sürüm hazır olduktan sonra kullanıcı hedefi ve DAW'ın kapalı olduğunu bildirsin; ajan `check`, `receive`, son `check` çalıştırsın.
 
-Gönderende yalnızca geçerli davet proof'u üreten onaysız adaylar onay listesinde Device/Identity ile görünür; canlı bağlantı göstergesi ve kalıcı giriş geçmişi değildir. Beklenen public kimlikleri karşılaştırıp **Approve** seçilir. Onaydan sonra Desktop seçili cihaz için DIRECT / RELAYED / OFFLINE gösterir; fresh **Check connection** sonucu ayrı doğrulamadır. Daveti açmayan kişiler ve bütün başarısız/yetkisiz denemeler listelenmez.
+Davet import'u yerel proje ve gönderen kimliğini kaydeder. Bu kayıt online bağlantı veya dosya teslimi değildir. Onaylı bir cihaz her bağlantıda yeni pencere istemez. CLI network işi yalnız komut boyunca online kalır; aynı profilde iki owner açılmaz. Kaynak daha sonra alıcı olabilir; kurulu bağlantı iki yönlüdür.
 
-Yerel SQLite vardır; Supabase, browser deployment veya herkese açık adres rehberi bu paketin parçası değildir. Gönderenin güncel public IP/dış portu ve erişilebilirliği gerekir. Public IP/dış port değiştiyse gönderenden yeni adresli özel davet iste; aynı veri profili/proje/yerel hedefe native join ile adres güncelle. Bu, yalnızca bağlantı timeout olduğunda projeyi yeniden import etmeye izin veren genel bir adım değildir. Telefon hotspot'u/CGNAT'ta erişilebilir ağ veya operatörün hazırladığı private relay gerekir; database NAT engelini kaldırmaz.
+Yerel SQLite trust, history ve transfer durumunu tutar. Public rehber, browser deployment, offline pairing kuyruğu, kalıcı arka plan servisi ve otomatik merge yoktur. Relay alanı legacy'dir ve desteklenen kurulumun dışındadır. Supabase offline kaynağın dosyalarını taşımaz veya NAT engelini kaldırmaz.
 
-Onaylı bir cihaz her yeni bağlantıda eşleştirme penceresi istemez. CLI request-pairing/check/receive yalnızca komut boyunca online kalır; bitince runtime kapanır. Açık bağlantı iki yönlüdür. Alıcı daha sonra kaynak olacaksa aynı profille Desktop veya açık serve oturumu kullanır; alacak taraf DAW kapalıyken **Check connection** / **Get collaborator's version** / check yapar, kaynak **Share current version** oluşturur. Aynı profilde iki network owner açma; divergence kontrollerini aşma. Offline kaynağın dosyaları mailbox'tan gelmez; mailbox snapshot duyurusu tutar ve offline pairing kuyruğu bu build'de yoktur.
 
 ## Claude için görev ve sınırlar
 
@@ -84,7 +79,7 @@ Gönderen kendi Desktop'ında daveti export etmiş (pencereyi açar) veya **Reop
 
 Native CLI imzalı kartı ve tek kullanımlık davet sahipliği kanıtını doğrudan gönderir; anahtar/proof çıktısını agent okumaz. Gönderen gelen Device/Identity değerlerini beklediği kişiyle doğrulayıp **Approve** seçer. Alıcı bağlantı için 30 saniyeye, istek sonrası onay için 60 saniyeye kadar bekleyebilir. `pairing_state: approved` yetki verildiğini, `pending` yalnızca isteğin teslim edildiğini gösterir. Pending'i dosya teslimi veya onay olarak raporlama. Daha geç onayda aynı komutu tekrar çalıştır; kaynak sürümü paylaşmasını bekle. Offline/kapalı pencere/timeout'ta önce bu koşulları düzelt; profil veya projeyi sıfırlama. Eski executable komutu tanımıyorsa yeni paketi iste.
 
-### E. Bağlantıyı dene, sonra Get collaborator's version
+### E. Bağlantıyı dene ve receive ile al
 
 ```powershell
 & $trialAgent --data-dir $trialData check $trialProjectId --device-id $trialSenderId --connect-timeout 30
@@ -104,14 +99,12 @@ Receive bitmeden diğer komutu başlatma. Başarıyı son check'in `verified_equ
 
 ## Bağlantı olmadıysa kısa kontrol sırası
 
-1. Gönderen online mı, 15 dakikalık eşleştirme penceresini açtı mı ve cihaz isteğini onayladı mı, sürümü paylaştı mı? Davet güncel public IP/dış port içeriyor mu? İlk uzak bağlantıyı alıcı başlatsın.
-2. Gönderende Windows Firewall TCP ve UDP local portu (varsayılan 43101) aktif ağ profilinde izinli mi?
-3. Gönderen modeminde TCP ve UDP dış port → doğru PC LAN IP/local port eşlemesi etkin mi? Dış port 45000 seçilmişse iç port 43101 kalabilir; davette 45000 olmalı.
-4. Port-forward kapalıysa kuralı etkinleştirin. Menü kilitli/yetki yoksa ISP/ağ yöneticisinden izin isteyin. Port çakışıyorsa boş dış port seçip yeni davet çıkarın.
-5. WAN IP 100.64.0.0–100.127.255.255 ise CGNAT olabilir. 10.x, 172.16–31.x, 192.168.x de public değildir; ikinci router/ISP NAT olabilir. Yerel modem kuralı upstream NAT'ı açmaz. Erişilebilir public IPv4 veya önceden hazırlanmış özel relay gerekir. [Üretici sorun giderme rehberi](https://www.tp-link.com/uk/support/faq/785/).
-6. Her değişiklikten sonra bir check yapın; aynı timeout'u sürekli tekrarlamayın. Mailbox proje dosyası taşımaz ve kapalı kaynağın yerine geçmez. Relay otomatik kurulmaz.
+Önce gönderen açık mı, doğru proje/peer seçildi mi, onay penceresi açık mı, cihaz onaylandı mı ve kaynak sürüm var mı kontrol edin. Onay geciktiyse pencere yeniden açılır ve aynı `request-pairing` denenir. Profil/UUID'yi sıfırlamayın.
 
-İlk yönde alıcı CLI geçici bir listen portu seçer; alıcının modeminde port-forward açılması bu akışın önkoşulu değildir. Gönderen erişilebilir olmalı ve alıcının dışarı bağlantısı engellenmemelidir. Gerçek iki-PC internet bağlantısı bu paketle henüz doğrulanmış sayılmaz.
+Her seferinde tek koşulu düzeltip check yapın. Ayrıntılı IP, TCP/UDP, Windows Firewall ve TP-Link adımları paketteki ortak kurulum README'sinin **Bağlantı kurulamazsa** bölümünde tutulur; bulunmuyorsa gönderenden bu rehberi isteyin. Ajan router/firewall kuralı veya servis kurmaz.
+
+Gerçekten eskimiş dosya daveti için gönderenden güncel adresli dosya isteyip aynı profil/proje/hedefe native join yapabilirsiniz. Sıradan timeout için yeniden import yapmayın. En az bir uç erişilebilir olmalıdır; relay desteklenmez. Gerçek ayrı-ağ aktarımı henüz doğrulanmış sayılmaz.
+
 
 ## Desktop'ı daha sonra açmak
 

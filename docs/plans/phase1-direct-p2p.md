@@ -1,33 +1,33 @@
 # Aşama 1 — Doğrudan P2P uygulama planı
 
-**Durum:** Plan. Uygulanmış özellik listesi veya doğrulama kanıtı **değildir**; ilerleme ve gerçek kontroller yalnızca [IMPLEMENTATION.md](../IMPLEMENTATION.md) içinde tutulur. Her kilometre taşı ayrı küçük iş/PR'dır; Codex sadece sıradakini uygular.
+**Durum (2026-10-13):** Aşama 1 M0–M10 doğrudan-P2P planıdır. M0–M9'un aşağıda belirtilen bölümleri uygulanmış veya incelenmiştir; M3 PCP ertelenmiş, M8 gerçek internet erişim kanıtı ve M10 ayrı ağ kabulü açık kalmıştır. Gerçek kontrol kanıtları yalnız [IMPLEMENTATION.md](../IMPLEMENTATION.md) içindedir. Foundation phases 1–8, `PHASE*.md` belgelerindeki önceki temeldir; #NN review/UX görev numarasıdır.
 
-**Varsayımlar** `[V]` ile işaretlidir: kod veya kütüphane davranışı bu planı yazarken çalıştırılarak doğrulanmadı (bu ortam Linux; Windows, router ve ikinci ağ yok). Her `[V]` ilgili kilometre taşının başında doğrulanır.
+**Varsayımlar** `[V]` ile işaretlidir: kod veya kütüphane davranışı bu planı yazarken çalıştırılarak doğrulanmadı (ilk plan hazırlanırken Windows, router ve ikinci ağ çalıştırma doğrulaması yoktu). Her `[V]` ilgili kilometre taşının başında doğrulanır.
 
 ## 1. Kapsam
 
-İçinde: LAN/doğrudan QUIC+TCP (Noise/Yamux korunur); kullanıcı onaylı UPnP IGD ve ayrı PCP eşlemesi; erişilebilirlik durumunun eşleme sonucundan ayrı gösterimi; ağ değişiminde yeniden deneme/yenileme; JSON'suz yeniden bağlanma ve imzalı endpoint güncellemesi; açılışta peer/snapshot durum yenileme.
+İçinde: LAN/doğrudan QUIC+TCP (Noise/Yamux korunur); kullanıcı onaylı UPnP IGD (PCP ertelendi); erişilebilirlik gözleminin eşleme sonucundan ayrı gösterimi; ağ değişiminde yeniden deneme/yenileme; imzalı endpoint güncellemesi; isteğe bağlı Supabase v2 davet bağlantısı ve head hint'i; açılışta peer/snapshot durum yenileme.
 
-Dışında (Aşama 2): relay/VPS/DCUtR doğrulaması ve transfer relay fallback'i, Windows File Watcher, DAW'dan bağımsız dosya izleme, herkese açık DHT, BitTorrent, bulutta proje depolama, DAW açıkken otomatik Receive. Mevcut relay/DCUtR/rendezvous kodu **silinmez** ve Aşama 1 başarı koşulu olmaz.
+Dışında: relay/VPS/DCUtR doğrulaması ve desteklenen transfer relay fallback'i, Windows File Watcher, DAW'dan bağımsız dosya izleme, herkese açık DHT, BitTorrent, bulutta proje depolama, DAW açıkken otomatik Receive. Mevcut relay/DCUtR/rendezvous kodu korunur; relay desteklenen kurulumda yoktur ve [post-1.0'a ertelenmiştir](post-1.0.md#relay).
 
-Değişmezler (her kilometre taşında): imzalı kimlik/sabit `PeerId`, proje yetkisi (`store.authorized`), `gate.rs` pairing penceresi, snapshot/transfer kilit ve journal sırası, yerel SQLite, `SAVE_OBSERVED` dışında snapshot yok, bulutta yalnızca şifreli metadata, davet/anahtar/sır log'a veya ajan bağlamına girmez, **otomatik test/benchmark eklenmez** (yalnızca `cargo fmt/check/clippy`, `npm typecheck/build`, manuel doğrulama).
+Değişmezler (her kilometre taşında): imzalı kimlik/sabit `PeerId`, proje yetkisi (`store.authorized`), `gate.rs` pairing penceresi, snapshot/transfer kilit ve journal sırası, yerel SQLite, `SAVE_OBSERVED` dışında dosya izleme yok (manual Share ve ilk onay snapshot'ı ayrıca vardır), bulutta yalnızca şifreli metadata, davet/anahtar/sır log'a veya ajan bağlamına girmez, **otomatik test/benchmark eklenmez veya çalıştırılmaz** (yalnızca `cargo fmt/check/clippy`, `npm typecheck/build`, manuel doğrulama).
 
 ## 2. Kod tabanı gerçekleri (bu inceleme sırasında okunan)
 
 | Konu | Bulgu | Plan etkisi |
 | --- | --- | --- |
 | Dinleme | `behaviour.rs:93-94` `0.0.0.0` UDP(QUIC)+TCP, tek `config.port` (43101). | Eşlemenin yerel portu bilinir; TCP ve UDP ayrı kayıt. |
-| Dış adres | `config.external_addresses` yalnız başlangıçta `add_external_address` (`behaviour.rs:95`). Çalışırken değiştirilemez; `Command` enum'unda yok. | M3: yeni komut (`Command::ExternalAddress…`) gerekir. |
+| Dış adres | Başlangıç adresleri ve M3 `Command::SetExternalAddresses` ile Gateway kaynaklı dinamik adresler ayrı tutulur. | Public UPnP adresi eklenir; başarısızlık/rıza iptalinde yalnız Gateway adresi çekilir. |
 | Adres kaynağı | `DeviceCard.addresses` **imzalı** (`signing_bytes`), `trusted_peers.card_json` içinde; `Store::trust` aynı `device_id` için kartı **koşulsuz üzerine yazar** (`trust.rs:36`). Kartta zaman/sıra yok. | Eski kart yeniden oynatılarak adres gerilemesi mümkün → M5'te yeni imzalı tip + monotonik sıra şart. `DeviceCard` alanları değiştirilmez (`deny_unknown_fields`, imza biçimi sabit). |
-| Dial | `discovery.rs::tick` 6 sn'de bir; kart + `learned` adresleri, QUIC/TCP dönüşümlü, ≥3 denemeden sonra circuit. `learned` yalnız identify/rendezvous kaynaklı. | M4: ağ değişiminde `direct_attempts` sıfırlama; yeni imzalı adres `learned`'e girer. |
-| Panel adresi | `runtime.rs::advertised_addresses` yalnız dinleme adresleri; `core/connection.rs` elle girilmiş genel IPv4'ü doğrular (CGNAT/özel aralık reddi). | Elle akış korunur; otomatik değer aynı doğrulayıcıdan geçer. |
-| Mailbox | `Envelope` snapshot başına; `ingest` `snapshot_id` nil olamaz, yazar güvenilir olmalı; 30 sn'de publish+refresh (`MailboxRuntime`). Adres taşımaz. | Endpoint duyurusu ayrı kayıt türü/kanal olmalı; mevcut `Envelope` AAD/imza bozulmaz. |
+| Dial | `discovery.rs::tick` 6 sn'de bir; kart ve süreli `learned` adresleri, QUIC/TCP denemeleri. Legacy circuit kodu vardır. | M4 ağ değişiminde `direct_attempts` sıfırlar; M5 imzalı endpoint süreli adaya dönüşür. Relay desteklenen yol değildir. |
+| Panel adresi | Davet adresleri listen/advertised public adayları ve doğrulanmış manuel public endpoint'ten oluşur. | Elle yönlendirme Settings → Advanced içindedir; eşleme tek başına erişim kanıtı değildir. |
+| Mailbox | Foundation `Envelope` snapshot duyurusudur. Supabase endpoint ve head kayıtları ayrı şifreli türlerdir; M6 davet drop'u ayrı tek-okuma RPC kullanır. | Eski Envelope AAD/imzası korunmuştur; Supabase proje dosyası taşımaz. |
 | Settle | `scan_after_save`: ~2 sn sessizlik, 60 sn sınır, 3 deneme; watcher değil. | P5 çoğunlukla mevcut; yalnız doğrulama. |
 | Proje yetkisi | İstek yetkisi hem `command` hem gelen istekte `authorized` ile kontrol. | Yeni RPC'ler de proje/cihaz yetkisi ister. |
 
 ## 3. Kütüphane ve Windows API kararı (M0; 2026-10-12)
 
-M0 web incelemesi crate metadata'sı, docs.rs belgeleri/kaynakları, upstream depoları ve Microsoft Learn birincil belgeleriyle yapıldı. Bu inceleme Windows hedef derlemesi veya router davranışı değildir.
+M0'ın tarihsel web incelemesi crate metadata'sı, docs.rs belgeleri/kaynakları, upstream depoları ve Microsoft Learn birincil belgeleriyle yapıldı. Bu inceleme Windows hedef derlemesi veya router davranışı değildir.
 
 | Alan | Karar ve kanıt | Durum |
 | --- | --- | --- |
@@ -43,19 +43,14 @@ M0 web incelemesi crate metadata'sı, docs.rs belgeleri/kaynakları, upstream de
 
 ## 4. Ortak durum modeli
 
-İleriki M2+ mapping/erişilebilirlik modeli `crates/network` içinde özel bir `reachability.rs` modülü olabilir. M1'in yerel Windows gözlemi ise `crates/core/src/network_observation.rs` içindedir; mapping/erişilebilirlik alanları birbirinden bağımsız tutulur:
+Mevcut ağ durum alanları `crates/network/src/status.rs` içindedir. Windows arayüz/gateway gözlemi `crates/core/src/network_observation.rs`, süreli UPnP işçisi `crates/network/src/portmap.rs` tarafından sahiplenilir. Gözlem, eşleme ve peer bağlantısı ayrı tutulur.
 
-```text
-MappingState:  NOT_ATTEMPTED | UNSUPPORTED | DENIED | MAPPED | EXPIRED | FAILED | UNVERIFIED
-MappingMethod: UPNP_IGD | PCP                      (NAT-PMP: ayrı karar)
-Mapping { method, protocol(TCP|UDP), local_port, external_port, external_ip?, ip_source(GATEWAY|PEER_OBSERVED|MANUAL), lease_expires_at, gateway, state, detail }
-Reachability:  UNVERIFIED | VERIFIED_INBOUND(peer, transport, at) | OUTBOUND_ONLY | FAILED(reason)
-Firewall:      profiles[PUBLIC|PRIVATE|DOMAIN] (possibly multiple), inbound_rule(PRESENT|ABSENT|UNKNOWN), third_party_product(PRESENT|ABSENT|UNKNOWN)
-```
+- PortMappingStatus açık rıza, TCP/UDP sonucu, dış IP sınıfı ve bounded gerekçe taşır. Varsayılan `NOT_ATTEMPTED`'dır; PCP istek göndermez.
+- ReachabilityStatus `UNVERIFIED` kalır. Yetkili public-address inbound olayının peer/transport/zamanı gözlem olabilir; ayrı ağdan gelindiğini kanıtlamaz. `VERIFIED_INBOUND` gerçek çalışma davranışı uygulanmış sayılmaz ve Desktop dalı kaldırılmıştır.
+- `MAPPED` internet erişimi değildir. Aynı LAN veya hairpin trafik proof olarak kullanılamaz.
+- Firewall gözlemi etkin profil bitmask'ini ve TCP/UDP candidate izin/engel sonuçlarını gösterir. Üçüncü taraf ürün kaydı yokluğu başka filtrelerin yokluğunu kanıtlamaz; okunamayan veri `UNKNOWN` olur. Kural değiştirme yapılmaz.
+- Online peer karşılaştırması ve ACK fresh eşitliğin kaynağıdır. Offline head hint'i yalnız son bilinen bilgidir. TransferState/ApplyPhase ve wire etiketleri korunur.
 
-- `MAPPED` ≠ erişilebilir. `VERIFIED_INBOUND` **yalnızca** farklı ağdan gelen, kimliği doğrulanmış gerçek bir güvenilir-peer bağlantısıyla (Noise el sıkışması + `authorized`) kurulur; aksi `UNVERIFIED` kalır.
-- `INetFwPolicy2::CurrentProfileTypes` bitmask olduğundan etkin profiller tek değere indirgenmez. Üçüncü taraf ürün tespiti yalnız Windows Firewall ürün kaydını raporlar; yokluğu diğer filtreleme yazılımlarının yokluğunu kanıtlamaz, hata `UNKNOWN` olur.
-- Peer durum etiketleri (`CONNECTED/OFFLINE/REMOTE_AHEAD/UP_TO_DATE/DIVERGED/PORT_UNVERIFIED`) core'da türetilir; `TransferState`/`ApplyPhase` etiketleri çoğaltılmaz, yeni dize literalleri enum'dan gelir.
 
 ## 5. Kilometre taşları
 
@@ -63,12 +58,16 @@ Her başlık: **Amaç / Dosyalar / Görevler / Korunacaklar / Kontroller / Elle 
 
 ### M0 — Doğrulama ve uyumluluk notu (kod yok)
 
+- **Durum:** inceleme tamamlandı; runtime kanıtı değildir.
+
 - **Amaç:** `[V]` maddelerini kapatmak, kütüphane seçimini kesinleştirmek.
 - **Görevler:** `AGENTS.md`, `crates/network/AGENTS.md`, `crates/core/AGENTS.md`, `docs/MVP.md` yeniden oku. Aday UPnP/PCP crate'lerinin Windows derlenebilirliğini, tokio entegrasyonunu, lisansını, bakım durumunu resmi kaynaktan doğrula (varsayım yok). Windows ağ/firewall durum API'lerini seç. Sonucu bu dosyanın §3'üne işle.
 - **Not:** Kullanıcının ağı (TP-Link VX220-G2u, UPnP açık, WAN IPv4 = görünen IPv4) **ön bilgidir, test sonucu değildir**; port erişilebilirliği doğrulanmadı.
 - **Elle doğrulama:** yok. **Çıktı:** güncellenmiş §3, `IMPLEMENTATION.md`'ye yalnız gerçekten yapılan inceleme.
 
 ### M1 — Gözlemlenebilir ağ durumu (eşleme yok)
+
+- **Durum:** uygulandı; statik kontroller kayıtlı, gerçek router/ağ doğrulaması açık.
 
 - **Amaç:** Arayüz ve core için erişilebilirlik modelini eklemek; davranış değişmez.
 - **Dosyalar:** `crates/core/src/network_observation.rs` (Windows IP Helper okuması), `crates/core/src/lib.rs`; `apps/desktop/src-tauri/src/runtime.rs` (`DesktopStatus`), `src/api.ts`, `App.tsx` (Connection setup panelinde salt-okunur satırlar). Gözlem, Desktop başlangıcındaki `spawn_blocking` işinde alınır; network actor dışında kalır.
@@ -80,14 +79,18 @@ Her başlık: **Amaç / Dosyalar / Görevler / Korunacaklar / Kontroller / Elle 
 
 ### M2 — UPnP IGD eşlemesi (onaylı, süreli)
 
+- **Durum:** uygulandı; statik kontroller kayıtlı, gerçek router/ağ doğrulaması açık.
+
 - **Amaç:** Kullanıcı ilk kullanımda açıkça onaylarsa TCP ve UDP için ayrı süreli eşleme.
-- **Dosyalar:** `crates/network/Cargo.toml` (`igd-next 0.18`, `default-features = false`, `aio_tokio`), `crates/network/src/portmap.rs`, `crates/core/src/settings.rs`, `crates/core/src/peer.rs`, Desktop connection setup/API. Onay ayarı sürüm 1 `settings.json` içindedir; eksik, bozuk veya ileri sürüm kapalı kalır; `snapshot::atomic_replace` ile atomik değiştirilir. DB şeması değişmez; ayar deposu `[V]` kapandı.
+- **Dosyalar:** `crates/network/Cargo.toml` (`igd-next 0.18`, `default-features = false`, `aio_tokio`), `crates/network/src/portmap.rs`, `crates/core/src/settings.rs`, `crates/core/src/peer.rs`, Desktop connection setup/API. Onay ayarı ilk M2'de sürüm 1, güncel #42 sonrası sürüm 5 `settings.json` içindedir; eksik, bozuk veya ileri sürüm kapalı kalır; `snapshot::atomic_replace` ile atomik değiştirilir. DB şeması değişmez; ayar deposu `[V]` kapandı.
 - **Görevler:** (a) onay yoksa `NOT_ATTEMPTED`, hiçbir router isteği gitmez; (b) keşif ve mapping listesi sorguları süreyle sınırlı; (c) yalnız tek bir gözlemlenen IPv4 arayüz/gateway çifti varsa devam et, belirsizlikte `UNKNOWN`; (d) gerçek dinlenen TCP ve QUIC/UDP portlarını ayrı ayrı eşle, açıklama `TrackMesh` + kısa cihaz kimliği, bir saat lease ve yarı sürede yenile; (e) görünür port kaydı varsa yalnız aynı açıklama/iç istemci/port ile sahipliğini doğrula, diğerine dokunma; (f) kapatırken veya onay geri alınınca yalnız sahip olunan kayıtları sil; (g) router external IPv4 özel/CGNAT ise durumu belirt, `MAPPED` erişilebilirlik kanıtı değildir.
 - **Korunacaklar:** swarm tek sahip aktör; ayrı sahipli async eşleme işçisi actor döngüsünü bloklamaz. M2 eşlenen endpoint'i yayınlamaz; adres değişikliği M3 işidir. Sır/davet/router yanıtları loglanmaz.
 - **Elle (Windows+TP-Link):** UPnP açık/kapalı, zaten kullanılan port, yönlendirici yeniden başlatma, lease bitişi, uygulama kapanınca silinme.
 - **Riskler:** router UPnP'yi yalan söyleyebilir ("başarılı" ama erişilemez) → durum `MAPPED`+`UNVERIFIED`; çift NAT/CGNAT'ta IGD yalnız ilk cihazı eşler; bazı cihazlar sabit lease süresi istemez (0 → sonsuz) — sonlu lease zorunlu, reddedilirse yeniden dene.
 
 ### M3 — Dinamik dış adres + PCP (PCP ertelendi)
+
+- **Durum:** dinamik adres bölümü uygulandı; PCP ertelendi.
 
 - **Amaç:** Eşleme sonucunu çalışan swarm'a yansıtmak; UPnP başarısız/uygunsuzsa ayrı PCP yolu sonraki iş olarak değerlendirilmişti.
 - **Dosyalar (uygulanan dinamik adres bölümü):** `crates/network/src/handle.rs` (`Command`), `actor.rs`, `discovery.rs`, `portmap.rs`, Desktop connection setup.
@@ -111,7 +114,7 @@ Her başlık: **Amaç / Dosyalar / Görevler / Korunacaklar / Kontroller / Elle 
 ### M5 — Güvenli endpoint güncellemesi (JSON'suz yeniden bağlanma)
 
 - **Amaç:** IP/port değişince güvenilir peer'in yeni adresini imzalı, süreli, sıralı kayıtla duyurmak.
-- **Durum (2026-10-12):** M5a protokol/kripto, M5b kalıcı sıra ve endpoint watermark/expiry deposu, M5c mevcut doğrudan bağlantı üzerinden imzalı endpoint alışverişi uygulandı. M5d mailbox kanalı ve iki Windows eşle elle doğrulama açık.
+- **Durum (2026-10-13):** M5a/b/c ve M5d Supabase sunucu/istemci uygulanmıştır. Canlı host/Sandbox kaydında üyelik ve endpoint list kabulü vardır; gerçek IP değişimi ve ayrı ağ transferi açık. #42 creator revoke, imported köken işareti ve sıralı grant/revoke retry ekler.
 - **Dosyalar:** `shared/protocol` (endpoint tipi ve yeni, proje kapsamlı RPC varyantları; mevcut varyantlar ve `trackmesh-endpoint-v1` imza biçimi değişmez), `crates/crypto` (imza), `crates/storage` (M5b additive schema v3), `crates/core/src/endpoints.rs` (ortak kabul/yayın), `crates/network` (actor RPC ve süreli adaylar). Mailbox desteği M5d kapsamıdır.
 - **Tasarım:**
   - Kayıt: `{device_id, peer_id, addresses[≤16], issued_at, expires_at (kısa), seq (monotonik u64)}` cihaz anahtarıyla imzalı.
@@ -123,24 +126,30 @@ Her başlık: **Amaç / Dosyalar / Görevler / Korunacaklar / Kontroller / Elle 
 
 ### M6 — Kullanıcı dostu ilk eşleştirme (JSON'suz UX)
 
-- **Amaç:** Dosya alışverişi yerine kopyala/yapıştır davet bağlantısı (+ isteğe QR); kimlik karşılaştırma ekranı.
-- **Dosyalar:** `apps/desktop/src-tauri/src/documents.rs`, `commands.rs`, `runtime.rs`, `App.tsx`; `core/src/pairing.rs` yalnız çağrı yüzü.
-- **Görevler:** mevcut `ProjectInvite` aynen taşınır (bağlantı = aynı JSON'un kodlanmış hâli, **ağ üzerinde/loglarda yok, panoya yalnız kullanıcı eylemiyle**). Alıcı tarafında "private invitation file path" kuralı korunur: CLAUDE.md gereği ajan bağlamına payload girmez; yapıştırma yalnız Desktop UI'da. Eşleştirme penceresi, istek, açık gönderici onayı mevcut akıştadır.
-- **Kısa kod:** yalnız tasarım notu (süreli, rate-limit'li, tahmin zor, tek kullanımlık çözüm; sadece ID yetki vermez). Uygulama kararı sonraki iş.
-- **Elle:** bağlantı ile davet → otomatik istek → onay; yanlış kimlik reddi.
+- **Durum (2026-10-13):** bağlantı/URI/native clipboard ve şifreli tek okuma uygulanmıştır. Host/Windows Sandbox consume/onay/ilk aktarım kaydı vardır; expiry, ikinci tüketim ve clipboard cleanup doğrulaması açık.
+- **Akış:** Link folder → Invite collaborator → bağlantıyı aç/yapıştır → Accept → otomatik cihaz isteği → açık Approve. İlk Invite/Accept süreli UPnP onayını sorar.
+- **Bağlantı:** `trackmesh://invite/v2/<ref>/<publishable_key>/<drop-id>#<key>`. Servis referansı/publishable key/drop kimliği URI'de, bağımsız çözme anahtarı fragment'tedir. Supabase'deki drop 15 dakika geçerli, bir kez okunabilen şifreli ProjectInvite içerir; plaintext JSON ağda veya logda dolaşmaz.
+- **Korunacaklar:** çözme/import native Rust'tadır; payload/anahtar React ve ajan bağlamına girmez. Link yalnız açık kullanıcı eylemiyle panoya konur. Dosya daveti Advanced, manuel kart legacy yoludur; CLI link tüketmez.
+- **Onay:** beklenen public kimlik doğrulanır. İlk snapshot yoksa ve inviter klasöründe dosyalar varsa Approve ilk snapshot'ı oluşturur; Supabase membership grant'i kuyruğa alınır.
+- **Sonraki tasarım:** QR veya insan-okur kısa kod arayüzü uygulanmamıştır. V2 drop ID zaten vardır; yeni kısa-kod özelliğinin kanıtı değildir.
+
 
 ### M7 — Otomatik bağlantı ve snapshot durumu
 
-- **Amaç:** Açılışta bilinen adreslerden bağlan, mailbox'ı yenile, peer/snapshot durumunu aç.
-- **Dosyalar:** `core/src/mailbox.rs` (`MailboxRuntime` açılışta bir kez anında tur, 30 sn beklemeden), `core/src/status.rs`, `workflows.rs` (`check_peer`), `runtime.rs`.
-- **Görevler:** `CONNECTED/OFFLINE` ağ durumundan; `REMOTE_AHEAD/UP_TO_DATE/DIVERGED` yalnız **bağlı peer'in onayladığı** head karşılaştırmasından (mevcut kural: online eşitlik için peer ACK); metadata tek başına eşitlik iddia etmez; `PORT_UNVERIFIED` M1 modelinden. "SEND SNAPSHOT" (yerel commit+publish) ile gerçek dosya teslimi ayrı etiketlenir. Arka plan ön-indirme **yapılmaz** (ayrı güvenlik tasarımı gerekir).
-- **Korunacaklar:** receive her zaman kullanıcı onaylı ve DAW kapalıyken kurulur.
+- **Durum:** açılış yenilemesi, online peer/snapshot durumları ve offline head hint'leri uygulanmıştır. Head Function deployment'ı ve yeni ayrı-ağ akışı doğrulanmadı.
+- **Akış:** bilinen adreslerden yeniden bağlantı denenir. Eşitlik bağlı peer'in ACK'inden gelir; metadata tek başına eşitlik veya dosya mevcudiyeti değildir.
+- **İlk alma kararı:** Desktop yalnız boş, hiç sürüm almamış, recovery/transfer bulunmayan hedefe onay sonrası ilk sürümü otomatik alır. Bu genel arka plan ön-indirme veya sürekli sync değildir.
+- **Sonraki alma:** Get collaborator's version ve DAW-kapalı onayı gerekir. Divergent klasörde açık Use …'s version eski yerel değişiklikleri snapshot'lar ve dosyaları backup'ta korur; Keep mine yerel sürümü paylaşır. Otomatik merge veya sessiz overwrite yoktur.
+- **Share:** Share current version yerel snapshot ve paylaşılabilir sürümü hazırlar; alıcının teslim sonucu ayrı gösterilir. Dosyalar için yetkili kaynak online olmalıdır.
+
 
 ### M8 — Gerçek erişilebilirlik kanıtı ve Windows Firewall durumu
 
-- **Amaç:** `VERIFIED_INBOUND` yalnızca gerçek peer bağlantısıyla; firewall salt-okunur rapor.
-- **Görevler:** gelen, kimliği doğrulanmış, doğrudan (circuit olmayan) bağlantıda uzak adres özel/loopback değilse ve yerel yönde mapping/dinleme varsa `VERIFIED_INBOUND(peer, transport)`. Firewall: §3'te seçilen `INetFwPolicy2` ile etkin profile bitmask'i ve TrackMesh için gelen TCP/UDP kuralı var/yok okuma; API binding/Windows davranışı **[V]**. Üçüncü taraf ürün kaydı mevcutsa bunu göster, ancak kesin teşhis iddia edilmez. Kural ekleme yalnız açık kullanıcı onayı + yönetici izniyle ve **ayrı** komutla; güvenlik duvarı kapatılmaz; ilk sürümde yalnız yönerge metni de kabul edilebilir.
-- **Risk:** Windows "Public" profilinde kural kapsamı uyuşmazlığı; hairpin/aynı LAN bağlantısı yanlış kanıt sayılmamalı (özel aralık dışlanır).
+- **Durum:** salt-okunur Firewall ve yetkili inbound olay gözlemi uygulanmıştır; gerçek farklı-ağ erişim kanıtı hâlâ açık.
+- **Uygulama:** INetFwPolicy2/INetFwRule COM işlemleri blocking worker'dadır. Etkin profil, aday TCP/UDP kuralları ve üçüncü taraf ürün kaydı gösterilir; kural veya profil değiştirilmez.
+- **Sınır:** public remote adresli yetkili doğrudan istek olayına rağmen Reachability UNVERIFIED kalır. Adres verisi ayrı-ağ provenance'ını kesinleştirmez; hairpin/aynı LAN yanlış doğrulanmış sayılmaz. Ham uzak IP status/log'a girmez.
+- **Elle:** gerçek Windows policy/çoklu profil/COM hata davranışı ve ayrı-ağ inbound denemesi yapılmalıdır. Statik derleme bu runtime davranışlarını kanıtlamaz.
+
 
 ### M9 — DAW Save → snapshot (doğrulama, kod az)
 
@@ -149,14 +158,16 @@ Her başlık: **Amaç / Dosyalar / Görevler / Korunacaklar / Kontroller / Elle 
 
 ### M10 — İki cihazla manuel kabul (kod yok)
 
-`IMPLEMENTATION.md`'ye `verified/unverified` olarak yalnız gerçekten çalıştırılanlar yazılır.
+
+**Açık:** ayrı fiziksel internet ağlarında relay olmadan transferin kabulü tamamlanmadı. Kayıtlı host/Windows Sandbox denemeleri aynı fiziksel host/NAT üzerindedir. Gerçek DAW, WAN/IP değişimi, CGNAT, revoke/üç cihaz, expiry ve eksik head Function kontrolleri son manuel denemede yapılır. Sonuçlar yalnız IMPLEMENTATION.md'ye gerçekten çalıştırılan kapsamla yazılır.
+
 
 ## 6. Manuel doğrulama matrisi (Windows, iki PC)
 
 | # | Senaryo | Beklenen |
 | --- | --- | --- |
-| 1 | Aynı LAN, UPnP kapalı | Doğrudan QUIC/TCP, `Reachability` LAN; eşleme `NOT_ATTEMPTED` |
-| 2 | Farklı ev/ISS; A genel IPv4 + UPnP onaylı, B yalnız çıkış | B→A doğrudan; A `VERIFIED_INBOUND`; B `OUTBOUND_ONLY` |
+| 1 | Aynı LAN, UPnP kapalı | Doğrudan QUIC/TCP, Reachability `UNVERIFIED` (LAN erişimi ayrı ağ kanıtı değildir); eşleme `NOT_ATTEMPTED` |
+| 2 | Farklı ev/ISS; A genel IPv4 + UPnP onaylı, B yalnız çıkış | B→A doğrudan aktarım denenir; inbound gözlemi varsa da Reachability `UNVERIFIED` kalır |
 | 3 | UPnP kapalı | `UNSUPPORTED/DENIED`, net gerekçe, transfer garanti edilmez |
 | 4 | PCP destekli/desteksiz gateway | PCP ertelenene kadar her ikisinde `NOT_ATTEMPTED`; PCP paketi gönderilmez |
 | 5 | Port başka uygulamada | Çakışma `DENIED/FAILED`, başkasının mapping'i dokunulmaz |
@@ -170,13 +181,13 @@ Her başlık: **Amaç / Dosyalar / Görevler / Korunacaklar / Kontroller / Elle 
 
 ## 7. Başarı koşulları
 
-En az bir cihaz erişilebilirken **relay olmadan** doğrulanmış doğrudan transfer; kullanıcı her açılışta IP yazmaz/JSON göndermez; UPnP/PCP "garantili" sunulmaz; bulutta ses/çözülmüş manifest/sır yok; başarısızlık nedeni görünür.
+En az bir cihaz erişilebilirken **relay olmadan** doğrulanmış doğrudan transfer; kullanıcı her açılışta IP yazmaz/JSON göndermez; UPnP "garantili" sunulmaz; PCP ertelenmiştir; bulutta ses/çözülmüş manifest/sır yok; başarısızlık nedeni görünür.
 
 ## 8. Açık kararlar
 
 1. **Karar verildi (M0/M3):** UPnP için `igd-next` kullanılıyor. M0'da PCP crate'i araştırılmış olsa da M3'te kullanıcı eşiği nedeniyle PCP ertelendi; `crab_nat` bağımlılığı eklenmedi ve PCP durumu `NOT_ATTEMPTED`. Windows ağ ve firewall API seçimleri §3'te; runtime/router uyumluluğu **[V]**.
-2. **M2 onay tercihi:** kod incelemesinde mevcut kalıcı ayar deposu bulunmadı. Öneri: SQLite şemasını değiştirmeden TrackMesh yerel veri dizininde sürümlü bir settings dosyası; yer/atomik yazım/ACL davranışı M2'de kararlaştırılır. Mevcut DB değerleri değiştirilmez.
-3. Endpoint kaydının mailbox'ta ayrı `kind` mı yoksa ayrı uç mu olacağı (M5) — `services/mailbox/AGENTS.md` ile uyumlu.
+2. **M2/M6/#42 ayar kararı:** kullanıcı rızası, backend ve grant/revoke kuyruğu TrackMesh veri dizininde sürümlü settings.json ve atomic replace ile tutulur. Güncel sürüm 5, v1–v4 yükleme yolu korunur. SQLite değerleri bu ayarlar için değiştirilmez.
+3. **M5 kararı:** Supabase endpoint publish/list ayrı kayıt ve fonksiyon kanalıdır; foundation snapshot Envelope biçimi/AAD'si değişmez.
 4. Sürekli kısa kod çözücü sunucu (M6) — Aşama 1'de uygulanmaz, yalnız tasarlanır.
 5. **M4 kararı:** Windows bildirim API'si veya yeni crate/Windows feature'ı eklenmedi. PeerRuntime'da 10 saniyelik iptal edilebilir izleyici, blocking IP Helper worker'ı ve sıralı watch hedefi kullanılır; actor'daki mevcut altı saniyelik tick değişmez. NetworkChanged yalnız `direct_attempts` sayaçlarını temizler. `SetExternalAddresses` mevcut kaynak ayrımıyla kullanılır; router/WAN ve Windows çalışma davranışı **[V]** kalır.
 

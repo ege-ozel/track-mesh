@@ -4,7 +4,7 @@ Plan only, not validation. These items are intentionally left out of 1.0.0 and a
 
 ## Relay
 
-Decided 2026-10-12: a relay for peers that cannot reach each other directly (CGNAT, blocked forwarding) is deferred until after 1.0.0. Supabase cannot host a libp2p circuit relay, so this needs separate infrastructure. Until then, 1.0.0 relies on direct connections plus the optional private relay described in the setup guide.
+Decided 2026-10-12: a relay for peers that cannot reach each other directly (CGNAT, blocked forwarding) is deferred until after 1.0.0. Supabase cannot host a libp2p circuit relay, so this needs separate infrastructure. The supported 1.0.0 setup relies on direct connections. Existing private relay/rendezvous code is a legacy capability outside that setup.
 
 ## Content-defined chunking
 
