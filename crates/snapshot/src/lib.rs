@@ -15,6 +15,38 @@ use uuid::Uuid;
 mod settlement;
 pub use settlement::scan_after_save;
 
+/// Whether a project-relative file is generated metadata that should not be
+/// included in TrackMesh snapshots. Paths use `/` separators, as manifests do.
+pub fn is_ignored_path(relative: &str) -> bool {
+    // Ableton's automatic set backup tree is local generated state.
+    if is_backup_file_path(relative) {
+        return true;
+    }
+
+    let name = relative.rsplit('/').next().unwrap_or(relative);
+    // Ableton regenerates analysis cache files when loading samples.
+    if name.to_ascii_lowercase().ends_with(".asd") {
+        return true;
+    }
+    match name.to_ascii_lowercase().as_str() {
+        "desktop.ini" => true, // Windows folder-view settings.
+        "thumbs.db" => true,   // Windows thumbnail cache.
+        "ehthumbs.db" => true, // Windows legacy thumbnail cache.
+        ".ds_store" => true,   // macOS Finder metadata.
+        _ => false,
+    }
+}
+
+fn is_backup_file_path(relative: &str) -> bool {
+    relative
+        .split_once('/')
+        .is_some_and(|(first, _)| first.eq_ignore_ascii_case("Backup"))
+}
+
+fn is_backup_tree_path(relative: &str) -> bool {
+    relative.eq_ignore_ascii_case("Backup") || is_backup_file_path(relative)
+}
+
 #[derive(Clone)]
 pub struct ChunkStore {
     root: PathBuf,
@@ -134,9 +166,15 @@ fn inventory(root: &Path) -> Result<Vec<FileStamp>> {
                 "project folder contains reserved .trackmesh directory"
             );
             if metadata.is_dir() {
+                if is_backup_tree_path(&relative) {
+                    continue;
+                }
                 directories.push(path);
             } else {
                 ensure!(metadata.is_file(), "unsupported filesystem entry");
+                if is_ignored_path(&relative) {
+                    continue;
+                }
                 files.push(FileStamp {
                     path: relative,
                     size: metadata.len(),
@@ -148,6 +186,37 @@ fn inventory(root: &Path) -> Result<Vec<FileStamp>> {
     }
     files.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(files)
+}
+
+/// Check whether a project contains any files visible to TrackMesh without hashing them.
+/// Stops at the first visible entry, so status polling does not walk a full sample tree.
+/// Anything a scan would reject (reparse point, odd name) counts as content, not as empty.
+pub fn is_empty(root: &Path) -> Result<bool> {
+    let mut directories = vec![root.to_owned()];
+    while let Some(directory) = directories.pop() {
+        for entry in fs::read_dir(directory)? {
+            let path = entry?.path();
+            let metadata = fs::symlink_metadata(&path)?;
+            let Some(relative) = path
+                .strip_prefix(root)?
+                .to_str()
+                .map(|value| value.replace('\\', "/"))
+            else {
+                return Ok(false);
+            };
+            if is_reparse(&metadata) {
+                return Ok(false);
+            }
+            if metadata.is_dir() {
+                if !is_backup_tree_path(&relative) {
+                    directories.push(path);
+                }
+            } else if !is_ignored_path(&relative) {
+                return Ok(false);
+            }
+        }
+    }
+    Ok(true)
 }
 
 pub struct ScanOptions {
@@ -207,6 +276,7 @@ fn scan_impl(
         .map(|p| {
             p.files
                 .iter()
+                .filter(|f| !is_ignored_path(&f.relative_path))
                 .map(|f| (f.relative_path.as_str(), f))
                 .collect()
         })

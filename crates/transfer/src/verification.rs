@@ -1,4 +1,5 @@
 //! Signature/author validation and comparison of working files to committed history.
+use crate::receiver::ReceiveRefusal;
 use anyhow::{ensure, Result};
 use crypto::Identity;
 use protocol::SignedSnapshot;
@@ -53,9 +54,12 @@ pub(crate) fn verify_working_folder(
         parent.map(|p| &p.manifest),
         &ScanOptions { chunk_size },
     )?;
-    ensure!(
-        parent.map(|p| p.manifest.files.as_slice()).unwrap_or(&[]) == current.files.as_slice(),
-        "local folder contains unsnapshotted changes; snapshot them before receiving"
-    );
+    let expected = parent
+        .into_iter()
+        .flat_map(|snapshot| snapshot.manifest.files.iter())
+        .filter(|file| !snapshot::is_ignored_path(&file.relative_path));
+    if !expected.eq(current.files.iter()) {
+        return Err(ReceiveRefusal::LocalChanges.into());
+    }
     Ok(())
 }

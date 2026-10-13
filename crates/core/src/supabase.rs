@@ -370,18 +370,10 @@ impl SupabaseRuntime {
 }
 
 async fn latest_local_head(engine: Arc<Engine>, project: Uuid) -> Option<protocol::SignedSnapshot> {
-    tokio::task::spawn_blocking(move || {
-        let authored = engine
-            .store
-            .author_history(project, engine.identity.device_id)
-            .ok()?;
-        authored
-            .first()
-            .and_then(|info| engine.store.snapshot(info.snapshot_id).ok().flatten())
-    })
-    .await
-    .ok()
-    .flatten()
+    tokio::task::spawn_blocking(move || engine.store.head(project).ok().flatten())
+        .await
+        .ok()
+        .flatten()
 }
 
 fn head_record(snapshot: &protocol::SignedSnapshot) -> HeadRecord {
@@ -416,6 +408,13 @@ async fn apply_head_rows(engine: Arc<Engine>, project: Uuid, rows: Vec<protocol:
         };
         let encrypted = row.ciphertext;
         let seq = row.seq;
+        let Ok(seq_number) = seq.parse::<u64>() else {
+            continue;
+        };
+        if seq_number == 0 {
+            continue;
+        }
+        let seq_for_decode = seq.clone();
         let public_key = card.public_key.clone();
         let key_engine = engine.clone();
         let decoded = tokio::task::spawn_blocking(move || -> Result<_> {
@@ -424,13 +423,14 @@ async fn apply_head_rows(engine: Arc<Engine>, project: Uuid, rows: Vec<protocol:
                 project,
                 None,
             )?;
-            let record = crypto::unwrap_head_record(&encrypted, project, writer, &seq, &key)?;
+            let record =
+                crypto::unwrap_head_record(&encrypted, project, writer, &seq_for_decode, &key)?;
             crypto::verify_head_record(&record, &public_key)?;
             Ok(record)
         })
         .await;
         if let Ok(Ok(record)) = decoded {
-            let _ = engine.remember_offline_head(project, record);
+            let _ = engine.remember_offline_head(project, writer, seq_number, record);
         }
     }
 }

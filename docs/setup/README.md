@@ -99,6 +99,9 @@ Tabloyu sırayla inceleyin; size uymayan satırı geçin. İnternete geçmeden a
 | **WAN IP 10.x / 172.16–31.x / 192.168.x** | Önde başka router mı var, yoksa ISP özel IP mi veriyor, belirleyin. İki yerel router varsa iki katmanda yönlendirme gerekir; ISP tarafındaysa public IPv4/relay yoluna geçin. |
 | **Daha önce çalıştı, bugün çalışmıyor** | A'nın LAN IP'si veya public IP'si değişmiş olabilir. LAN IP için modem hedefini/adres rezervasyonunu düzeltin; public IP/dış port değiştiyse yeni daveti çıkarıp B'de aynı proje klasörüne import edin. |
 | **Check peer çalışıyor ama Receive pasif/reddediliyor** | Modem ayarını değiştirmeden A'da snapshot olduğunu, B'de doğru peer ve DAW-closed onayını, yerel değişiklik/divergence/recovery mesajlarını kontrol edin. |
+| **Your version and X's version both changed / divergence** | Desktop'taki resolution box'ta **Use X's version** ile mevcut dosyaları önce yerel geçmişe kaydedip X'in sürümünü açıkça seçin; DAW kapalı olmalı. Veya **Keep mine** ile snapshot'ınızı paylaşın ve X'ten kendi sürümünüzü seçmesini isteyin. Otomatik birleştirme yapılmaz. |
+| **This folder has changes you haven't shared** | Bunları korumak için resolution box'ta **Keep mine** ile paylaşın; karşı tarafın sürümünü seçerseniz TrackMesh önce yerel değişikliklerin snapshot'ını alıp eski dosyaları transfer yedeğinde tutar. |
+| **Ableton `.asd` / `Backup/` or OS metadata appears in the folder** | These generated files are ignored by TrackMesh; `Ableton Project Info/`, `Samples/` and project/audio files are still included. |
 
 Modem arızalarını ayırmak için [üreticinin port-forward sorun giderme rehberi](https://www.tp-link.com/uk/support/faq/785/) de WAN IP, upstream NAT ve firewall kontrollerini anlatır; menü adları sizin modeminizde farklı olabilir. Ayrıntılar rolünüze ait rehberdedir. Henüz hazır relay'iniz yoksa bunu anında kullanılabilecek bir fallback gibi düşünmeyin; önce operatör kurulumu ve erişim izinleri gerekir.
 

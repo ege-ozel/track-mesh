@@ -50,9 +50,12 @@ impl Engine {
     }
 
     fn summarize_project(&self, project: Project) -> Result<ProjectSummary> {
-        let root_empty =
-            std::fs::read_dir(&project.root).is_ok_and(|mut entries| entries.next().is_none());
+        let root_empty = snapshot::is_empty(std::path::Path::new(&project.root)).unwrap_or(false);
         let active_transfer = self.store.has_active_transfer(project.project_id)?;
+        let fetched_heads = self
+            .peer_heads
+            .lock()
+            .map_err(|_| anyhow::anyhow!("peer head lock poisoned"))?;
         let peers = self
             .store
             .peers(Some(project.project_id))?
@@ -67,6 +70,7 @@ impl Engine {
                     .lock()
                     .map_err(|_| anyhow::anyhow!("offline head lock poisoned"))?
                     .get(&(project.project_id, device.device_id))
+                    .map(|(_, head)| head)
                     .filter(|head| {
                         Some(head.snapshot_id) != project.latest_local_snapshot
                             && !history
@@ -86,13 +90,15 @@ impl Engine {
                         file_count: head.file_count,
                     });
                 Ok(PeerSummary {
-                    known_lineage: announcement
-                        .as_ref()
-                        .map(|snapshot| {
+                    known_lineage: fetched_heads
+                        .get(&(project.project_id, device.device_id))
+                        .copied()
+                        .or_else(|| announcement.as_ref().map(|snapshot| snapshot.snapshot_id))
+                        .map(|head| {
                             self.store.known_lineage(
                                 project.project_id,
                                 project.latest_local_snapshot,
-                                snapshot.snapshot_id,
+                                head,
                             )
                         })
                         .transpose()?,

@@ -199,6 +199,40 @@ impl Engine {
         self.receiver(network.clone()).receive(snapshot, peer).await
     }
 
+    /// Preserve the current folder as a local snapshot before explicitly replacing a divergent
+    /// history with the collaborator's version.
+    pub async fn receive_replacing_local(
+        self: &std::sync::Arc<Self>,
+        network: &Network,
+        project: Uuid,
+        peer: DeviceCard,
+        target: Option<Uuid>,
+    ) -> Result<Uuid> {
+        // Scanning and hashing are blocking disk work. `snapshot` reuses the head when nothing
+        // changed, so the folder is hashed once; an empty folder has nothing to preserve.
+        let engine = self.clone();
+        tokio::task::spawn_blocking(move || -> Result<()> {
+            let project_record = engine.store.project(project)?;
+            anyhow::ensure!(
+                !project_record.recovery_required,
+                "receive recovery must finish before replacing the local version"
+            );
+            if !snapshot::is_empty(std::path::Path::new(&project_record.root))? {
+                engine.snapshot(project)?;
+            }
+            Ok(())
+        })
+        .await??;
+
+        let snapshot = self
+            .fetch_snapshot_chain(network, project, &peer.peer_id, target)
+            .await?
+            .context("source has no local snapshot")?;
+        self.receiver(network.clone())
+            .receive_diverged(snapshot, peer)
+            .await
+    }
+
     pub fn recover(&self, project: Uuid) -> Result<()> {
         transfer::recover_project(
             &self.store,

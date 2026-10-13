@@ -13,6 +13,26 @@ use std::{path::PathBuf, sync::Arc};
 use storage::{Lineage, Store, TransferState};
 use uuid::Uuid;
 
+/// A user-actionable receive refusal. Display text matches the existing refusal messages.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReceiveRefusal {
+    LocalChanges,
+    Diverged,
+}
+
+impl std::fmt::Display for ReceiveRefusal {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::LocalChanges => formatter.write_str(
+                "local folder contains unsnapshotted changes; snapshot them before receiving",
+            ),
+            Self::Diverged => formatter.write_str("history is Diverged; receive is blocked"),
+        }
+    }
+}
+
+impl std::error::Error for ReceiveRefusal {}
+
 pub struct Receiver {
     pub store: Arc<Store>,
     pub chunks: ChunkStore,
@@ -22,9 +42,30 @@ pub struct Receiver {
 }
 impl Receiver {
     pub async fn receive(&self, snapshot: SignedSnapshot, source: DeviceCard) -> Result<Uuid> {
+        self.receive_inner_with_override(snapshot, source, false)
+            .await
+    }
+
+    /// Receive a snapshot while explicitly allowing a divergent remote history to replace the
+    /// current local head. Unsnapshotted folder changes and other lineage states remain blocked.
+    pub async fn receive_diverged(
+        &self,
+        snapshot: SignedSnapshot,
+        source: DeviceCard,
+    ) -> Result<Uuid> {
+        self.receive_inner_with_override(snapshot, source, true)
+            .await
+    }
+
+    async fn receive_inner_with_override(
+        &self,
+        snapshot: SignedSnapshot,
+        source: DeviceCard,
+        allow_diverged: bool,
+    ) -> Result<Uuid> {
         let project = snapshot.manifest.project_id;
         let target = snapshot.manifest.snapshot_id;
-        let result = self.receive_inner(snapshot, source).await;
+        let result = self.receive_inner(snapshot, source, allow_diverged).await;
         if let Err(error) = &result {
             if let Some(session) = self.store.transfers()?.into_iter().find(|t| {
                 t.project_id == project
@@ -42,7 +83,12 @@ impl Receiver {
         }
         result
     }
-    async fn receive_inner(&self, snapshot: SignedSnapshot, source: DeviceCard) -> Result<Uuid> {
+    async fn receive_inner(
+        &self,
+        snapshot: SignedSnapshot,
+        source: DeviceCard,
+        allow_diverged: bool,
+    ) -> Result<Uuid> {
         let project = snapshot.manifest.project_id;
         validate_snapshot(&self.store, &self.identity, &snapshot, project, None)?;
         let trusted = self
@@ -72,10 +118,14 @@ impl Receiver {
             current.latest_local_snapshot,
             snapshot.manifest.snapshot_id,
         )?;
-        ensure!(
-            matches!(lineage, Lineage::RemoteAhead | Lineage::Equal),
-            "history is {lineage:?}; receive is blocked"
-        );
+        let lineage_allowed = matches!(lineage, Lineage::RemoteAhead | Lineage::Equal)
+            || (allow_diverged && matches!(lineage, Lineage::Diverged));
+        if !lineage_allowed {
+            if matches!(lineage, Lineage::Diverged) {
+                return Err(ReceiveRefusal::Diverged.into());
+            }
+            anyhow::bail!("history is {lineage:?}; receive is blocked");
+        }
         let id = self.store.begin_transfer(&snapshot, source.device_id)?;
         let session = self
             .store

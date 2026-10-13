@@ -146,6 +146,9 @@ enum Command {
         device_id: Uuid,
         #[arg(long)]
         snapshot_id: Option<Uuid>,
+        /// Explicitly preserve local changes and replace a divergent history.
+        #[arg(long)]
+        replace_local: bool,
         #[arg(long, default_value_t = 30)]
         connect_timeout: u64,
         #[command(flatten)]
@@ -376,6 +379,7 @@ async fn main() -> Result<()> {
             project_id,
             device_id,
             snapshot_id,
+            replace_local,
             connect_timeout,
             network,
         } => {
@@ -387,9 +391,20 @@ async fn main() -> Result<()> {
                     runtime
                         .wait_for_peer(&peer.peer_id, Duration::from_secs(connect_timeout))
                         .await?;
-                    engine
-                        .receive_from_peer(&runtime.network, project_id, peer, snapshot_id)
-                        .await
+                    if replace_local {
+                        engine
+                            .receive_replacing_local(
+                                &runtime.network,
+                                project_id,
+                                peer,
+                                snapshot_id,
+                            )
+                            .await
+                    } else {
+                        engine
+                            .receive_from_peer(&runtime.network, project_id, peer, snapshot_id)
+                            .await
+                    }
                 };
                 tokio::pin!(receive);
                 tokio::select! {

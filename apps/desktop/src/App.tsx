@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { cancelInviteLink, chooseFolder, chooseInviteParentFolder, chooseProjectsLocation, closeApp, getStatus, openInviteParentFolder, openProjectFolder, openProjectsLocation, pasteInviteLink, setUpnpMapping, submitAction } from './api';
+import { cancelInviteLink, chooseFolder, chooseInviteParentFolder, chooseProjectsLocation, closeApp, getStatus, openInviteParentFolder, openPreviousVersion, openProjectFolder, openProjectsLocation, pasteInviteLink, setUpnpMapping, submitAction } from './api';
 import type { Action, CheckView, DesktopStatus, ProjectBackend, ProjectBackendConfig, ProjectCard, SnapshotInfo, SupabaseDefaultConfig } from './api';
 
 const short = (id: string | null | undefined) => id ? id.slice(0, 8) : '—';
@@ -133,6 +133,7 @@ function ProjectBackendSettings({ projectId, config, defaultSupabase, state, bus
 function jobStatus(job: DesktopStatus['jobs'][number], startedAt: number | undefined, collaboratorName?: string) {
   if (!job.running) {
     return job.error ? `${job.label}: ${job.error}`
+      : job.label === "Use collaborator's version" && typeof job.outcome?.transfer_id === 'string' ? `Now using ${collaboratorName ?? 'collaborator'}'s version ✓`
       : job.label === 'Receive snapshot' && typeof job.outcome?.snapshot_id === 'string' ? `Received ${collaboratorName ?? 'collaborator'}'s version ✓`
       : job.outcome?.publication_error ? `Ready — ${collaboratorName ?? 'your collaborator'} can now get this version.`
       : typeof job.outcome?.snapshot_id === 'string' ? `Ready — ${collaboratorName ?? 'your collaborator'} can now get this version.`
@@ -191,7 +192,7 @@ function ConnectionAssistant({ card, status, peer, check, busy, act }: {
   else if (peer && !connection?.online) next = 'Run the connection check. If the invitation was imported but approval is still pending, open the sender’s pairing window and retry automatic pairing here.';
   else if (peer && !check?.fresh) next = 'The peer is connected. Run the connection check to verify project access and compare current snapshots.';
   else if (card.project.recovery_required) next = 'Local installation needs recovery. Close the DAW project and use Recover locally before another Receive.';
-  else if (check?.fresh && check.result.snapshot_status === 'DIVERGED') next = 'Both folders changed independently. Resolve the difference manually before receiving; TrackMesh does not merge projects.';
+  else if (check?.fresh && check.result.snapshot_status === 'DIVERGED') next = 'Both versions changed. Choose which version to keep in the resolution box below; TrackMesh does not merge projects.';
   else if (check?.fresh && check.result.snapshot_status === 'UP_TO_DATE') next = 'Both snapshot heads are equal on this live connection.';
   else if (check?.fresh && check.result.snapshot_status === 'LOCAL_AHEAD') next = 'Your local snapshot is ahead. The other PC should Check peer and Receive from this PC.';
   else if (check?.fresh && check.result.snapshot_status === 'UNKNOWN') next = 'Snapshot ancestry is unknown. Review the current project warning before receiving.';
@@ -221,6 +222,7 @@ function Card({ card, status, jobStartedAt, focusProjectId, act }: { card: Proje
   const [selected, setSelected] = useState('');
   const [dawClosed, setDawClosed] = useState(false);
   const [folderError, setFolderError] = useState('');
+  const [keepMinePending, setKeepMinePending] = useState(false);
   const project = card.project;
   const peer = card.peers.find(p => p.device.device_id === selected) ?? card.peers[0];
   const peerId = peer?.device.device_id;
@@ -230,7 +232,14 @@ function Card({ card, status, jobStartedAt, focusProjectId, act }: { card: Proje
   const busy = !status.ready || status.closing || status.jobs.some(j => j.running && (!j.project_id || j.project_id === project.project_id));
   const check = status.checks.find(c => c.result.project_id === project.project_id && c.device_id === peerId);
   const snapshotStatus = check?.fresh ? check.result.snapshot_status : null;
-  const divergence = snapshotStatus === 'DIVERGED';
+  const divergence = snapshotStatus === 'DIVERGED' || peer?.known_lineage === 'DIVERGED';
+  const blockedJob = status.jobs.find(item => item.project_id === project.project_id && !!item.outcome?.receive_blocked);
+  const blockedCode = blockedJob?.outcome?.receive_blocked;
+  const resolveDivergence = divergence || blockedCode === 'DIVERGED';
+  const resolveLocalChanges = blockedCode === 'LOCAL_CHANGES';
+  const resolutionJob = status.jobs.find(item => item.project_id === project.project_id && item.label === "Use collaborator's version");
+  const usedTransferId = resolutionJob && !resolutionJob.running && !resolutionJob.error && typeof resolutionJob.outcome?.transfer_id === 'string' ? String(resolutionJob.outcome.transfer_id) : null;
+  const firstShareBlocked = !card.local_snapshot && (card.root_empty || card.peers.some(item => !!item.announcement || !!item.offline_head || !!item.known_lineage));
   const remoteAhead = online && peer?.known_lineage === 'REMOTE_AHEAD';
   const offlineHead = peer?.offline_head;
   const showOfflineHead = !!offlineHead && !!peer && !online && !remoteAhead
@@ -300,8 +309,21 @@ function Card({ card, status, jobStartedAt, focusProjectId, act }: { card: Proje
     {showOfflineHead && offlineHead && peer && <div className="new-version-notice" role="status">New version from {peer.device.name} — {time(offlineHead.created_at)} · downloads when {peer.device.name} is online</div>}
     {peer && status.network?.port_mapping.consent_enabled && mappingState === 'MAPPED' && <p className="muted">Router set up ✓</p>}
     {peer && status.network?.port_mapping.consent_enabled && mappingState === 'FAILED' && <p className="muted">Router didn't allow automatic setup — connection may still work</p>}
+    {peer && (resolveDivergence || resolveLocalChanges) && <section className="notice resolution-box" role="region" aria-label="Resolve project versions">
+      <h3>{resolveLocalChanges && !resolveDivergence ? "This folder has changes you haven't shared" : `Your version and ${peer.device.name}'s version both changed`}</h3>
+      <p>TrackMesh does not merge projects. Choose which version to keep.</p>
+      {(!online || !dawClosed) && <p className="muted">{!online ? `Open TrackMesh on both PCs to use ${peer.device.name}'s version.` : 'Close the project in your DAW and tick “I closed this project in the DAW” below.'}</p>}
+      <div className="actions">
+        <button className="primary" disabled={busy || !online || !dawClosed} onClick={() => window.confirm(`Replace this folder with ${peer.device.name}'s version? Your current files are saved first and kept next to the project.`) && act({ kind: 'use_peer_version', project_id: project.project_id, device_id: peer.device.device_id, daw_closed: dawClosed })}>Use {peer.device.name}'s version</button>
+        <button disabled={busy || rootMissing || project.recovery_required} onClick={() => { setKeepMinePending(true); void act({ kind: 'send', project_id: project.project_id }); }}>Keep mine</button>
+      </div>
+      {keepMinePending && job?.label === 'Send Snapshot' && !job.running && !job.error && <p role="status">Ask {peer.device.name} to choose ‘Use {status.device?.name ?? 'your device'}'s version’.</p>}
+    </section>}
+    {peer && usedTransferId && <div className="delivery-receipt" role="status">Now using {peer.device.name}'s version ✓ <button className="text-button" onClick={() => void openPreviousVersion(project.project_id, usedTransferId).catch(error => setFolderError(String(error)))}>Open my previous files</button></div>}
     {peer && <section className="share-flow"><div><h3>Share current version</h3><p className="muted">Save a version here for your collaborator to receive.</p>
-      <button className={remoteAhead ? '' : 'primary'} disabled={busy || rootMissing || project.recovery_required} onClick={() => request('send')}>Share current version</button></div>
+      {firstShareBlocked
+        ? <p className="muted">{card.root_empty && !card.peers.some(item => !!item.announcement || !!item.offline_head || !!item.known_lineage) ? 'Add your project files to this folder first.' : `Get ${peer.device.name}'s version first.`}</p>
+        : <button className={remoteAhead ? '' : 'primary'} disabled={busy || rootMissing || project.recovery_required} onClick={() => request('send')}>Share current version</button>}</div>
       <div><h3>Get collaborator’s version</h3><p className="muted">Receive copies the selected collaborator’s snapshot into this folder.</p>
         <label className="confirmation"><input type="checkbox" checked={dawClosed} disabled={busy} onChange={e => setDawClosed(e.target.checked)} /> I closed this project in the DAW</label>
         <button className={remoteAhead ? 'primary' : ''} disabled={disabledReceive || rootMissing} onClick={() => act({ kind: 'receive', project_id: project.project_id, device_id: peer.device.device_id, snapshot_id: resumable ? transfer.snapshot_id : null, daw_closed: dawClosed })}>{resumable ? 'Resume receive' : 'Get collaborator’s version'}</button>
