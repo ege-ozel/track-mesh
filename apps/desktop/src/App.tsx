@@ -30,15 +30,6 @@ function publicIpv4(value: string) {
 function ConnectionSetup({ status, projectId, busy, act }: { status: DesktopStatus; projectId: string; busy: boolean; act: (action: Action) => Promise<boolean> }) {
   const [ip, setIp] = useState('');
   const [port, setPort] = useState(String(status.listen_port));
-  const [mappingSaving, setMappingSaving] = useState(false);
-  const [mappingError, setMappingError] = useState<string | null>(null);
-  async function changeMappingConsent(enabled: boolean) {
-    setMappingSaving(true);
-    setMappingError(null);
-    try { await setUpnpMapping(enabled); }
-    catch (error) { setMappingError(String(error)); }
-    finally { setMappingSaving(false); }
-  }
   const publicIp = ip.trim();
   const validPort = /^\d{1,5}$/.test(port) && Number(port) > 0 && Number(port) <= 65535;
   const valid = publicIpv4(publicIp) && validPort;
@@ -58,10 +49,7 @@ function ConnectionSetup({ status, projectId, busy, act }: { status: DesktopStat
     <p><strong>Windows Firewall startup observation (read only)</strong>: {status.firewall_observation.state}. Active profiles: {status.firewall_observation.profiles.length ? status.firewall_observation.profiles.map(profile => `${profile.name}: ${profile.enabled === null ? 'UNKNOWN' : profile.enabled ? 'enabled' : 'disabled'}, block-all-inbound ${profile.block_all_inbound === null ? 'UNKNOWN' : profile.block_all_inbound}, default inbound ${profile.default_inbound ?? 'UNKNOWN'}`).join('; ') : 'UNKNOWN'}.</p>
     <p>Candidate inbound rules for local port {status.listen_port}: TCP Allow {status.firewall_observation.tcp_rules.allow}, Block {status.firewall_observation.tcp_rules.block}; UDP Allow {status.firewall_observation.udp_rules.allow}, Block {status.firewall_observation.udp_rules.block}. Third-party firewall product registration: {status.firewall_observation.third_party_products} (absence does not rule out other packet filters). Rule candidates do not prove effective permission.</p>
     {(status.firewall_observation.tcp_rules.allow !== 'PRESENT' || status.firewall_observation.udp_rules.allow !== 'PRESENT') && <p>For ABSENT/UNKNOWN details, use <code>docs/setup/AYNI-WIFI-DENEMESI.md</code> → “Takılırsanız” → <code>Win + R → wf.msc</code>. No firewall rule is changed by this observation.</p>}
-    <label><input type="checkbox" checked={status.network?.port_mapping.consent_enabled ?? false} disabled={busy || mappingSaving || !status.ready || status.closing}
-      onChange={event => { void changeMappingConsent(event.currentTarget.checked); }} />
-      Request time-limited UPnP port mappings on my router (explicit consent). PCP is NOT_ATTEMPTED in this build; a port mapping alone does not verify inbound reachability.</label>
-    {mappingError && <p className="error">Could not save UPnP preference: {mappingError}</p>}
+    <p><strong>UPnP mapping status (read only)</strong>: {status.network?.port_mapping.state ?? 'NOT_ATTEMPTED'}; TCP {status.network?.port_mapping.tcp ?? 'NOT_ATTEMPTED'}; UDP {status.network?.port_mapping.udp ?? 'NOT_ATTEMPTED'}. PCP is NOT_ATTEMPTED in this build; a port mapping alone does not verify inbound reachability.</p>
     {status.network?.port_mapping.detail && <p>{status.network.port_mapping.detail}</p>}
     <p>Local listen port: <strong>{status.listen_port}</strong> (default 43101). This session keeps its listen port; a different local port requires reopening with that startup port after the current owner exits.</p>
     <p>Local IPv4 / destination port: {localIps.length ? localIps.map(localIp => <code key={localIp}>{localIp}:{status.listen_port} </code>) : 'Waiting for a local IPv4 listen address. Do not use 0.0.0.0 as the router destination.'}</p>
@@ -243,7 +231,11 @@ function Card({ card, status, jobStartedAt, focusProjectId, act }: { card: Proje
   const check = status.checks.find(c => c.result.project_id === project.project_id && c.device_id === peerId);
   const snapshotStatus = check?.fresh ? check.result.snapshot_status : null;
   const divergence = snapshotStatus === 'DIVERGED';
-  const remoteAhead = peer?.known_lineage === 'REMOTE_AHEAD';
+  const remoteAhead = online && peer?.known_lineage === 'REMOTE_AHEAD';
+  const offlineHead = peer?.offline_head;
+  const showOfflineHead = !!offlineHead && !!peer && !online && !remoteAhead
+    && (!peer.announcement || Date.parse(offlineHead.created_at) > Date.parse(peer.announcement.created_at));
+  const mappingState = status.network?.port_mapping.state;
   const transfer = card.transfer;
   const resumable = transfer?.state === 'PAUSED' && peerId === transfer.source_device_id;
   const receiving = transfer?.state === 'RECEIVING' || transfer?.state === 'APPLYING';
@@ -305,6 +297,9 @@ function Card({ card, status, jobStartedAt, focusProjectId, act }: { card: Proje
     {status.supabase_states[project.project_id] === 'WAITING_FOR_GRANT' && <p className="muted">Waiting for the invite service owner to approve this project.</p>}
     {project.recovery_required && <div className="notice danger">Close the DAW and recover this project before receiving another version.</div>}
     {remoteAhead && peer?.announcement && <div className="new-version-notice" role="status">New version from {peer.device.name} — {time(peer.announcement.created_at)}</div>}
+    {showOfflineHead && offlineHead && peer && <div className="new-version-notice" role="status">New version from {peer.device.name} — {time(offlineHead.created_at)} · downloads when {peer.device.name} is online</div>}
+    {peer && status.network?.port_mapping.consent_enabled && mappingState === 'MAPPED' && <p className="muted">Router set up ✓</p>}
+    {peer && status.network?.port_mapping.consent_enabled && mappingState === 'FAILED' && <p className="muted">Router didn't allow automatic setup — connection may still work</p>}
     {peer && <section className="share-flow"><div><h3>Share current version</h3><p className="muted">Save a version here for your collaborator to receive.</p>
       <button className={remoteAhead ? '' : 'primary'} disabled={busy || rootMissing || project.recovery_required} onClick={() => request('send')}>Share current version</button></div>
       <div><h3>Get collaborator’s version</h3><p className="muted">Receive copies the selected collaborator’s snapshot into this folder.</p>
@@ -377,6 +372,8 @@ export default function App() {
   const [projectsLocation, setProjectsLocation] = useState('');
   const [jobStartedAt, setJobStartedAt] = useState<Record<string, number>>({});
   const [focusProjectId, setFocusProjectId] = useState<string | null>(null);
+  const [upnpConsentPrompt, setUpnpConsentPrompt] = useState(false);
+  const pendingConsentAction = useRef<Action | null>(null);
   const polling = useRef(false);
   const mounted = useRef(true);
   const generation = useRef(0);
@@ -432,13 +429,30 @@ export default function App() {
     });
     return () => { window.cancelAnimationFrame(frame); if (timeout !== undefined) window.clearTimeout(timeout); };
   }, [focusProjectId, status?.page]);
-  const act = async (action: Action): Promise<boolean> => {
+  const executeAction = async (action: Action): Promise<boolean> => {
     if (submitted.current) return false;
     submitted.current = true;
     setError('');
     try { await submitAction(action); await poll(); return true; }
     catch (err) { setError(String(err)); return false; }
     finally { submitted.current = false; }
+  };
+  const act = async (action: Action): Promise<boolean> => {
+    const asksForConsent = action.kind === 'copy_invite_link' || action.kind === 'join' || action.kind === 'complete_invite_link';
+    if (asksForConsent && status && !status.upnp_mapping_asked) {
+      pendingConsentAction.current = action;
+      setUpnpConsentPrompt(true);
+      return true;
+    }
+    return executeAction(action);
+  };
+  const answerUpnpConsent = async (allow: boolean) => {
+    const action = pendingConsentAction.current;
+    pendingConsentAction.current = null;
+    setUpnpConsentPrompt(false);
+    try { await setUpnpMapping(allow); await poll(); }
+    catch (err) { setError(`Could not save router preference: ${String(err)}`); }
+    if (action) await executeAction(action);
   };
   useEffect(() => setProjectsLocation(status?.projects_location ?? ''), [status?.projects_location]);
   const pasteInvite = async () => {
@@ -489,8 +503,13 @@ export default function App() {
         }}>Accept</button>
           <button disabled={busy} onClick={async () => { try { const value = await chooseInviteParentFolder(); if (value) setInviteParentFolder(value); } catch (err) { setError(String(err)); } }}>Choose another folder</button></div>
       </section></div>}
+      {upnpConsentPrompt && <div className="invite-overlay"><section className="invite-dialog upnp-consent-dialog" role="dialog" aria-modal="true" aria-labelledby="upnp-consent-title"><h2 id="upnp-consent-title">Router setup</h2>
+        <p>Let TrackMesh set up your router automatically? Needed when your collaborator is on a different internet connection. Opens one port only for TrackMesh; only paired devices can use it.</p>
+        <div className="actions"><button className="primary" onClick={() => void answerUpnpConsent(true)}>Allow (recommended)</button><button onClick={() => void answerUpnpConsent(false)}>Not now</button></div>
+      </section></div>}
       {status?.closing && <div className="notice">Work finished. TRACKMESH is shutting down safely.</div>}
       {screen === 'settings' ? <section className="settings-screen"><div className="section-heading"><div><h2>Settings</h2><span className="muted">Device identity and optional connection services.</span></div></div>
+        <section className="settings-block"><h3>Connection</h3><label><input type="checkbox" checked={status?.network?.port_mapping.consent_enabled ?? false} disabled={busy} onChange={event => { void setUpnpMapping(event.currentTarget.checked).then(poll).catch(err => setError(String(err))); }} /> Set up router automatically (UPnP)</label><p className="muted">Opens one time-limited router port for TrackMesh. Only paired devices can use it.</p></section>
         <details className="setup"><summary>Advanced</summary>
           <DeviceNameSettings name={status?.device?.name ?? ''} busy={busy} act={act} />
           <div className="settings-block"><h3>Projects location</h3><p className="muted">New invitations create a named project folder here.</p><div className="input-row"><button className="path-link" title="Open in Explorer" onClick={() => void openProjectsLocation().catch(err => setError(String(err)))}>{displayPath(projectsLocation)}</button><button disabled={busy} onClick={async () => { try { const value = await chooseProjectsLocation(); if (value) { setProjectsLocation(value); await poll(); } } catch (err) { setError(String(err)); } }}>Browse…</button></div></div>

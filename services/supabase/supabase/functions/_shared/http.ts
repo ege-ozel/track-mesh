@@ -4,6 +4,8 @@ export type Operation =
   | "member-revoke"
   | "endpoint-publish"
   | "endpoint-list"
+  | "head-publish"
+  | "head-list"
   | "invite-create";
 
 type Auth = {

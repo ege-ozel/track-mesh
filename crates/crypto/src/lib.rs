@@ -27,7 +27,10 @@ pub fn zeroize_project_invite(invite: &mut protocol::ProjectInvite) {
 }
 pub use mailbox::verify_mailbox_auth;
 pub use pairing::{pairing_challenge, pairing_proof, verify_pairing_proof};
-pub use supabase::{endpoint_record_expires_at, unwrap_endpoint_record, wrap_endpoint_record};
+pub use supabase::{
+    endpoint_record_expires_at, unwrap_endpoint_record, unwrap_head_record, verify_head_record,
+    wrap_endpoint_record, wrap_head_record,
+};
 
 pub struct Identity {
     pub device_id: Uuid,

@@ -16,9 +16,10 @@ This directory contains the Supabase server side for signed endpoint metadata, i
 1. Create a Supabase project and choose its region and plan. In **Project Settings → API Keys**, copy the Project URL and the new-format `sb_publishable_...` key. The publishable key is public; membership still depends on TrackMesh device signatures and server ACL checks. Never distribute the `sb_secret_...` key or database password.
 2. If the GitHub integration is not configured, apply in **SQL Editor** [`supabase/migrations/20261012000100_trackmesh_m5d.sql`](supabase/migrations/20261012000100_trackmesh_m5d.sql) once. Check that the four tables have RLS enabled, no `anon`/`authenticated` policies or grants, and that the RPC is executable only by `service_role`.
 3. Without the integration, apply [`supabase/migrations/20261012000200_m6_invite_drop.sql`](supabase/migrations/20261012000200_m6_invite_drop.sql) once after the M5d migration. Check that `invite_drops`, `invite_request_nonces`, and `invite_rate_limits` have RLS enabled and no `anon`/`authenticated` policies or grants.
-4. In **Edge Functions**, deploy `project-claim`, `member-grant`, `member-revoke`, `endpoint-publish`, `endpoint-list`, `invite-create`, and `invite-consume`. Use the function source bundle so `supabase/functions/_shared/http.ts` is included. Keep JWT verification disabled for all seven functions; the committed `supabase/config.toml` records that setting.
-5. Do not set any secret by hand. Supabase injects `SUPABASE_URL` and `SUPABASE_SECRET_KEYS` (a JSON dictionary whose `default` entry is the project secret key) into every Edge Function. Edge Functions fail closed with a generic server error if the value is absent or invalid. The secret remains server-side; no Function sends an `Authorization: Bearer` header.
-6. Keep the client URL/key separate from the Function secret. A deployment without the injected privileged key must fail closed; do not work around it by putting a secret key in the desktop application.
+4. Apply [`supabase/migrations/20261013000100_m7_head_records.sql`](supabase/migrations/20261013000100_m7_head_records.sql) after M5d. This additive migration creates encrypted head metadata storage and extends `trackmesh_dispatch`; it does not change prior migrations.
+5. In **Edge Functions**, deploy `project-claim`, `member-grant`, `member-revoke`, `endpoint-publish`, `endpoint-list`, `head-publish`, `head-list`, `invite-create`, and `invite-consume`. Use the function source bundle so `supabase/functions/_shared/http.ts` is included. Keep JWT verification disabled for all nine functions; the committed `supabase/config.toml` records that setting.
+6. Do not set any secret by hand. Supabase injects `SUPABASE_URL` and `SUPABASE_SECRET_KEYS` (a JSON dictionary whose `default` entry is the project secret key) into every Edge Function. Edge Functions fail closed with a generic server error if the value is absent or invalid. The secret remains server-side; no Function sends an `Authorization: Bearer` header.
+7. Keep the client URL/key separate from the Function secret. A deployment without the injected privileged key must fail closed; do not work around it by putting a secret key in the desktop application.
 
 The Dashboard editor is useful for an initial project and inspection. The repository remains the source of truth for migration and Function source; Dashboard edits do not update this checkout. Prefer the CLI path below for repeatable deployments.
 
@@ -35,6 +36,8 @@ supabase functions deploy member-grant --no-verify-jwt
 supabase functions deploy member-revoke --no-verify-jwt
 supabase functions deploy endpoint-publish --no-verify-jwt
 supabase functions deploy endpoint-list --no-verify-jwt
+supabase functions deploy head-publish --no-verify-jwt
+supabase functions deploy head-list --no-verify-jwt
 supabase functions deploy invite-create --no-verify-jwt
 supabase functions deploy invite-consume --no-verify-jwt
 ```
@@ -57,8 +60,8 @@ Initial fixed-window limits are:
 | --- | ---: | ---: |
 | `project-claim` | 3/hour | 10/hour |
 | `member-grant` / `member-revoke` | 10/hour | 30/hour |
-| `endpoint-publish` | 30/minute | 120/minute |
-| `endpoint-list` | 60/minute | 180/minute |
+| `endpoint-publish` / `head-publish` | 30/minute | 120/minute |
+| `endpoint-list` / `head-list` | 60/minute | 180/minute |
 | `invite-create` | 60/hour global | 60/hour global |
 | `invite-consume` | 300/hour global, 10/hour per ID | 300/hour global |
 
@@ -69,6 +72,8 @@ The global limit is shared by every user of the Supabase project. An attacker ca
 The Rust client stores endpoint data as an XChaCha20-Poly1305 wrapper encrypted with the project key and AAD `trackmesh-endpoint-mailbox-v1`. Its JSON shape is `{version, project_route, writer_device_id, seq, expires_at, nonce, ciphertext}`. `seq` is a canonical decimal string; `expires_at` is UTC RFC3339 with exactly millisecond precision; `nonce` is 24 random bytes encoded base64url without padding; `ciphertext` is the encrypted serialized signed `EndpointRecord`, also base64url without padding. The client base64url-encodes the complete wrapper JSON into the `ciphertext` field sent to `endpoint-publish`. The outer `seq` and `expires_at` request fields must exactly match the wrapper and inner record. On receipt, the client checks all duplicated metadata before calling the shared trusted endpoint validation path.
 
 These are abuse-control starting limits, not a Supabase platform quota. Failed/expired requests are generic. The cleanup batch removes at most 500 expired endpoint rows, 1,000 old nonces, and 1,000 old rate buckets per accepted operation. It runs inside the RPC transaction; repeated activity drains backlog. There is no `pg_cron` dependency.
+
+`head_records` stores at most one encrypted latest-head record for each project member device. It contains no file data, manifest file list, or chunks. Revoking a member removes that writer's head row.
 
 ## Current boundaries and remaining validation
 
