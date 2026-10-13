@@ -27,7 +27,7 @@ export interface ProjectCard {
   root_available: boolean;
   root_empty: boolean;
   active_transfer: boolean;
-  local_snapshot: SnapshotInfo | null; peers: Peer[]; pending_publications: number; transfer: Transfer | null;
+  local_snapshot: SnapshotInfo | null; peers: Peer[]; pending_publications: number; mailbox_enabled: boolean; transfer: Transfer | null;
 }
 export type ProjectBackend = 'NONE' | 'SELF_HOSTED_MAILBOX' | 'SUPABASE';
 export interface ProjectBackendConfig {

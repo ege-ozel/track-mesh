@@ -27,6 +27,16 @@ impl SessionGrace {
 impl Engine {
     /// A narrow query; adapters schedule this outside their UI/network threads.
     pub fn has_pending_publication(&self) -> Result<bool> {
-        self.store.has_pending_publication(self.identity.device_id)
+        for project in self.store.projects()? {
+            if self.mailbox_enabled(project.project_id)?
+                && self
+                    .store
+                    .pending_publication_count(project.project_id, self.identity.device_id)?
+                    > 0
+            {
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
 }
