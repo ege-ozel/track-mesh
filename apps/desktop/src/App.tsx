@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AdvancedScreen } from './AdvancedScreen';
-import { cancelInviteLink, chooseFolder, chooseInviteParentFolder, closeApp, getStatus, openInviteParentFolder, pasteInviteLink, setUpnpMapping, submitAction } from './api';
+import { cancelInviteLink, chooseFolder, chooseInviteParentFolder, closeApp, getStatus, openInviteParentFolder, pasteInviteLink, setLanguage, setUpnpMapping, submitAction } from './api';
 import type { Action, DesktopStatus } from './api';
 import { JobNotice } from './Jobs';
-import { Card } from './ProjectCard';
+import { Card, ProjectTabs } from './ProjectCard';
 import type { AdvancedSection } from './ProjectCard';
-import { SettingsScreen, ZOOM_LEVELS } from './SettingsScreen';
+import { DeviceName, SettingsScreen, ZOOM_LEVELS } from './SettingsScreen';
 import { displayPath, short } from './format';
 import { readLang, saveLang, setLang, t } from './i18n';
 import type { Lang } from './i18n';
@@ -25,13 +25,18 @@ function readZoom() {
   } catch { return 1; }
 }
 
+function readProject() {
+  try { return window.localStorage.getItem('trackmesh.project'); } catch { return null; }
+}
+
 export default function App() {
   const [status, setStatus] = useState<DesktopStatus | null>(null);
   const [error, setError] = useState('');
   const [offset, setOffset] = useState(0);
   const [setup, setSetup] = useState<'link' | 'join' | null>(null);
   const [screen, setScreen] = useState<Screen>('projects');
-  const [advancedProjectId, setAdvancedProjectId] = useState<string | null>(null);
+  // One selected project for both Projects and Advanced, remembered per viewer.
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(readProject);
   const [advancedSection, setAdvancedSection] = useState<AdvancedSection | null>(null);
   const [zoom, setZoom] = useState(readZoom);
   const [lang, setLangState] = useState<Lang>(readLang);
@@ -56,6 +61,7 @@ export default function App() {
     setOffset(handoff.offset);
     setScrolledFocusId(null);
     setFocusProjectId(handoff.project_id);
+    setSelectedProjectId(handoff.project_id);
   }, [status?.plugin_handoff]);
   const [upnpConsentPrompt, setUpnpConsentPrompt] = useState(false);
   const pendingConsentAction = useRef<Action | null>(null);
@@ -103,7 +109,12 @@ export default function App() {
   useEffect(() => {
     document.documentElement.lang = lang;
     saveLang(lang);
+    void setLanguage(lang).catch(() => { /* only the native quit dialog's language */ });
   }, [lang]);
+  useEffect(() => {
+    if (!selectedProjectId) return;
+    try { window.localStorage.setItem('trackmesh.project', selectedProjectId); } catch { /* per-viewer convenience only */ }
+  }, [selectedProjectId]);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (!event.ctrlKey || event.altKey) return;
@@ -124,6 +135,7 @@ export default function App() {
       focusBaseline.current = null;
       setScrolledFocusId(null);
       setFocusProjectId(added.project.project_id);
+      setSelectedProjectId(added.project.project_id);
     }
   }, [status?.page]);
   // Scroll once per focus request; status polling must not re-scroll or restart the highlight timer.
@@ -132,7 +144,7 @@ export default function App() {
     const frame = window.requestAnimationFrame(() => {
       const card = document.getElementById(`project-${focusProjectId}`);
       if (!card) return;
-      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       setScrolledFocusId(focusProjectId);
     });
     return () => window.cancelAnimationFrame(frame);
@@ -146,7 +158,7 @@ export default function App() {
     if (!advancedSection) return;
     const timeout = window.setTimeout(() => setAdvancedSection(null), 2500);
     return () => window.clearTimeout(timeout);
-  }, [advancedSection, advancedProjectId]);
+  }, [advancedSection, selectedProjectId]);
   const executeAction = async (action: Action): Promise<boolean> => {
     if (submitted.current) return false;
     submitted.current = true;
@@ -174,7 +186,7 @@ export default function App() {
   };
   const go = (next: Screen) => { setScreen(next); setAdvancedSection(null); window.scrollTo({ top: 0 }); };
   const openAdvanced = (projectId: string, section: AdvancedSection) => {
-    setAdvancedProjectId(projectId);
+    setSelectedProjectId(projectId);
     setAdvancedSection(section);
     setScreen('advanced');
     window.scrollTo({ top: 0 });
@@ -212,10 +224,12 @@ export default function App() {
         setSetup(null);
         setScrolledFocusId(null);
         setFocusProjectId(projectId);
+        setSelectedProjectId(projectId);
       }
     }
   };
   const projects = status?.page?.projects ?? [];
+  const shownProject = projects.find(item => item.project.project_id === selectedProjectId) ?? projects[0];
   // Running work plus the latest result while it is fresh: successes for 20 s, errors for 2 min.
   const nowSeconds = Math.floor(Date.now() / 1000);
   const projectlessJobs = (status?.jobs.filter(j => !j.project_id) ?? []).filter((job, _index, all) => job.running
@@ -275,8 +289,8 @@ export default function App() {
       </section></div>}
 
       {screen === 'settings' && <SettingsScreen status={status} busy={busy} act={act} poll={poll} onError={setError} zoom={zoom} setZoom={setZoom} lang={lang} setLang={setLangState} />}
-      {screen === 'advanced' && status && <AdvancedScreen status={status} projectId={advancedProjectId} section={advancedSection} jobStartedAt={jobStartedAt} act={act}
-        pickProject={projectId => { setAdvancedProjectId(projectId); setAdvancedSection(null); }}
+      {screen === 'advanced' && status && <AdvancedScreen status={status} projectId={shownProject?.project.project_id ?? null} section={advancedSection} jobStartedAt={jobStartedAt} act={act}
+        pickProject={projectId => { setSelectedProjectId(projectId); setAdvancedSection(null); }}
         openInvitationFile={() => { go('projects'); setSetup('join'); setFolder(''); }} onError={setError} />}
       {screen === 'projects' && <>
         {setup && <section className="setup-panel"><h2>{setup === 'join' ? t('Open an invitation file', 'Davet dosyası aç') : t('Share a project folder', 'Proje klasörü paylaş')}</h2>
@@ -287,6 +301,7 @@ export default function App() {
           <div className="actions"><button className="primary" disabled={busy || !folder || (setup === 'link' && !name.trim())} onClick={() => void saveSetup()}>{setup === 'join' ? t('Open invitation file…', 'Davet dosyasını aç…') : t('Add project', 'Projeyi ekle')}</button><button onClick={() => setSetup(null)}>{t('Cancel', 'Vazgeç')}</button></div>
         </section>}
         {firstRun && <section className="first-run">
+          <DeviceName name={status?.device?.name ?? ''} busy={busy} act={act} hint={t('Your collaborator sees this name. You can change it later in Settings.', "İş arkadaşın bu adı görür. Sonra Ayarlar'dan değiştirebilirsin.")} />
           <ol className="first-steps">
             <li><strong>{t('Pick the project folder', 'Proje klasörünü seç')}</strong><span>{t('The folder that holds your Ableton or FL project.', 'Ableton ya da FL projenin olduğu klasör.')}</span></li>
             <li><strong>{t('Invite and approve', 'Davet et ve onayla')}</strong><span>{t('Send a link, then approve your collaborator.', 'Bir bağlantı gönder, sonra iş arkadaşını onayla.')}</span></li>
@@ -302,7 +317,9 @@ export default function App() {
           </div>
           <p className="muted">{t('Closing the window keeps TrackMesh running next to the clock, so your collaborator can still get your versions.', 'Pencereyi kapatınca TrackMesh saatin yanında çalışmaya devam eder; iş arkadaşın sürümlerini almaya devam edebilir.')}</p>
         </section>}
-        <div className="project-list">{status && projects.map(card => <Card key={card.project.project_id} card={card} status={status} jobStartedAt={jobStartedAt} focusProjectId={focusProjectId} act={act} openAdvanced={openAdvanced} />)}</div>
+        {/* One project at a time; the tabs appear once there is more than one. */}
+        {status && projects.length > 1 && shownProject && <ProjectTabs projects={projects} status={status} selectedId={shownProject.project.project_id} pick={setSelectedProjectId} />}
+        {status && shownProject && <Card key={shownProject.project.project_id} card={shownProject} status={status} jobStartedAt={jobStartedAt} focusProjectId={focusProjectId} act={act} openAdvanced={openAdvanced} />}
         {(offset > 0 || status?.page?.has_more) && <div className="pagination"><button disabled={!offset || busy} onClick={() => setOffset(Math.max(0, offset - 32))}>{t('Previous', 'Önceki')}</button><span className="muted">{t('Page', 'Sayfa')} {offset / 32 + 1}</span><button disabled={!status?.page?.has_more || busy} onClick={() => setOffset(offset + 32)}>{t('Next', 'Sonraki')}</button></div>}
       </>}
     </main>

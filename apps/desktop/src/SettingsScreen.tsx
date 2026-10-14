@@ -11,12 +11,13 @@ type Act = (action: Action) => Promise<boolean>;
 export const ZOOM_LEVELS = [{ value: 1, label: 'Normal' }, { value: 1.15, label: 'Large' }, { value: 1.3, label: 'Larger' }] as const;
 const zoomLabel = (label: string) => label === 'Large' ? t('Large', 'Büyük') : label === 'Larger' ? t('Larger', 'Daha büyük') : t('Normal', 'Normal');
 
-function DeviceName({ name, busy, act }: { name: string; busy: boolean; act: Act }) {
+export function DeviceName({ name, busy, act, hint }: { name: string; busy: boolean; act: Act; hint?: string }) {
   const [value, setValue] = useState(name);
   useEffect(() => setValue(name), [name]);
   return <section className="settings-block"><h3>{t('Your name', 'Adın')}</h3>
     <label className="field">{t('Shown to your collaborators', 'İş arkadaşlarına görünür')}<div className="input-row"><input maxLength={80} value={value} disabled={busy} onChange={event => setValue(event.target.value)} />
       <button disabled={busy || !value.trim() || value.trim() === name} onClick={() => void act({ kind: 'set_device_name', name: value.trim() })}>{t('Save', 'Kaydet')}</button></div></label>
+    {hint && <p className="muted">{hint}</p>}
   </section>;
 }
 

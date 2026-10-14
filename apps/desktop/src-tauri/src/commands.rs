@@ -166,6 +166,13 @@ pub async fn set_upnp_mapping(
 }
 
 #[tauri::command]
+pub fn set_language(desktop: State<'_, Arc<Desktop>>, lang: String) -> Result<(), String> {
+    desktop
+        .set_language(&lang)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub async fn close_app(app: AppHandle, desktop: State<'_, Arc<Desktop>>) -> Result<(), String> {
     desktop.request_quit(app);
     Ok(())

@@ -442,10 +442,6 @@ main {
   color:var(--warn-heading)
 }
 /* project cards */
-.project-list {
-  display:grid;
-  gap:var(--s5)
-}
 .project-card {
   background:var(--surface);
   border:1px solid var(--border);
@@ -698,6 +694,22 @@ progress {
   color:var(--bg);
   border-color:var(--text)
 }
+.chip {
+  display:inline-flex;
+  align-items:center;
+  gap:var(--s2)
+}
+.tab-dot {
+  width:8px;
+  height:8px;
+  border-radius:50%;
+  flex:none;
+  background:var(--status-idle)
+}
+.tab-dot.ok { background:var(--accent) }
+.tab-dot.warn { background:var(--warn) }
+.tab-dot.new { background:var(--link) }
+.tab-dot.attention { background:var(--danger); box-shadow:0 0 0 3px var(--danger-bg) }
 .group-title {
   font-size:17px;
   margin-top:var(--s5)

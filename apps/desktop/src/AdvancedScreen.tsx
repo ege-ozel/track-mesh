@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { chooseFolder, stopOperation } from './api';
 import type { Action, CheckView, DesktopStatus, ProjectBackend, ProjectBackendConfig, ProjectCard, SnapshotInfo, SupabaseDefaultConfig } from './api';
 import { JobNotice } from './Jobs';
+import { ProjectTabs } from './ProjectCard';
 import type { AdvancedSection } from './ProjectCard';
 import { bytes, displayPath, localIpv4Addresses, publicIpv4, short, time } from './format';
 import { named, t } from './i18n';
@@ -227,7 +228,7 @@ export function AdvancedScreen({ status, projectId, section, jobStartedAt, act, 
     } catch (err) { onError(String(err)); }
   };
   return <section className="advanced-screen">
-    <div className="project-chips" role="tablist" aria-label={t('Project', 'Proje')}>{projects.map(item => <button key={item.project.project_id} role="tab" aria-selected={item.project.project_id === id} className={item.project.project_id === id ? 'chip on' : 'chip'} onClick={() => pickProject(item.project.project_id)}>{item.project.name}</button>)}</div>
+    <ProjectTabs projects={projects} status={status} selectedId={id} pick={pickProject} />
     {card.peers.length > 1 && <label className="peer-picker">{t('Collaborator', 'İş arkadaşı')} <select value={peer?.device.device_id ?? ''} onChange={e => setSelectedPeer(e.target.value)}>{card.peers.map(p => <option key={p.device.device_id} value={p.device.device_id}>{p.device.name}</option>)}</select></label>}
 
     <Section id="connection" title={t('Connection', 'Bağlantı')} summary={runtimeError ? t('Network error', 'Ağ hatası') : !peer ? t('No collaborator yet', 'Henüz iş arkadaşı yok') : online ? `${t('Connected', 'Bağlı')} · ${connection?.route === 'RELAYED' ? t('relayed', 'aktarmalı') : t('direct', 'doğrudan')}` : t(`Can't reach ${name}`, `${named(collab, 'dat')} ulaşılamıyor`)} tone={online ? 'ok' : peer ? 'bad' : undefined}

@@ -126,4 +126,5 @@ export const cancelInviteLink = () => invoke<void>('cancel_invite_link');
 export const stopOperation = (projectId: string) => invoke<void>('stop_operation', { projectId });
 export const submitAction = (action: Action) => invoke<string>('submit_action', { action });
 export const setUpnpMapping = (enabled: boolean) => invoke<void>('set_upnp_mapping', { enabled });
+export const setLanguage = (lang: string) => invoke<void>('set_language', { lang });
 export const closeApp = () => invoke<void>('close_app');

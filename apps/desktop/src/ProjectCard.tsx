@@ -11,6 +11,36 @@ type Problem = { tone: 'warn' | 'danger'; title: string; body: string; fix: stri
 
 const RECEIVE_LABELS = ["Get collaborator's version", "Use collaborator's version", 'Recover installation'];
 
+type TabTone = 'attention' | 'new' | 'warn' | 'ok' | 'idle';
+
+// What a project tab's dot says, most urgent first, so hidden projects still show what needs you.
+export function projectState(card: ProjectCard, status: DesktopStatus): { tone: TabTone; label: string } {
+  const id = card.project.project_id;
+  const online = (peer: ProjectCard['peers'][number]) => status.network?.peers[peer.device.peer_id]?.online ?? false;
+  const job = status.jobs.find(j => j.project_id === id);
+  if (status.pairing.project_id === id && status.pairing.requests.length) return { tone: 'attention', label: t('Someone is waiting for your approval', 'Onayını bekleyen biri var') };
+  if (!card.root_available) return { tone: 'attention', label: t('Project folder not found', 'Proje klasörü bulunamadı') };
+  if (card.project.recovery_required) return { tone: 'attention', label: t('The last Get did not finish', 'Son alma işlemi bitmedi') };
+  if (card.peers.some(peer => peer.known_lineage === 'DIVERGED') || (!job?.running && job?.outcome?.receive_blocked)) return { tone: 'attention', label: t('Choose which version to keep', 'Hangi sürümün kalacağını seç') };
+  const newVersion = card.transfer?.state === 'PAUSED' || card.peers.some(peer => online(peer) ? peer.known_lineage === 'REMOTE_AHEAD'
+    : !!peer.offline_head && (!peer.announcement || Date.parse(peer.offline_head.created_at) > Date.parse(peer.announcement.created_at)));
+  if (newVersion) return { tone: 'new', label: t('New version to get', 'Alınacak yeni sürüm var') };
+  if (!card.peers.length) return { tone: 'idle', label: t('No collaborator yet', 'Henüz iş arkadaşı yok') };
+  if (status.pairing_approvals.some(item => item.project_id === id && item.state === 'PENDING')) return { tone: 'idle', label: t('Waiting for approval', 'Onay bekleniyor') };
+  return card.peers.some(online) ? { tone: 'ok', label: t('Connected', 'Bağlı') } : { tone: 'warn', label: t("Can't reach your collaborator", 'İş arkadaşına ulaşılamıyor') };
+}
+
+export function ProjectTabs({ projects, status, selectedId, pick }: {
+  projects: ProjectCard[]; status: DesktopStatus; selectedId: string; pick: (projectId: string) => void;
+}) {
+  return <div className="project-chips" role="tablist" aria-label={t('Projects', 'Projeler')}>{projects.map(item => {
+    const id = item.project.project_id;
+    const state = projectState(item, status);
+    return <button key={id} role="tab" aria-selected={id === selectedId} className={id === selectedId ? 'chip on' : 'chip'} title={state.label} aria-label={`${item.project.name} · ${state.label}`} onClick={() => pick(id)}>
+      <span className={`tab-dot ${state.tone}`} aria-hidden="true" />{item.project.name}</button>;
+  })}</div>;
+}
+
 export function Card({ card, status, jobStartedAt, focusProjectId, act, openAdvanced }: {
   card: ProjectCard; status: DesktopStatus; jobStartedAt: Record<string, number>; focusProjectId: string | null;
   act: (action: Action) => Promise<boolean>; openAdvanced: (projectId: string, section: AdvancedSection) => void;

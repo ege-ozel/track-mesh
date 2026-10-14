@@ -386,6 +386,8 @@ struct Session {
     window_session: bool,
     tray_session: bool,
     close_prompt_active: bool,
+    // The window's language, so the native quit and tray dialogs match it.
+    turkish: bool,
     engine: Option<Arc<Engine>>,
     device: Option<Device>,
     peer: Option<PeerRuntime>,
@@ -598,8 +600,9 @@ impl Desktop {
                 .data_dir
                 .map(Ok)
                 .unwrap_or_else(default_data_directory)?;
+            // A new install starts with the Windows user name; the first screen lets the user change it.
             let device_name = if options.device_name == "My studio PC" {
-                std::env::var("COMPUTERNAME").unwrap_or(options.device_name)
+                std::env::var("USERNAME").or_else(|_| std::env::var("COMPUTERNAME")).unwrap_or(options.device_name)
             } else {
                 options.device_name
             };
@@ -2024,8 +2027,13 @@ impl Desktop {
         json!({"project_id": project, "invitation_imported": imported, "pairing_state": state, "message": message})
     }
 
+    pub fn set_language(&self, lang: &str) -> Result<()> {
+        self.lock()?.turkish = lang == "tr";
+        Ok(())
+    }
+
     pub fn hide_to_tray(self: &Arc<Self>, app: AppHandle) {
-        let engine = {
+        let (engine, turkish) = {
             let Ok(mut state) = self.lock() else {
                 return;
             };
@@ -2033,7 +2041,7 @@ impl Desktop {
                 return;
             }
             state.close_prompt_active = true;
-            state.engine.clone()
+            (state.engine.clone(), state.turkish)
         };
         let desktop = self.clone();
         tauri::async_runtime::spawn(async move {
@@ -2041,7 +2049,20 @@ impl Desktop {
             let result = tauri::async_runtime::spawn_blocking(move || -> Result<()> {
                 let shown = engine.as_ref().map(|engine| engine.tray_notice_shown()).transpose()?.unwrap_or(false);
                 if !shown {
-                    dialog_app.dialog().message("TRACKMESH keeps running in the system tray after the window or DAW closes so collaborators can get your versions. Click the tray icon to reopen. Use Quit TrackMesh or the tray's Quit to exit.").title("TRACKMESH stays available").blocking_show();
+                    let (title, message) = if turkish {
+                        ("TrackMesh açık kalıyor", "Pencere ya da DAW kapanınca TrackMesh saatin yanında çalışmaya devam eder; iş arkadaşların sürümlerini alabilir.
+
+Yeniden açmak için saatin yanındaki TrackMesh simgesine tıkla.
+
+Tamamen kapatmak için TrackMesh'ten çık düğmesini ya da simgedeki Quit'i kullan.")
+                    } else {
+                        ("TrackMesh stays available", "TrackMesh keeps running next to the clock after the window or DAW closes, so collaborators can get your versions.
+
+Click the TrackMesh icon next to the clock to reopen it.
+
+To exit, use Quit TrackMesh or Quit in the icon's menu.")
+                    };
+                    dialog_app.dialog().message(message).title(title).blocking_show();
                     if let Some(engine) = engine { engine.mark_tray_notice_shown()?; }
                 }
                 Ok(())
@@ -2073,7 +2094,7 @@ impl Desktop {
     }
 
     pub fn request_quit(self: &Arc<Self>, app: AppHandle) {
-        let engine = {
+        let (engine, turkish) = {
             let Ok(mut state) = self.lock() else {
                 return;
             };
@@ -2081,7 +2102,7 @@ impl Desktop {
                 return;
             }
             state.close_prompt_active = true;
-            state.engine.clone()
+            (state.engine.clone(), state.turkish)
         };
         let desktop = self.clone();
         tauri::async_runtime::spawn(async move {
@@ -2092,8 +2113,23 @@ impl Desktop {
                 if recipients.is_empty() {
                     return Ok(true);
                 }
-                let message = format!("{} can't get your versions while TRACKMESH is closed. Quit? Accepted work will finish before closing.", recipients.join(", "));
-                Ok(dialog_app.dialog().message(message).title("Quit TrackMesh?").buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancel).blocking_show())
+                // One name per line so a long list stays readable.
+                let names = recipients.iter().map(|name| format!("    • {name}")).collect::<Vec<_>>().join("
+");
+                let (title, message, quit, cancel) = if turkish {
+                    ("TrackMesh kapatılsın mı?", format!("TrackMesh kapalıyken bu kişiler sürümlerini alamaz:
+
+{names}
+
+Başlamış işler kapanmadan önce biter."), "Çık", "Vazgeç")
+                } else {
+                    ("Quit TrackMesh?", format!("While TrackMesh is closed, these collaborators can't get your versions:
+
+{names}
+
+Work that has already started finishes before TrackMesh closes."), "Quit", "Cancel")
+                };
+                Ok(dialog_app.dialog().message(message).title(title).buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancelCustom(quit.to_owned(), cancel.to_owned())).blocking_show())
             }).await;
             let close = desktop.lock().is_ok_and(|mut state| {
                 state.close_prompt_active = false;

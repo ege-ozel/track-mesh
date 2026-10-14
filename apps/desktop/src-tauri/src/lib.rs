@@ -54,6 +54,7 @@ pub fn run() {
             commands::open_previous_version,
             commands::submit_action,
             commands::set_upnp_mapping,
+            commands::set_language,
             commands::close_app
         ])
         .setup(move |app| {
