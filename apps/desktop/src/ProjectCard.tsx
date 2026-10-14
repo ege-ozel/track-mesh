@@ -143,7 +143,7 @@ export function Card({ card, status, jobStartedAt, focusProjectId, act, openAdva
 
   const badge = pairingApproval === 'PENDING' ? { text: t('Waiting for approval', 'Onay bekleniyor'), tone: '' }
     : online ? { text: t(`Connected · ${peerName}`, `Bağlı · ${peerName}`), tone: 'online' }
-    : peer ? { text: t(`Can't reach ${peerName}`, `${named(collab, 'dat')} ulaşılamıyor`), tone: 'warn' }
+    : peer ? { text: t(`Not connected · ${peerName}`, `Bağlı değil · ${peerName}`), tone: 'warn' }
     : { text: t('No collaborator yet', 'Henüz iş arkadaşı yok'), tone: '' };
 
   const transferError = transfer?.error ?? (job?.error && RECEIVE_LABELS.includes(job.label) ? job.error : null);
@@ -236,7 +236,6 @@ export function Card({ card, status, jobStartedAt, focusProjectId, act, openAdva
           {firstShareBlocked
             ? <p className="muted">{card.root_empty && !peerHasVersion ? t('Add your project files to this folder first.', 'Önce proje dosyalarını bu klasöre ekle.') : t(`Get ${peerName}'s version first.`, `Önce ${named(collab, 'gen')} sürümünü al.`)}</p>
             : <button className={remoteAhead ? '' : 'primary'} disabled={busy || rootMissing || project.recovery_required} onClick={() => void share()}>{t('Share current version', 'Güncel sürümü paylaş')}</button>}
-          {!online && !firstShareBlocked && <p className="muted">{t(`${peerName} can get it when you are both online.`, `İkiniz de bağlı olunca ${peerName} alabilir.`)}</p>}
         </div>
         <div className="pane"><h3>{t(`Get ${peerName}'s changes`, `${named(collab, 'gen')} değişikliklerini al`)}</h3>
           {status.presence[projectId]?.filter(warning => warning.device_id === peer.device.device_id).map(warning => <p key={warning.device_id} className="muted" role="status">{t(warning.get_line, `${warning.name} yakında daha yeni bir sürüm paylaşabilir.`)}</p>)}

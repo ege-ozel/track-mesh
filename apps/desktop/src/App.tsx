@@ -16,7 +16,7 @@ type Screen = 'projects' | 'advanced' | 'settings';
 const QUIET_SETTINGS = new Set(['Save DAW auto-share setting', 'Save device name', 'Save Projects location', 'Save default Supabase settings', 'Save manual port forwarding']);
 
 const screenTitles = (): Record<Screen, [string, string]> => ({
-  projects: [t('Projects', 'Projeler'), t('Each card is one DAW project folder you share with your collaborator.', 'Her kart, iş arkadaşınla paylaştığın bir DAW proje klasörü.')],
+  projects: [t('Projects', 'Projeler'), t('The DAW project folders you share with your collaborator.', 'İş arkadaşınla paylaştığın DAW proje klasörleri.')],
   advanced: [t('Advanced', 'Gelişmiş'), t('Connection, invite service and version details. TrackMesh sends you here when something needs fixing.', 'Bağlantı, davet servisi ve sürüm ayrıntıları. Bir şeyin düzeltilmesi gerektiğinde TrackMesh seni buraya getirir.')],
   settings: [t('Settings', 'Ayarlar'), t('Your name, sharing, language and storage.', 'Adın, paylaşım, dil ve depolama.')],
 });

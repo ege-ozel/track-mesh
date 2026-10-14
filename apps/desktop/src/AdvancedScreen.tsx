@@ -52,6 +52,16 @@ function nextStep(card: ProjectCard, status: DesktopStatus, peer: Peer | undefin
   }
 }
 
+function comparison(value: string, collab: string | undefined) {
+  switch (value) {
+    case 'UP_TO_DATE': return t('same version', 'aynı sürüm');
+    case 'LOCAL_AHEAD': return t('your version is newer', 'senin sürümün daha yeni');
+    case 'REMOTE_AHEAD': return t(`${collab ?? 'your collaborator'}'s version is newer`, `${named(collab, 'gen')} sürümü daha yeni`);
+    case 'DIVERGED': return t('both versions changed', 'iki sürüm de değişti');
+    default: return t('unknown', 'bilinmiyor');
+  }
+}
+
 function Snapshot({ value, empty, mailboxEnabled }: { value: SnapshotInfo | null; empty: string; mailboxEnabled: boolean }) {
   return value ? <><div className="snapshot-id">{short(value.snapshot_id)} {mailboxEnabled && <span>{value.metadata_status}</span>}</div>
     <p>{value.author_name} · {time(value.created_at)}</p>
@@ -277,7 +287,7 @@ export function AdvancedScreen({ status, projectId, section, jobStartedAt, act, 
       open={!!open.history} highlight={section === 'history'} onToggle={toggle('history')}>
       <div className="snapshots"><section><h3>{t('This PC', 'Bu bilgisayar')}</h3><Snapshot value={card.local_snapshot} empty={t('No version yet.', 'Henüz sürüm yok.')} mailboxEnabled={card.mailbox_enabled} /></section>
         <section><h3>{peer ? name : t('Collaborator', 'İş arkadaşı')}</h3><Snapshot value={peer?.announcement ?? null} empty={t('No version seen yet.', 'Henüz sürüm görülmedi.')} mailboxEnabled={card.mailbox_enabled} /></section></div>
-      <p className="muted">{check?.fresh ? `${t('Last comparison:', 'Son karşılaştırma:')} ${check.result.snapshot_status.replaceAll('_', ' ').toLowerCase()}` : t('No live comparison. Check connection compares both versions.', 'Canlı karşılaştırma yok. Bağlantıyı kontrol et iki sürümü de karşılaştırır.')}</p>
+      <p className="muted">{check?.fresh ? `${t('Last comparison:', 'Son karşılaştırma:')} ${comparison(check.result.snapshot_status, collab)}` :t('No live comparison. Check connection compares both versions.', 'Canlı karşılaştırma yok. Bağlantıyı kontrol et iki sürümü de karşılaştırır.')}</p>
       {peer && peer.history.length > 1 && <ol className="history-list">{peer.history.map(snapshot => <li key={snapshot.snapshot_id}><code>{short(snapshot.snapshot_id)}</code> · {snapshot.author_name} · {time(snapshot.created_at)} · {snapshot.file_count} {t('files', 'dosya')}</li>)}</ol>}
     </Section>
 
