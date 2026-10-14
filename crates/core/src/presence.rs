@@ -198,9 +198,10 @@ impl Engine {
                     .is_none_or(|at| at.elapsed() >= Duration::from_secs(60))
             {
                 local.last_check = Some(Instant::now());
-                // Shared project lock prevents races with snapshot, apply and recovery.
+                // No project lock: it is exclusive, so holding it would fail a concurrent Share/Get.
+                // The walk is read-only and advisory; a race only yields a stale warning.
                 if !project.recovery_required && !self.store.has_active_transfer(id)? {
-                    if let Ok(_lock) = snapshot::ProjectLock::acquire(&self.directory, id) {
+                    {
                         let head_time = self.store.head(id)?.map(|head| {
                             UNIX_EPOCH
                                 + Duration::from_secs(
