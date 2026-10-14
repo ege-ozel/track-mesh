@@ -1,4 +1,6 @@
 #include "view.h"
+#include "plugin.h"
+#include <algorithm>
 #include <cstring>
 #include <utility>
 
@@ -17,12 +19,14 @@ void label(HDC dc, HFONT font, const std::wstring& value, RECT area, COLORREF co
     SelectObject(dc, previous);
 }
 }
-View::View(std::shared_ptr<Bridge> b) : CPluginView(&rectangle), bridge(std::move(b)) {
+View::View(std::shared_ptr<Bridge> b, Plugin* p) : CPluginView(&rectangle), bridge(std::move(b)), plugin(p) {
+    plugin->addRef();
     font = CreateFontW(-15, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
     titleFont = CreateFontW(-24, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
+    smallFont = CreateFontW(-13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
     backgroundBrush = CreateSolidBrush(background);
 }
-View::~View() { removed(); if (font) DeleteObject(font); if (titleFont) DeleteObject(titleFont); if (backgroundBrush) DeleteObject(backgroundBrush); }
+View::~View() { removed(); if (font) DeleteObject(font); if (titleFont) DeleteObject(titleFont); if (smallFont) DeleteObject(smallFont); if (backgroundBrush) DeleteObject(backgroundBrush); plugin->release(); }
 tresult PLUGIN_API View::isPlatformTypeSupported(FIDString type) { return type && std::strcmp(type, kPlatformTypeHWND) == 0 ? kResultTrue : kResultFalse; }
 tresult PLUGIN_API View::attached(void* parent, FIDString type) {
     if (!parent || window || isPlatformTypeSupported(type) != kResultTrue) return kResultFalse;
@@ -50,9 +54,13 @@ tresult PLUGIN_API View::attached(void* parent, FIDString type) {
         SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
         return control;
     };
-    uuid = make(L"EDIT", L"", ES_READONLY | ES_AUTOHSCROLL, 24, 105, 532, 24, 10);
-    sendButton = make(L"BUTTON", L"Send Snapshot", WS_TABSTOP | BS_OWNERDRAW, 24, 282, 254, 38, 1);
-    receiveButton = make(L"BUTTON", L"Receive...", WS_TABSTOP | BS_OWNERDRAW, 302, 282, 254, 38, 2);
+    picker = make(L"COMBOBOX", L"", WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL, 24, 105, 410, 210, 10);
+    chooseButton = make(L"BUTTON", L"Use project", WS_TABSTOP, 450, 105, 106, 28, 11);
+    changeButton = make(L"BUTTON", L"Change project", WS_TABSTOP, 420, 63, 136, 28, 12);
+    openButton = make(L"BUTTON", L"Open TrackMesh", WS_TABSTOP, 24, 170, 200, 32, 13);
+    sendButton = make(L"BUTTON", L"Share current version", WS_TABSTOP | BS_OWNERDRAW, 24, 282, 254, 38, 1);
+    receiveButton = make(L"BUTTON", L"Get collaborator's version", WS_TABSTOP | BS_OWNERDRAW, 302, 282, 254, 38, 2);
+    refresh();
     SetTimer(window, 1, 500, nullptr);
     CPluginView::attached(parent, type);
     return kResultOk;
@@ -64,7 +72,7 @@ tresult PLUGIN_API View::removed() {
         if (classViews > 0 && --classViews == 0) UnregisterClassW(L"TrackMeshVST3View-v1", viewModule);
         registeredClass = false;
     }
-    sendButton = receiveButton = uuid = nullptr;
+    sendButton = receiveButton = picker = chooseButton = changeButton = openButton = nullptr;
     return CPluginView::removed();
 }
 void View::paint(HWND handle) {
@@ -78,17 +86,56 @@ void View::paint(HWND handle) {
     const auto status = bridge->status();
     label(dc, titleFont, L"TRACKMESH", {24, 20, 360, 54}, foreground);
     label(dc, font, status.connection.empty() ? L"CONNECTING" : status.connection, {400, 28, 556, 52}, RGB(111, 218, 193), DT_RIGHT | DT_SINGLELINE);
-    label(dc, font, status.name.empty() ? L"Link this project UUID in desktop" : status.name, {24, 63, 556, 87}, foreground);
-    label(dc, font, L"PROJECT UUID", {24, 86, 556, 104}, muted);
-    label(dc, font, L"LOCAL SNAPSHOT", {24, 151, 556, 170}, muted);
-    label(dc, font, status.local.empty() ? L"No local snapshot" : status.local, {24, 173, 556, 193}, foreground);
-    label(dc, font, L"REMOTE SNAPSHOT", {24, 207, 556, 226}, muted);
-    label(dc, font, status.remote.empty() ? L"No remote announcement" : status.remote, {24, 229, 556, 249}, foreground);
-    auto detail = status.state;
-    if (!status.author.empty()) detail += L"  /  " + status.author + L"  /  " + status.createdAt;
-    label(dc, font, detail, {24, 258, 556, 278}, RGB(111, 218, 193));
-    label(dc, font, status.message, {24, 335, 556, 390}, muted, DT_LEFT | DT_WORDBREAK);
+    const bool selecting = !status.linked || changing;
+    label(dc, font, selecting ? L"Choose a linked TrackMesh project" : status.name, {24, 63, 410, 90}, foreground);
+    if (!selecting) {
+        label(dc, font, status.line, {24, 105, 556, 163}, foreground, DT_LEFT | DT_WORDBREAK);
+        label(dc, font, status.createdAt, {24, 173, 556, 195}, muted);
+        if (!status.author.empty()) label(dc, font, L"Collaborator: " + status.author, {24, 204, 556, 224}, muted);
+        label(dc, smallFont, L"Project: " + status.project, {24, 229, 556, 249}, muted);
+        if (!status.local.empty() || !status.remote.empty())
+            label(dc, smallFont, L"Version: " + (status.local.empty() ? L"none" : status.local.substr(0, 8)) + L" / "
+                + (status.remote.empty() ? L"none" : status.remote.substr(0, 8)), {24, 253, 556, 274}, muted);
+    } else {
+        const auto text = !status.pickerSupported ? (status.connected ? status.line : status.message)
+            : choices.empty() ? L"Link this project's folder in TrackMesh first" : L"Choose the project whose folder contains this DAW project.";
+        label(dc, font, text, {24, 139, 556, 166}, muted);
+        if (status.projectsMore) label(dc, font, L"Showing the first 64 projects linked in TrackMesh.", {24, 214, 556, 238}, muted);
+    }
+    label(dc, font, selectionError.empty() ? status.message : selectionError, {24, 335, 556, 390}, muted, DT_LEFT | DT_WORDBREAK);
     EndPaint(handle, &paint);
+}
+void View::refresh() {
+    const auto status = bridge->status();
+    bool same = choices.size() == status.projects.size();
+    for (size_t i = 0; same && i < choices.size(); ++i)
+        same = choices[i].id == status.projects[i].id && choices[i].name == status.projects[i].name && choices[i].folder == status.projects[i].folder;
+    if (!same) {
+        const auto index = SendMessageW(picker, CB_GETCURSEL, 0, 0);
+        const auto selected = index >= 0 && static_cast<size_t>(index) < choices.size() ? choices[static_cast<size_t>(index)].id : ProjectId{};
+        choices = status.projects;
+        SendMessageW(picker, CB_RESETCONTENT, 0, 0);
+        for (size_t i = 0; i < choices.size(); ++i) {
+            auto text = choices[i].name;
+            if (std::count_if(choices.begin(), choices.end(), [&](const auto& choice) { return choice.name == text; }) > 1)
+                text += L" (" + choices[i].folder + L")";
+            SendMessageW(picker, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text.c_str()));
+            if (choices[i].id == selected) SendMessageW(picker, CB_SETCURSEL, i, 0);
+        }
+    }
+    const bool selecting = !status.linked || changing;
+    ShowWindow(picker, selecting && !choices.empty() ? SW_SHOW : SW_HIDE);
+    ShowWindow(chooseButton, selecting && !choices.empty() ? SW_SHOW : SW_HIDE);
+    ShowWindow(changeButton, status.linked ? SW_SHOW : SW_HIDE);
+    SetWindowTextW(changeButton, changing ? L"Cancel" : L"Change project");
+    ShowWindow(openButton, selecting ? SW_SHOW : SW_HIDE);
+    ShowWindow(sendButton, selecting ? SW_HIDE : SW_SHOW);
+    ShowWindow(receiveButton, selecting ? SW_HIDE : SW_SHOW);
+    EnableWindow(sendButton, status.connected && status.shareEnabled);
+    EnableWindow(receiveButton, status.connected && status.getEnabled);
+    EnableWindow(openButton, status.connected && status.desktopAvailable);
+    EnableWindow(chooseButton, status.connected && SendMessageW(picker, CB_GETCURSEL, 0, 0) != CB_ERR);
+    InvalidateRect(window, nullptr, FALSE);
 }
 LRESULT CALLBACK View::procedure(HWND handle, UINT message, WPARAM wparam, LPARAM lparam) {
     auto self = reinterpret_cast<View*>(GetWindowLongPtrW(handle, GWLP_USERDATA));
@@ -101,21 +148,24 @@ LRESULT CALLBACK View::procedure(HWND handle, UINT message, WPARAM wparam, LPARA
         case WM_PAINT: self->paint(handle); return 0;
         case WM_ERASEBKGND: return 1;
         case WM_TIMER: {
-            const auto status = self->bridge->status();
-            wchar_t text[64] {};
-            GetWindowTextW(self->uuid, text, 64);
-            if (status.project != text) SetWindowTextW(self->uuid, status.project.c_str());
-            EnableWindow(self->sendButton, status.connected && status.linked);
-            EnableWindow(self->receiveButton, status.connected && status.linked && status.peerOnline
-                && !status.remote.empty() && status.state != L"DIVERGED"
-                && status.state != L"RECOVERY_REQUIRED" && status.state != L"RECEIVING"
-                && status.state != L"APPLYING");
-            InvalidateRect(handle, nullptr, FALSE);
+            self->refresh();
             return 0;
         }
         case WM_COMMAND:
             if (HIWORD(wparam) == BN_CLICKED && LOWORD(wparam) == 1) self->bridge->send();
             if (HIWORD(wparam) == BN_CLICKED && LOWORD(wparam) == 2) self->bridge->receive();
+            if (HIWORD(wparam) == BN_CLICKED && LOWORD(wparam) == 13) self->bridge->receive();
+            if (HIWORD(wparam) == BN_CLICKED && LOWORD(wparam) == 12) { self->changing = !self->changing; self->selectionError.clear(); self->refresh(); }
+            if (HIWORD(wparam) == CBN_SELCHANGE && LOWORD(wparam) == 10) self->refresh();
+            if (HIWORD(wparam) == BN_CLICKED && LOWORD(wparam) == 11) {
+                const auto index = SendMessageW(self->picker, CB_GETCURSEL, 0, 0);
+                if (index >= 0 && static_cast<size_t>(index) < self->choices.size()) {
+                    if (self->plugin->selectProject(self->choices[static_cast<size_t>(index)].id)) {
+                        self->changing = false; self->selectionError.clear();
+                    } else self->selectionError = L"The DAW could not mark this project choice for saving. Project choice was not changed.";
+                    self->refresh();
+                }
+            }
             return 0;
         case WM_DRAWITEM: {
             const auto item = reinterpret_cast<DRAWITEMSTRUCT*>(lparam);
@@ -124,7 +174,7 @@ LRESULT CALLBACK View::procedure(HWND handle, UINT message, WPARAM wparam, LPARA
             const auto brush = CreateSolidBrush(disabled ? RGB(39, 46, 57) : RGB(51, 94, 89));
             FillRect(item->hDC, &item->rcItem, brush); DeleteObject(brush);
             SetBkMode(item->hDC, TRANSPARENT);
-            label(item->hDC, self->font, item->CtlID == 1 ? L"Send Snapshot" : L"Receive...", item->rcItem,
+            label(item->hDC, self->font, item->CtlID == 1 ? L"Share current version" : L"Get collaborator's version", item->rcItem,
                 disabled ? muted : foreground, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
             if (item->itemState & ODS_FOCUS) DrawFocusRect(item->hDC, &item->rcItem);
             return TRUE;

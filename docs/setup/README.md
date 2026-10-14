@@ -31,6 +31,10 @@ Divergence varsa **Use <name>'s version** açık onayla karşı tarafın sürüm
 
 Get'in indireceği yeni veri 1 GB'ı (1.000.000.000 byte) aşarsa indirme başlamadan onay istenir; doğrulanmış yerel parçalar bu miktara dahil değildir. İptal edilmiş Get aynı snapshot ile Resume receive üzerinden sürdürülebilir. Uygulama eski sürümlerin chunk verisini otomatik temizler; senin ve collaborator'ların son yerel sürümleri, yarım Get/recovery için gereken parçalar ve imzalı geçmiş korunur. `.trackmesh-…` yedekleri yalnız **Settings → Storage** içinden, boyutları görülüp topluca seçilerek silinir; her projenin son yedeği ve bitmemiş recovery verisi korunur.
 
+## VST3 plugin kullanımı
+
+TRACKMESH VST3'ü DAW'da herhangi bir track'e ekleyip TrackMesh'te bağlanmış projeyi listeden seçin; davetle gelen proje de aynı listede görünür. Seçimi DAW projesine kaydedin. Daha önce kaydedilmiş UUID zaten bağlıysa plugin doğrudan açılır; yanlış seçimi **Change project** ile değiştirin. DAW standart state-dirty bildirimini desteklemiyorsa seçim değiştirilmez ve açıklama gösterilir. **Share current version** kaydın oturmasını bekleyip Desktop ile aynı paylaşım akışını kullanır. **Get collaborator's version** yalnız TrackMesh'i açıp ilgili kartı gösterir: DAW projesini kaydedip kapatın, ardından TrackMesh'te Get seçin. Plugin otomatik indirme veya açık DAW projesine kurulum yapmaz.
+
 ## Davet servisi ve erişim sınırları
 
 Supabase yalnız küçük şifreli invite drop, endpoint kaydı ve head hint'i tutar. Dosyalar ve sample'lar servise yüklenmez. Proje anahtarı yalnız şifreli davetin içindedir; açık anahtar ve çözülmüş davet servise gönderilmez. Servis kaydı tek başına NAT engelini aşmaz ve offline kaynağın dosyalarını indirmez.

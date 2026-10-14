@@ -17,6 +17,7 @@ public:
     Steinberg::tresult PLUGIN_API setProcessing(Steinberg::TBool) override { return Steinberg::kResultOk; }
     Steinberg::tresult PLUGIN_API process(Steinberg::Vst::ProcessData& data) override;
     Steinberg::IPlugView* PLUGIN_API createView(Steinberg::FIDString name) override;
+    bool selectProject(const ProjectId& project);
 private:
     std::shared_ptr<Bridge> bridge {std::make_shared<Bridge>()};
 };

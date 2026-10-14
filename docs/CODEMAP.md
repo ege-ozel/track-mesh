@@ -19,7 +19,7 @@ Paths are relative to repository root. A crate's `src/lib.rs` lists its public A
 | Local status, compare with online peer, receive from peer, recover | `crates/core/src/workflows.rs` | `peer.rs`, transfer API |
 | Bounded project/peer metadata cards, remote history and known lineage | `crates/core/src/status.rs` | Narrow bounded storage queries; existing CLI status unchanged |
 | Manual snapshot commit followed by publication | `crates/core/src/sending.rs` | Snapshot workflow and durable mailbox ACK |
-| Windows plugin pipe, binding, status and send queue | `crates/core/src/ipc/mod.rs`, `ipc/security.rs`, `ipc/status.rs` | Existing plugin protocol; shared Engine/network |
+| Windows plugin pipe, picker, binding, status, Share queue and Desktop handoff | `crates/core/src/ipc/mod.rs`, `ipc/security.rs`, `ipc/status.rs` | Existing plugin events with defaulted status fields; shared Engine/network; bounded Desktop request |
 | Project save debounce, coalescing and accepted-work drain | `crates/core/src/ipc/jobs.rs` | Engine settled send; bounded per-project revisions |
 | Work-based owner retention and 60-second idle grace | `crates/core/src/lifetime.rs` | Plugin/peer activity epochs; narrow authored-pending query |
 | VST3 factory, audio pass-through, UUID state/signals | `plugins/vst3/src/plugin.cpp`, `plugin.h` | Official Steinberg SDK; Rust owns decisions |

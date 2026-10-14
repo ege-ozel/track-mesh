@@ -77,22 +77,16 @@ async fn run(shared: Arc<Shared>, project: Uuid, mut observed: bool, revision: A
         };
         let handled = baseline.as_ref().ok().copied();
         let result = match baseline {
-            Ok(_) if observed => {
+            Ok(_) => {
                 shared
                     .engine
                     .send_saved_snapshot(&shared.network, project, shared.allow_http)
                     .await
             }
-            Ok(_) => {
-                shared
-                    .engine
-                    .send_snapshot(&shared.network, project, shared.allow_http)
-                    .await
-            }
             Err(error) => Err(error),
         };
         let notice = match result {
-            Ok(sent) => Notice::Committed(sent.snapshot_id),
+            Ok(_) => Notice::Committed,
             Err(_) => Notice::Failed,
         };
         // Scheduling and removal share this lock: an observation cannot fall

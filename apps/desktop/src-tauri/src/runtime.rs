@@ -318,8 +318,16 @@ pub struct CheckView {
     pub age_seconds: u64,
 }
 
+#[derive(Serialize, Clone)]
+pub struct PluginHandoff {
+    pub revision: u64,
+    pub project_id: Option<Uuid>,
+    pub offset: u32,
+}
+
 #[derive(Serialize)]
 pub struct DesktopStatus {
+    pub plugin_handoff: Option<PluginHandoff>,
     pub pairing: PairingStatus,
     pub listen_port: u16,
     pub configured_external_addresses: Vec<String>,
@@ -357,6 +365,7 @@ struct Checked {
 
 #[derive(Default)]
 struct Session {
+    plugin_handoff: Option<PluginHandoff>,
     work_epoch: u64,
     window_session: bool,
     tray_session: bool,
@@ -454,6 +463,49 @@ impl Desktop {
             let mut heartbeat = tokio::time::interval(Duration::from_secs(1));
             loop {
                 heartbeat.tick().await;
+                let request = desktop.lock().ok().and_then(|state| {
+                    state
+                        .plugin
+                        .as_ref()
+                        .and_then(PluginRuntime::take_desktop_request)
+                });
+                if let Some(request) = request {
+                    desktop.reopen(&app);
+                    let engine = desktop.lock().ok().and_then(|state| state.engine.clone());
+                    let project_id = request.project_id;
+                    let offset = if let (Some(engine), Some(project)) = (engine, project_id) {
+                        tauri::async_runtime::spawn_blocking(move || -> Result<u32> {
+                            let mut offset = 0;
+                            loop {
+                                let page = engine.store.projects_page(offset, 32)?;
+                                if page.iter().any(|item| item.project_id == project)
+                                    || page.len() < 32
+                                {
+                                    return Ok(offset);
+                                }
+                                offset = offset.checked_add(32).context("Project page overflow")?;
+                            }
+                        })
+                        .await
+                        .ok()
+                        .and_then(Result::ok)
+                        .unwrap_or(0)
+                    } else {
+                        0
+                    };
+                    if let Ok(mut state) = desktop.lock() {
+                        if !state.closing && !state.closed {
+                            state.plugin_handoff = Some(PluginHandoff {
+                                revision: state
+                                    .plugin_handoff
+                                    .as_ref()
+                                    .map_or(1, |old| old.revision.wrapping_add(1)),
+                                project_id,
+                                offset,
+                            });
+                        }
+                    }
+                }
                 let engine = match desktop.lock() {
                     Ok(state) if state.closing || state.closed => break,
                     Ok(state) => state.engine.clone(),
@@ -570,7 +622,7 @@ impl Desktop {
         state.firewall_observation = firewall_observation;
         state.peer = Some(peer);
         state.metadata = Some(metadata);
-        state.plugin = Some(PluginRuntime::start(
+        state.plugin = Some(PluginRuntime::start_with_desktop(
             engine,
             state.network.clone().context("Peer runtime missing")?,
             self.options.allow_loopback_http,
@@ -777,6 +829,7 @@ impl Desktop {
             })
             .collect();
         Ok(DesktopStatus {
+            plugin_handoff: state.plugin_handoff.clone(),
             pairing,
             listen_port: self.options.port,
             configured_external_addresses: self.options.external_address.clone(),
