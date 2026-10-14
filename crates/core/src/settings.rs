@@ -10,7 +10,7 @@ use std::{
 };
 use uuid::Uuid;
 
-const VERSION: u32 = 5;
+const VERSION: u32 = 6;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE", deny_unknown_fields)]
@@ -115,6 +115,8 @@ pub(super) struct Settings {
     pub projects_location: Option<String>,
     #[serde(default)]
     pub manual_public_endpoint: Option<ManualPublicEndpoint>,
+    #[serde(default)]
+    pub tray_notice_shown: bool,
 }
 
 impl Default for Settings {
@@ -132,6 +134,7 @@ impl Default for Settings {
             device_name: None,
             projects_location: None,
             manual_public_endpoint: None,
+            tray_notice_shown: false,
         }
     }
 }
@@ -156,6 +159,11 @@ pub(super) struct SettingsState {
 }
 
 impl SettingsState {
+    pub fn mark_tray_notice_shown(&mut self, directory: &Path) -> Result<()> {
+        let mut candidate = self.value.clone();
+        candidate.tray_notice_shown = true;
+        self.commit(directory, candidate)
+    }
     pub fn load(directory: &Path) -> Self {
         let path = directory.join("settings.json");
         if !path.exists() {

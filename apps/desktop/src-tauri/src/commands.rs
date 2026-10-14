@@ -157,6 +157,6 @@ pub async fn set_upnp_mapping(
 
 #[tauri::command]
 pub async fn close_app(app: AppHandle, desktop: State<'_, Arc<Desktop>>) -> Result<(), String> {
-    desktop.begin_close(app);
+    desktop.request_quit(app);
     Ok(())
 }

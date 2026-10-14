@@ -29,9 +29,13 @@ Davet penceresi 15 dakikadır. Onay geç kaldıysa A **Reopen approval window**,
 
 Divergence varsa **Use <name>'s version** açık onayla karşı tarafın sürümünü kurar; yerel değişikliklerin snapshot'ı alınır ve önceki dosyalar backup'ta korunur. **Keep mine** yerel sürümü paylaşır. Otomatik birleştirme yoktur.
 
+Get'in indireceği yeni veri 1 GB'ı (1.000.000.000 byte) aşarsa indirme başlamadan onay istenir; doğrulanmış yerel parçalar bu miktara dahil değildir. İptal edilmiş Get aynı snapshot ile Resume receive üzerinden sürdürülebilir. Uygulama eski sürümlerin chunk verisini otomatik temizler; senin ve collaborator'ların son yerel sürümleri, yarım Get/recovery için gereken parçalar ve imzalı geçmiş korunur. `.trackmesh-…` yedekleri yalnız **Settings → Storage** içinden, boyutları görülüp topluca seçilerek silinir; her projenin son yedeği ve bitmemiş recovery verisi korunur.
+
 ## Davet servisi ve erişim sınırları
 
 Supabase yalnız küçük şifreli invite drop, endpoint kaydı ve head hint'i tutar. Dosyalar ve sample'lar servise yüklenmez. Proje anahtarı yalnız şifreli davetin içindedir; açık anahtar ve çözülmüş davet servise gönderilmez. Servis kaydı tek başına NAT engelini aşmaz ve offline kaynağın dosyalarını indirmez.
+
+Supabase projeleri eski mailbox'a metadata yayınlamaz ve Advanced'te mailbox PENDING etiketi göstermez. Kendi mailbox sunucusunu kullanan projelerin mevcut yayın/ACK akışı devam eder.
 
 **Approve** yerel yetkiyi verir ve üyelik grant'ini otomatik kuyruğa alır. Projeyi oluşturan cihazdaki **Revoke**, yerel erişimi kaldırır ve Supabase üyelik revoke'unu kuyruğa alır. İçe aktarılan projede başka cihazı servis üyeliğinden çıkarma isteği gönderilmez. Revoke anahtarı değiştirmez: çıkarılan cihaz daha önce aldığı dosyaları ve anahtarı elinde tutar. Yeni import'lar sahiplenme isteği göndermez; #42 öncesi import'ların kökeni geriye dönük tahmin edilmez.
 
@@ -80,6 +84,8 @@ CLI'nin davet bağlantısı tüketme akışı yoktur. Dosya daveti ile `join`, g
 ## Denemeyi bitirme ve paket bakımı
 
 Aktarım/kurulum bitince dosyaları ve fresh Check connection sonucunu kontrol edin; DAW'da açılış/sample kontrolü ayrı manuel iştir. Uygulama kapanırken kabul edilmiş işlerin bitmesini bekleyin. Recovery verisini temizlik olarak silmeyin.
+
+Pencerenin **X** düğmesi uygulamayı Windows sistem tepsisine gizler; ilk seferinde açıklama gösterilir. TrackMesh tepside çalışırken mevcut bağlantı ve sürüm sunumu devam eder. Tepsi ikonuna tıklamak veya **Open TRACKMESH** pencereyi geri getirir. **Close safely** ve tepsideki **Quit**, hangi collaborator'ların sürümlerini alamayacağını göstererek onay ister; onaydan sonra kabul edilmiş işler tamamlanıp uygulama çıkar. Bilgisayarın uyuması veya ağın kesilmesi tepside çalışırken de erişimi durdurabilir.
 
 Sorun bildirirken build/commit, Windows sürümü, aynı LAN mı ayrı ağ mı, son tamamlanan adım ve güvenli hata metni yeterlidir. Davet, anahtar, `secrets`, veritabanı veya kullanıcı proje dosyası göndermeyin.
 

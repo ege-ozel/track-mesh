@@ -359,6 +359,8 @@ struct Checked {
 struct Session {
     work_epoch: u64,
     window_session: bool,
+    tray_session: bool,
+    close_prompt_active: bool,
     engine: Option<Arc<Engine>>,
     device: Option<Device>,
     peer: Option<PeerRuntime>,
@@ -472,7 +474,11 @@ impl Desktop {
                         grace = SessionGrace::default();
                         work_epoch = state.work_epoch;
                     }
-                    if state.window_session || state.closing {
+                    if state.window_session
+                        || state.tray_session
+                        || state.close_prompt_active
+                        || state.closing
+                    {
                         grace = SessionGrace::default();
                         return false;
                     }
@@ -986,7 +992,7 @@ impl Desktop {
     pub fn submit(self: &Arc<Self>, app: AppHandle, action: Action) -> Result<Uuid> {
         let mut state = self.lock()?;
         ensure!(
-            state.ready && !state.closing,
+            state.ready && !state.closing && !state.close_prompt_active,
             "Desktop is starting or closing"
         );
         let project = action.project();
@@ -1791,14 +1797,105 @@ impl Desktop {
         json!({"project_id": project, "invitation_imported": imported, "pairing_state": state, "message": message})
     }
 
-    pub fn begin_close(self: &Arc<Self>, app: AppHandle) {
-        if let Ok(mut state) = self.lock() {
-            state.window_session = false;
-            state.work_epoch = state.work_epoch.wrapping_add(1);
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.hide();
+    pub fn hide_to_tray(self: &Arc<Self>, app: AppHandle) {
+        let engine = {
+            let Ok(mut state) = self.lock() else {
+                return;
+            };
+            if state.closing || state.closed || state.close_prompt_active {
+                return;
             }
-        }
+            state.close_prompt_active = true;
+            state.engine.clone()
+        };
+        let desktop = self.clone();
+        tauri::async_runtime::spawn(async move {
+            let dialog_app = app.clone();
+            let result = tauri::async_runtime::spawn_blocking(move || -> Result<()> {
+                let shown = engine.as_ref().map(|engine| engine.tray_notice_shown()).transpose()?.unwrap_or(false);
+                if !shown {
+                    dialog_app.dialog().message("Closing this window keeps TRACKMESH running in the system tray so collaborators can get your versions. Click the tray icon to reopen. Use Close safely or the tray's Quit to exit.").title("TRACKMESH stays available").blocking_show();
+                    if let Some(engine) = engine { engine.mark_tray_notice_shown()?; }
+                }
+                Ok(())
+            }).await;
+            if let Ok(mut state) = desktop.lock() {
+                state.close_prompt_active = false;
+                match result {
+                    Ok(Ok(())) if !state.closing && !state.closed => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            match window.hide() {
+                                Ok(()) => {
+                                    state.window_session = false;
+                                    state.tray_session = true;
+                                    state.work_epoch = state.work_epoch.wrapping_add(1);
+                                }
+                                Err(error) => state.error = Some(error.to_string()),
+                            }
+                        }
+                    }
+                    Ok(Err(error)) => state.error = Some(error.to_string()),
+                    Err(_) => {
+                        state.error =
+                            Some("Could not show the tray notice; window kept open".to_owned())
+                    }
+                    _ => {}
+                }
+            }
+        });
+    }
+
+    pub fn request_quit(self: &Arc<Self>, app: AppHandle) {
+        let engine = {
+            let Ok(mut state) = self.lock() else {
+                return;
+            };
+            if state.closing || state.closed || state.close_prompt_active {
+                return;
+            }
+            state.close_prompt_active = true;
+            state.engine.clone()
+        };
+        let desktop = self.clone();
+        tauri::async_runtime::spawn(async move {
+            let dialog_app = app.clone();
+            let result = tauri::async_runtime::spawn_blocking(move || -> Result<bool> {
+                let recipients = engine.as_ref().map(|engine| engine.shutdown_recipients()).transpose()?.unwrap_or_default();
+                let message = if recipients.is_empty() {
+                    "Quit TRACKMESH? Versions from this PC will be unavailable until you reopen it. Accepted work will finish before closing.".to_owned()
+                } else {
+                    format!("{} can't get your versions while TRACKMESH is closed. Quit? Accepted work will finish before closing.", recipients.join(", "))
+                };
+                Ok(dialog_app.dialog().message(message).title("Close safely?").buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancel).blocking_show())
+            }).await;
+            let close = desktop.lock().is_ok_and(|mut state| {
+                state.close_prompt_active = false;
+                match result {
+                    Ok(Ok(true)) => {
+                        state.closing = true;
+                        state.window_session = false;
+                        state.tray_session = false;
+                        if let Some(plugin) = &state.plugin {
+                            plugin.begin_close();
+                        }
+                        true
+                    }
+                    Ok(Err(error)) => {
+                        state.error = Some(error.to_string());
+                        false
+                    }
+                    Err(_) => {
+                        state.error =
+                            Some("Could not confirm shutdown; TRACKMESH kept running".to_owned());
+                        false
+                    }
+                    _ => false,
+                }
+            });
+            if close {
+                desktop.finish_close(app).await;
+            }
+        });
     }
     pub fn reopen(&self, app: &AppHandle) {
         if let Ok(mut state) = self.lock() {

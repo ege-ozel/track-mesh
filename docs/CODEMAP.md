@@ -26,6 +26,7 @@ Paths are relative to repository root. A crate's `src/lib.rs` lists its public A
 | Native VST3 view, IPC worker and bundled-owner launch | `plugins/vst3/src/view.cpp`, `bridge.cpp` | No audio-thread IPC or file/network work |
 | Windows desktop entry point, capability inventory, navigation | `apps/desktop/src-tauri/src/lib.rs`, `build.rs`, `capabilities/main.json` | Tauri adapter; local bundled React |
 | Desktop jobs, status freshness, explicit session shutdown | `apps/desktop/src-tauri/src/runtime.rs` | Core workflows and one leased `PeerRuntime` |
+| Native tray, reopen and confirmed Quit | `apps/desktop/src-tauri/src/tray.rs`, `runtime.rs`, `crates/core/src/lifetime.rs`, `settings.rs` | Cached Tauri tray feature; first-close notice; confirmed drain; same network owner |
 | Native invitation/legacy card files and folder dialogs | `apps/desktop/src-tauri/src/documents.rs` | Automatic return uses pairing RPC; bounded private documents stay in Rust |
 | Main-window command boundary and typed frontend | `apps/desktop/src-tauri/src/commands.rs`, `apps/desktop/src/api.ts` | Narrow invoke API |
 | Desktop project controls and styling | `apps/desktop/src/App.tsx`, `src/styles.css` | Core-derived state, no filesystem watcher |
@@ -90,7 +91,7 @@ save:     SAVE_OBSERVED → project debounce → snapshot_after_save → scan_af
 
 `PeerRuntime` owns the network actor/responder lifetime. `MailboxRuntime` owns session-scoped metadata retry. `Network` is a handle, not another swarm. SQLite ownership remains in `Store`; each domain module adds methods to that same type. Infrastructure services own independent stores/swarms in their separate processes.
 
-`PeerRuntime` holds an exclusive Windows data-directory lease shared with its actor/responder tasks. Desktop and headless plugin owners use `SessionGrace`: live plugin sessions, accepted local work, active peer responses and authored pending publication retain the owner. Brief requests between polls reset grace through activity epochs. Desktop window close hides the window while work finishes; explicit desktop reopen restores it in the same process. Owner shutdown rejects new IPC under the acceptance gate and drains workers before stopping the one peer runtime. Status summaries use bounded storage queries in `projects.rs`, `snapshots.rs`, and `transfers.rs`; `local_status` retains its complete CLI output.
+`PeerRuntime` holds an exclusive Windows data-directory lease shared with its actor/responder tasks. Plugin-only owners use `SessionGrace`: live plugin sessions, accepted local work, active peer responses and eligible authored mailbox publication retain the owner. Brief requests between polls reset grace through activity epochs. Desktop window close retains the user session in the native tray; tray/Open and explicit desktop reopen restore the same window/process. Close safely and tray/Quit confirm collaborator availability loss, reject new IPC under the acceptance gate and drain workers before stopping the one peer runtime. Status summaries use bounded storage queries in `projects.rs`, `snapshots.rs`, and `transfers.rs`; `local_status` retains its complete CLI output.
 
 ## Targeted search examples
 

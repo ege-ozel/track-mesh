@@ -6,6 +6,7 @@ mod commands;
 mod documents;
 mod receive;
 mod runtime;
+mod tray;
 mod uri;
 
 use clap::Parser;
@@ -67,6 +68,7 @@ pub fn run() {
                             && url.host_str() == Some("tauri.localhost"))
                 })
                 .build()?;
+            tray::install(app.handle())?;
             setup_desktop.start(app.handle().clone());
             if let Some(link) = startup_invite.clone() {
                 setup_desktop.handle_invite_link(app.handle().clone(), link);
@@ -78,7 +80,7 @@ pub fn run() {
                 let desktop = window.state::<Arc<Desktop>>();
                 if !desktop.is_closed() {
                     api.prevent_close();
-                    desktop.begin_close(window.app_handle().clone());
+                    desktop.hide_to_tray(window.app_handle().clone());
                 }
             }
         })
@@ -88,7 +90,7 @@ pub fn run() {
         if let tauri::RunEvent::ExitRequested { api, .. } = event {
             if !desktop.is_closed() {
                 api.prevent_exit();
-                desktop.begin_close(app.clone());
+                desktop.request_quit(app.clone());
             }
         }
     });

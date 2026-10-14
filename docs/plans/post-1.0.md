@@ -14,6 +14,6 @@ Today snapshots split each file into fixed 4 MiB chunks (`DEFAULT_CHUNK_SIZE`), 
 
 Content-defined chunking (for example FastCDC) chooses boundaries from the content, so an insert only changes the chunks around it. This changes the manifest/chunk format, so it needs a protocol version bump and a compatibility plan for existing chunk stores and peers on the old format. Typical audio projects either leave files unchanged or rewrite them completely (render/bounce), so the expected gain should be measured on real projects before this is scheduled.
 
-## Mailbox-backed close lifetime
+## Mailbox retry lifetime
 
-With a configured but unreachable HTTPS mailbox, the Desktop process stays hidden after its window closes until every pending publication is acknowledged. There is no upper bound and no visible indicator. The standard 1.0.0 flow uses the Supabase invite/endpoint service and no mailbox, so this path is not used by default. If mailbox publication becomes part of the main flow, add a bounded retry window, a visible tray/notification state and an explicit "quit anyway" action.
+#44 disables legacy mailbox publication for Supabase projects. #46 keeps a closed Desktop window visibly available in the system tray and provides confirmed Close safely / Quit actions that finish accepted work and exit even if self-hosted mailbox publications remain pending. Plugin-only owners still use the existing pending-publication retention policy. A bounded retry lifetime and detailed publication notification for an unreachable self-hosted mailbox remain deferred; the current implementation does not impose a retry deadline.
