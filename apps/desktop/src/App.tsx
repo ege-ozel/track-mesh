@@ -210,7 +210,10 @@ export default function App() {
     }
   };
   const projects = status?.page?.projects ?? [];
-  const projectlessJobs = status?.jobs.filter(j => !j.project_id) ?? [];
+  // Running work plus the latest result while it is fresh: successes for 20 s, errors for 2 min.
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const projectlessJobs = (status?.jobs.filter(j => !j.project_id) ?? []).filter((job, _index, all) => job.running
+    || (job === all.filter(item => !item.running).slice(-1)[0] && nowSeconds - (job.completed_at ?? nowSeconds) < (job.error ? 120 : 20)));
   const firstRun = !!status?.ready && !projects.length && !setup && offset === 0;
   const [title, subtitle] = SCREEN_TITLES[screen];
   const runtimeError = error || status?.error || status?.network?.error;
@@ -240,6 +243,8 @@ export default function App() {
       </header>
       {runtimeError && <div className="notice danger" role="alert">{runtimeError}</div>}
       {status?.closing && <div className="notice">Work finished. TRACKMESH is shutting down safely.</div>}
+      {/* Projectless results (invite link, name, settings) sit at the top so they are seen on any page. */}
+      {projectlessJobs.filter(job => job.label !== 'Accept invite link' || !status?.invite_pending).map(job => <JobNotice key={job.job_id} job={job} startedAt={jobStartedAt[job.job_id]} />)}
 
       {status?.invite_pending && <div className="invite-overlay"><section className="invite-dialog" role="dialog" aria-modal="true" aria-labelledby="invite-title"><h2 id="invite-title">Open invite link</h2>
         {status.jobs.filter(job => job.label === 'Accept invite link' && job.error).slice(-1).map(job => <div className="notice danger" role="alert" key={job.job_id}><strong>{job.error}</strong><p>The link may have expired or already been used. Ask for a new link, or Cancel.</p></div>)}
@@ -295,7 +300,6 @@ export default function App() {
         <div className="project-list">{status && projects.map(card => <Card key={card.project.project_id} card={card} status={status} jobStartedAt={jobStartedAt} focusProjectId={focusProjectId} act={act} openAdvanced={openAdvanced} />)}</div>
         {(offset > 0 || status?.page?.has_more) && <div className="pagination"><button disabled={!offset || busy} onClick={() => setOffset(Math.max(0, offset - 32))}>Previous</button><span className="muted">Page {offset / 32 + 1}</span><button disabled={!status?.page?.has_more || busy} onClick={() => setOffset(offset + 32)}>Next</button></div>}
       </>}
-      {projectlessJobs.map(job => <JobNotice key={job.job_id} job={job} startedAt={jobStartedAt[job.job_id]} />)}
     </main>
   </div>;
 }

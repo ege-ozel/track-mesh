@@ -332,6 +332,25 @@ main {
   background:var(--danger-bg);
   border-color:var(--danger-border)
 }
+.job.warn {
+  background:var(--warn-bg);
+  border-color:var(--warn-border)
+}
+.error-details summary {
+  cursor:pointer;
+  color:var(--muted);
+  font-size:13px
+}
+.error-details code {
+  display:block;
+  margin-top:var(--s1);
+  font-size:12px;
+  overflow-wrap:anywhere
+}
+/* A transfer with no file data has nothing to fill; it shows as done instead of an empty bar. */
+.transfer progress:not([value]) {
+  accent-color:var(--accent)
+}
 .problem {
   display:flex;
   flex-wrap:wrap;

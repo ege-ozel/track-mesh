@@ -404,6 +404,8 @@ struct Session {
     pending_invite: Option<PendingInviteLink>,
     auto_receive_attempted: HashSet<(Uuid, Uuid)>,
     head_pulled_at: HashMap<(Uuid, Uuid), Instant>,
+    /// (project, device) pairs whose head was pulled during the current online period.
+    heads_pulled_online: HashSet<(Uuid, Uuid)>,
     pairing_approval_states: HashMap<(Uuid, Uuid), PairingApprovalState>,
     pairing_approval_checked_at: HashMap<(Uuid, Uuid), Instant>,
     pairing_approval_in_flight: HashSet<(Uuid, Uuid)>,
@@ -926,6 +928,43 @@ impl Desktop {
             (network.clone(), engine.clone())
         };
         for item in &page.projects {
+            // A version shared while the PCs were disconnected is announced only at share time.
+            // Pull each collaborator's head once whenever they come back online, so the card can
+            // show their newer version. Once per online period keeps idle owners free to exit.
+            if item.project.latest_local_snapshot.is_some()
+                && !item.project.recovery_required
+                && !item.active_transfer
+            {
+                for peer in &item.peers {
+                    let key = (item.project.project_id, peer.device.device_id);
+                    let online = network.online(&peer.device.peer_id);
+                    let pull = {
+                        let mut state = self.lock()?;
+                        if !online {
+                            state.heads_pulled_online.remove(&key);
+                            false
+                        } else if state.jobs.iter().any(|job| {
+                            job.running && job.project_id == Some(item.project.project_id)
+                        }) {
+                            false
+                        } else {
+                            state.heads_pulled_online.insert(key)
+                        }
+                    };
+                    if pull {
+                        let (engine, network) = (engine.clone(), network.clone());
+                        let (project, source) =
+                            (item.project.project_id, peer.device.peer_id.clone());
+                        tauri::async_runtime::spawn(async move {
+                            let _ = tokio::time::timeout(
+                                Duration::from_secs(30),
+                                engine.fetch_snapshot_chain(&network, project, &source, None),
+                            )
+                            .await;
+                        });
+                    }
+                }
+            }
             if item.local_snapshot.is_some()
                 || item.project.latest_local_snapshot.is_some()
                 || item.project.recovery_required
