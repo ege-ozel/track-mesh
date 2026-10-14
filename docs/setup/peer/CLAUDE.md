@@ -4,7 +4,7 @@ Bu belge dağıtım paketinde kök `CLAUDE.md` olarak kullanılır ve repo check
 
 ## Önce Desktop bağlantı akışı
 
-Gönderen **+ Link folder → Link project** ile projeyi bağlar, **Invite collaborator** seçer ve v2 bağlantıyı özel kanaldan paylaşır. Alıcı Windows'ta açar veya **Paste invite link** kullanır; **Accept invite link** penceresinde oluşturulacak proje alt klasörünün üst dizinini kontrol edip **Accept** seçer; **Choose another folder** üst dizini değiştirir. Yeni bağlantı servis bilgisini taşır, URL/key girişi gerekmez. 15 dakika geçerlidir ve bir kez tüketilir. İlk Invite/Accept **Router setup** ile süreli UPnP için **Allow (recommended)** / **Not now** sorusunu gösterir.
+Gönderen **Share a project folder → Add project** ile projeyi ekler, **Invite collaborator** seçer ve v2 bağlantıyı özel kanaldan paylaşır. Alıcı Windows'ta açar veya **Paste invite link** kullanır; **Open invite link** penceresinde oluşturulacak proje alt klasörünün üst dizinini kontrol edip **Accept** seçer; **Choose another folder** üst dizini değiştirir. Yeni bağlantı servis bilgisini taşır, URL/key girişi gerekmez. 15 dakika geçerlidir ve bir kez tüketilir. İlk Invite/Accept **Router setup** ile süreli UPnP için **Allow (recommended)** / **Not now** sorusunu gösterir.
 
 İmzalı cihaz isteği otomatik gider. Gönderen public Device/Identity değerlerini alıcıyla karşılaştırıp **Approve** seçer. İlk sürüm boş, daha önce sürüm almamış klasöre otomatik kurulur. Sonraki sürümlerde kaynak **Share current version**, alıcı DAW kapalı onayıyla **Get collaborator's version** kullanır. CLI bu link tüketme ve otomatik ilk alma akışını içermez.
 

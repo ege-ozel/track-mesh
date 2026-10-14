@@ -16,7 +16,7 @@ Onay bekleniyorsa A **Reopen approval window**, siz **Try again** kullanın. Kla
 
 ## Sonraki sürümü al
 
-A **Share current version** ile sürümü paylaşsın. DAW projesini kapatın, **I closed this project in my DAW** kutusunu işaretleyin ve **Get <isim>'s version** seçin. Gerekirse **Advanced → Connection → Check connection** ile bağlantıyı kontrol edin. Aktarım PAUSED olursa aynı snapshot için **Resume getting**, recovery gerekiyorsa DAW kapalıyken kartta **Recover** kullanın.
+A **Share current version** ile sürümü paylaşsın. DAW projesini kapatın ve **Get <isim>'s version** seçin; TrackMesh dosyaları değiştirmeden önce projenin DAW'da kapalı olup olmadığını sorar. Gerekirse **Advanced → Connection → Check connection** ile bağlantıyı kontrol edin. Aktarım PAUSED olursa aynı snapshot için **Resume getting**, recovery gerekiyorsa DAW kapalıyken kartta **Recover** kullanın.
 
 Divergence varsa **Use <name>'s version** açık onayla karşı tarafın sürümünü kurar ve eski yerel dosyaları backup'ta korur. **Keep mine** yerel sürümü paylaşır. İki tarafın değişiklikleri otomatik birleştirilmez; mevcut proje/veri/backup klasörlerini silerek engeli aşmayın.
 

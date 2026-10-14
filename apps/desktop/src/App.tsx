@@ -7,14 +7,16 @@ import { Card } from './ProjectCard';
 import type { AdvancedSection } from './ProjectCard';
 import { SettingsScreen, ZOOM_LEVELS } from './SettingsScreen';
 import { displayPath, short } from './format';
+import { readLang, saveLang, setLang, t } from './i18n';
+import type { Lang } from './i18n';
 
 type Screen = 'projects' | 'advanced' | 'settings';
 
-const SCREEN_TITLES: Record<Screen, [string, string]> = {
-  projects: ['Projects', 'Each card is one DAW project folder you share with your collaborator.'],
-  advanced: ['Advanced', 'Connection, invite service and version details. TrackMesh sends you here when something needs fixing.'],
-  settings: ['Settings', 'Your name, sharing and storage.'],
-};
+const screenTitles = (): Record<Screen, [string, string]> => ({
+  projects: [t('Projects', 'Projeler'), t('Each card is one DAW project folder you share with your collaborator.', 'Her kart, iş arkadaşınla paylaştığın bir DAW proje klasörü.')],
+  advanced: [t('Advanced', 'Gelişmiş'), t('Connection, invite service and version details. TrackMesh sends you here when something needs fixing.', 'Bağlantı, davet servisi ve sürüm ayrıntıları. Bir şeyin düzeltilmesi gerektiğinde TrackMesh seni buraya getirir.')],
+  settings: [t('Settings', 'Ayarlar'), t('Your name, sharing, language and storage.', 'Adın, paylaşım, dil ve depolama.')],
+});
 
 function readZoom() {
   try {
@@ -32,12 +34,11 @@ export default function App() {
   const [advancedProjectId, setAdvancedProjectId] = useState<string | null>(null);
   const [advancedSection, setAdvancedSection] = useState<AdvancedSection | null>(null);
   const [zoom, setZoom] = useState(readZoom);
+  const [lang, setLangState] = useState<Lang>(readLang);
+  setLang(lang);
   const [folder, setFolder] = useState('');
   const [name, setName] = useState('');
   const [autoName, setAutoName] = useState(false);
-  const [uuid, setUuid] = useState('');
-  const [mailbox, setMailbox] = useState('');
-  const [relay, setRelay] = useState('');
   const [inviteServiceUrl, setInviteServiceUrl] = useState('');
   const [inviteServiceKey, setInviteServiceKey] = useState('');
   const [inviteParentFolder, setInviteParentFolder] = useState<string | null>(null);
@@ -99,6 +100,10 @@ export default function App() {
     document.documentElement.style.zoom = String(zoom);
     try { window.localStorage.setItem('trackmesh.zoom', String(zoom)); } catch { /* per-viewer convenience only */ }
   }, [zoom]);
+  useEffect(() => {
+    document.documentElement.lang = lang;
+    saveLang(lang);
+  }, [lang]);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (!event.ctrlKey || event.altKey) return;
@@ -164,7 +169,7 @@ export default function App() {
     pendingConsentAction.current = null;
     setUpnpConsentPrompt(false);
     try { await setUpnpMapping(allow); await poll(); }
-    catch (err) { setError(`Could not save router preference: ${String(err)}`); }
+    catch (err) { setError(`${t('Could not save router preference:', 'Modem tercihi kaydedilemedi:')} ${String(err)}`); }
     if (action) await executeAction(action);
   };
   const go = (next: Screen) => { setScreen(next); setAdvancedSection(null); window.scrollTo({ top: 0 }); };
@@ -174,7 +179,7 @@ export default function App() {
     setScreen('advanced');
     window.scrollTo({ top: 0 });
   };
-  const startLink = () => { go('projects'); setSetup('link'); setFolder(''); setUuid(crypto.randomUUID()); setName(''); setAutoName(false); setMailbox(''); setRelay(''); };
+  const startLink = () => { go('projects'); setSetup('link'); setFolder(''); setName(''); setAutoName(false); };
   const pasteInvite = async () => {
     setSetup(null);
     setScreen('projects');
@@ -199,10 +204,11 @@ export default function App() {
       focusBaseline.current = new Set(status?.page?.projects.map(item => item.project.project_id) ?? []);
       if (await act({ kind: 'join', folder })) setSetup(null);
     } else {
-      const projectId = uuid.trim();
+      // Each project gets a new permanent ID; the collaborator receives it with the invite.
+      const projectId = crypto.randomUUID();
       setOffset(0);
       focusBaseline.current = null;
-      if (await act({ kind: 'link', project_id: projectId, name: name.trim(), folder, mailbox_url: mailbox.trim() || null, relay_address: relay.trim() || null })) {
+      if (await act({ kind: 'link', project_id: projectId, name: name.trim(), folder, mailbox_url: null, relay_address: null })) {
         setSetup(null);
         setScrolledFocusId(null);
         setFocusProjectId(projectId);
@@ -215,7 +221,7 @@ export default function App() {
   const projectlessJobs = (status?.jobs.filter(j => !j.project_id) ?? []).filter((job, _index, all) => job.running
     || (job === all.filter(item => !item.running).slice(-1)[0] && nowSeconds - (job.completed_at ?? nowSeconds) < (job.error ? 120 : 20)));
   const firstRun = !!status?.ready && !projects.length && !setup && offset === 0;
-  const [title, subtitle] = SCREEN_TITLES[screen];
+  const [title, subtitle] = screenTitles()[screen];
   const runtimeError = error || status?.error || status?.network?.error;
   const nav = (target: Screen, label: string, note?: string) => <>
     <button className={screen === target ? 'rail-nav active' : 'rail-nav'} aria-current={screen === target ? 'page' : undefined} onClick={() => go(target)}>{label}</button>
@@ -224,81 +230,80 @@ export default function App() {
   return <div className="app-shell">
     <aside className="rail" aria-label="Main">
       <div className="brand"><span className="brand-mark">TM</span><span>TRACKMESH</span></div>
-      {nav('projects', 'Projects')}
-      {nav('advanced', 'Advanced', 'Connection and technical details')}
-      {nav('settings', 'Settings')}
+      {nav('projects', t('Projects', 'Projeler'))}
+      {nav('advanced', t('Advanced', 'Gelişmiş'), t('Connection and technical details', 'Bağlantı ve teknik ayrıntılar'))}
+      {nav('settings', t('Settings', 'Ayarlar'))}
       <div className="rail-bottom">
-        <div className="device"><span className={`status-dot ${status?.ready ? 'active' : ''}`} /><span>{status?.device?.name ?? 'Starting…'}</span><small>{short(status?.device?.device_id)}</small></div>
-        <button title="Confirm who will lose access to your versions, finish accepted work, then quit TRACKMESH. Closing the window keeps it in the system tray." disabled={status?.closing} onClick={() => void closeApp().catch(err => setError(String(err)))}>Quit TrackMesh</button>
+        <div className="device"><span className={`status-dot ${status?.ready ? 'active' : ''}`} /><span>{status?.device?.name ?? t('Starting…', 'Başlatılıyor…')}</span><small>{short(status?.device?.device_id)}</small></div>
+        <button title={t('Confirm who will lose access to your versions, finish accepted work, then quit TrackMesh. Closing the window keeps it in the system tray.', 'Sürümlerine kimin erişemeyeceğini onayla, süren işler bitsin, sonra TrackMesh kapansın. Pencereyi kapatmak onu saatin yanında açık tutar.')} disabled={status?.closing} onClick={() => void closeApp().catch(err => setError(String(err)))}>{t('Quit TrackMesh', "TrackMesh'ten çık")}</button>
       </div>
     </aside>
     <main>
       <header className="page-head">
-        <div><h1>{firstRun && screen === 'projects' ? 'Share a DAW project with one collaborator' : title}</h1>
-          <p className="muted">{firstRun && screen === 'projects' ? 'Files go directly between your PCs. Nothing is uploaded to a cloud drive.' : subtitle}</p></div>
+        <div><h1>{firstRun && screen === 'projects' ? t('Share a DAW project with one collaborator', 'Bir DAW projesini iş arkadaşınla paylaş') : title}</h1>
+          <p className="muted">{firstRun && screen === 'projects' ? t('Files go directly between your PCs. Nothing is uploaded to a cloud drive.', 'Dosyalar doğrudan bilgisayarlarınız arasında gider. Hiçbir şey buluta yüklenmez.') : subtitle}</p></div>
         {screen === 'projects' && !firstRun && <div className="actions">
-          <button className="primary" disabled={busy} onClick={startLink}>Share a project folder</button>
-          <button disabled={busy} onClick={() => void pasteInvite()}>Open an invite link</button></div>}
-        {screen === 'advanced' && <button className="text-button" onClick={() => go('projects')}>← Back to Projects</button>}
+          <button className="primary" disabled={busy} onClick={startLink}>{t('Share a project folder', 'Proje klasörü paylaş')}</button>
+          <button disabled={busy} onClick={() => void pasteInvite()}>{t('Open an invite link', 'Davet bağlantısı aç')}</button></div>}
+        {screen === 'advanced' && <button className="text-button" onClick={() => go('projects')}>{t('← Back to Projects', '← Projelere dön')}</button>}
       </header>
       {runtimeError && <div className="notice danger" role="alert">{runtimeError}</div>}
-      {status?.closing && <div className="notice">Work finished. TRACKMESH is shutting down safely.</div>}
+      {status?.closing && <div className="notice">{t('Work finished. TrackMesh is shutting down safely.', 'İşler bitti. TrackMesh güvenle kapanıyor.')}</div>}
       {/* Projectless results (invite link, name, settings) sit at the top so they are seen on any page. */}
       {projectlessJobs.filter(job => job.label !== 'Accept invite link' || !status?.invite_pending).map(job => <JobNotice key={job.job_id} job={job} startedAt={jobStartedAt[job.job_id]} />)}
 
-      {status?.invite_pending && <div className="invite-overlay"><section className="invite-dialog" role="dialog" aria-modal="true" aria-labelledby="invite-title"><h2 id="invite-title">Open invite link</h2>
-        {status.jobs.filter(job => job.label === 'Accept invite link' && job.error).slice(-1).map(job => <div className="notice danger" role="alert" key={job.job_id}><strong>{job.error}</strong><p>The link may have expired or already been used. Ask for a new link, or Cancel.</p></div>)}
-        <p>The project will be saved in <button className="path-link" title="Open in Explorer" onClick={() => void openInviteParentFolder().catch(err => setError(String(err)))}>{displayPath(inviteParentFolder ?? status.projects_location)}\[project name]</button>.</p>
+      {status?.invite_pending && <div className="invite-overlay"><section className="invite-dialog" role="dialog" aria-modal="true" aria-labelledby="invite-title"><h2 id="invite-title">{t('Open invite link', 'Davet bağlantısını aç')}</h2>
+        {status.jobs.filter(job => job.label === 'Accept invite link' && job.error).slice(-1).map(job => <div className="notice danger" role="alert" key={job.job_id}><strong>{job.error}</strong><p>{t('The link may have expired or already been used. Ask for a new link, or Cancel.', 'Bağlantının süresi dolmuş ya da kullanılmış olabilir. Yeni bir bağlantı iste ya da Vazgeç.')}</p></div>)}
+        <p>{t('The project will be saved in', 'Proje şuraya kaydedilecek:')} <button className="path-link" title={t('Open in Explorer', "Gezgin'de aç")} onClick={() => void openInviteParentFolder().catch(err => setError(String(err)))}>{displayPath(inviteParentFolder ?? status.projects_location)}\[{t('project name', 'proje adı')}]</button>{t('.', '')}</p>
         {status.invite_needs_service_fields && <><label className="field">Supabase Project URL<input autoComplete="off" value={inviteServiceUrl} onChange={event => setInviteServiceUrl(event.target.value)} placeholder="https://your-project.supabase.co" /></label>
         <label className="field">Publishable key<input type="password" autoComplete="new-password" value={inviteServiceKey} onChange={event => setInviteServiceKey(event.target.value)} /></label></>}
-        <p className="muted">After you accept, the sender approves you and the project downloads by itself.</p>
+        <p className="muted">{t('After you accept, the sender approves you and the project downloads by itself.', 'Kabul edince gönderen seni onaylar ve proje kendiliğinden iner.')}</p>
         <div className="actions">
-          <button disabled={busy} onClick={async () => { try { const value = await chooseInviteParentFolder(); if (value) setInviteParentFolder(value); } catch (err) { setError(String(err)); } }}>Choose another folder…</button>
+          <button disabled={busy} onClick={async () => { try { const value = await chooseInviteParentFolder(); if (value) setInviteParentFolder(value); } catch (err) { setError(String(err)); } }}>{t('Choose another folder…', 'Başka klasör seç…')}</button>
           <span className="spacer" />
-          <button disabled={!status.ready || status.closing || status.jobs.some(job => job.running && job.label === 'Accept invite link')} onClick={() => void cancelInviteLink().then(poll).catch(err => setError(String(err)))}>Cancel</button>
+          <button disabled={!status.ready || status.closing || status.jobs.some(job => job.running && job.label === 'Accept invite link')} onClick={() => void cancelInviteLink().then(poll).catch(err => setError(String(err)))}>{t('Cancel', 'Vazgeç')}</button>
           <button className="primary" disabled={busy || (status.invite_needs_service_fields && (!inviteServiceUrl.trim() || !inviteServiceKey.trim()))} onClick={() => {
             setSetup(null); setScreen('projects'); setOffset(0);
             focusBaseline.current = new Set(status.page?.projects.map(item => item.project.project_id) ?? []);
             void act({ kind: 'complete_invite_link', ...(status.invite_needs_service_fields ? { supabase_url: inviteServiceUrl.trim(), supabase_anon_key: inviteServiceKey.trim() } : {}) });
-          }}>Accept</button></div>
+          }}>{t('Accept', 'Kabul et')}</button></div>
       </section></div>}
-      {upnpConsentPrompt && <div className="invite-overlay"><section className="invite-dialog upnp-consent-dialog" role="dialog" aria-modal="true" aria-labelledby="upnp-consent-title"><h2 id="upnp-consent-title">Router setup</h2>
-        <p>Let TrackMesh set up your router automatically? Needed when your collaborator is on a different internet connection. Opens one port only for TrackMesh; only paired devices can use it. You can change this later in Settings.</p>
-        <div className="actions"><span className="spacer" /><button onClick={() => void answerUpnpConsent(false)}>Not now</button><button className="primary" onClick={() => void answerUpnpConsent(true)}>Allow (recommended)</button></div>
+      {upnpConsentPrompt && <div className="invite-overlay"><section className="invite-dialog upnp-consent-dialog" role="dialog" aria-modal="true" aria-labelledby="upnp-consent-title"><h2 id="upnp-consent-title">{t('Router setup', 'Modem ayarı')}</h2>
+        <p>{t('Let TrackMesh set up your router automatically? Needed when your collaborator is on a different internet connection. Opens one port only for TrackMesh; only paired devices can use it. You can change this later in Settings.',
+          "TrackMesh modemini kendisi ayarlasın mı? İş arkadaşın farklı bir internet bağlantısındaysa gerekir. Yalnızca TrackMesh için bir port açar; onu yalnızca eşleşen cihazlar kullanabilir. Bunu sonra Ayarlar'dan değiştirebilirsin.")}</p>
+        <div className="actions"><span className="spacer" /><button onClick={() => void answerUpnpConsent(false)}>{t('Not now', 'Şimdi değil')}</button><button className="primary" onClick={() => void answerUpnpConsent(true)}>{t('Allow (recommended)', 'İzin ver (önerilen)')}</button></div>
       </section></div>}
 
-      {screen === 'settings' && <SettingsScreen status={status} busy={busy} act={act} poll={poll} onError={setError} zoom={zoom} setZoom={setZoom} />}
+      {screen === 'settings' && <SettingsScreen status={status} busy={busy} act={act} poll={poll} onError={setError} zoom={zoom} setZoom={setZoom} lang={lang} setLang={setLangState} />}
       {screen === 'advanced' && status && <AdvancedScreen status={status} projectId={advancedProjectId} section={advancedSection} jobStartedAt={jobStartedAt} act={act}
         pickProject={projectId => { setAdvancedProjectId(projectId); setAdvancedSection(null); }}
         openInvitationFile={() => { go('projects'); setSetup('join'); setFolder(''); }} onError={setError} />}
       {screen === 'projects' && <>
-        {setup && <section className="setup-panel"><h2>{setup === 'join' ? 'Open an invitation file' : 'Share a project folder'}</h2>
-          {setup === 'link' && <label className="field">Project name<input value={name} maxLength={320} onChange={e => { setName(e.target.value); setAutoName(false); }} placeholder="Track 07" /></label>}
-          <label className="field">{setup === 'join' ? 'Empty folder for the project' : 'Folder with your Ableton or FL project'}<div className="input-row"><input value={folder} onChange={e => setFolder(e.target.value)} placeholder="D:\Music\Track 07" /><button onClick={() => void browse()}>Browse…</button></div></label>
-          {setup === 'link' && <details className="form-advanced"><summary>Advanced project settings</summary><div className="field-stack"><label className="field">Permanent project UUID<div className="input-row"><input value={uuid} onChange={e => setUuid(e.target.value)} /><button onClick={() => setUuid(crypto.randomUUID())}>New UUID</button></div></label>
-            <label className="field">HTTPS mailbox (optional)<input value={mailbox} onChange={e => setMailbox(e.target.value)} placeholder="https://mailbox.example.com" /></label><label className="field">Pinned relay address (optional)<input value={relay} onChange={e => setRelay(e.target.value)} placeholder="/dns4/relay.example.com/udp/4001/quic-v1/p2p/…" /></label></div></details>}
-          {setup === 'join' && <p className="muted">Choose the folder, then open the private invitation file. Your device request is sent automatically; the sender keeps TrackMesh open and approves you. The invitation key stays in the native backend.</p>}
-          {setup === 'link' && <p className="muted">Next you invite your collaborator from the project card.</p>}
-          <div className="actions"><button className="primary" disabled={busy || !folder || (setup === 'link' && (!name || !uuid))} onClick={() => void saveSetup()}>{setup === 'join' ? 'Open invitation file…' : 'Add project'}</button><button onClick={() => setSetup(null)}>Cancel</button></div>
+        {setup && <section className="setup-panel"><h2>{setup === 'join' ? t('Open an invitation file', 'Davet dosyası aç') : t('Share a project folder', 'Proje klasörü paylaş')}</h2>
+          {setup === 'link' && <label className="field">{t('Project name', 'Proje adı')}<input value={name} maxLength={320} onChange={e => { setName(e.target.value); setAutoName(false); }} placeholder="Track 07" /></label>}
+          <label className="field">{setup === 'join' ? t('Empty folder for the project', 'Proje için boş klasör') : t('Folder with your Ableton or FL project', 'Ableton ya da FL projenin klasörü')}<div className="input-row"><input value={folder} onChange={e => setFolder(e.target.value)} placeholder="D:\Music\Track 07" /><button onClick={() => void browse()}>{t('Browse…', 'Gözat…')}</button></div></label>
+          {setup === 'join' && <p className="muted">{t('Choose the folder, then open the private invitation file. Your device request is sent automatically; the sender keeps TrackMesh open and approves you.', "Klasörü seç, sonra özel davet dosyasını aç. Cihaz isteğin kendiliğinden gider; gönderen TrackMesh'i açık tutar ve seni onaylar.")}</p>}
+          {setup === 'link' && <p className="muted">{t('Next you invite your collaborator from the project card.', 'Sonra iş arkadaşını proje kartından davet edersin.')}</p>}
+          <div className="actions"><button className="primary" disabled={busy || !folder || (setup === 'link' && !name.trim())} onClick={() => void saveSetup()}>{setup === 'join' ? t('Open invitation file…', 'Davet dosyasını aç…') : t('Add project', 'Projeyi ekle')}</button><button onClick={() => setSetup(null)}>{t('Cancel', 'Vazgeç')}</button></div>
         </section>}
         {firstRun && <section className="first-run">
           <ol className="first-steps">
-            <li><strong>Pick the project folder</strong><span>The folder that holds your Ableton or FL project.</span></li>
-            <li><strong>Invite and approve</strong><span>Send a link, then approve your collaborator.</span></li>
-            <li><strong>Share and get versions</strong><span>One button each way.</span></li>
+            <li><strong>{t('Pick the project folder', 'Proje klasörünü seç')}</strong><span>{t('The folder that holds your Ableton or FL project.', 'Ableton ya da FL projenin olduğu klasör.')}</span></li>
+            <li><strong>{t('Invite and approve', 'Davet et ve onayla')}</strong><span>{t('Send a link, then approve your collaborator.', 'Bir bağlantı gönder, sonra iş arkadaşını onayla.')}</span></li>
+            <li><strong>{t('Share and get versions', 'Sürüm paylaş ve al')}</strong><span>{t('One button each way.', 'Her yön için tek düğme.')}</span></li>
           </ol>
           <div className="choices">
-            <section className="choice"><span className="who">I have the project</span><h2>Share a project folder</h2>
-              <p>Choose the folder with your DAW project. TrackMesh keeps its versions and lets you invite a collaborator.</p>
-              <button className="primary" disabled={busy} onClick={startLink}>Choose folder…</button></section>
-            <section className="choice"><span className="who">Someone sent me a link</span><h2>Open an invite link</h2>
-              <p>Copy the link you received, then press the button. The project downloads after the sender approves you.</p>
-              <button disabled={busy} onClick={() => void pasteInvite()}>Paste invite link</button></section>
+            <section className="choice"><span className="who">{t('I have the project', 'Proje bende')}</span><h2>{t('Share a project folder', 'Proje klasörü paylaş')}</h2>
+              <p>{t('Choose the folder with your DAW project. TrackMesh keeps its versions and lets you invite a collaborator.', 'DAW projenin klasörünü seç. TrackMesh sürümlerini tutar ve iş arkadaşını davet etmeni sağlar.')}</p>
+              <button className="primary" disabled={busy} onClick={startLink}>{t('Choose folder…', 'Klasör seç…')}</button></section>
+            <section className="choice"><span className="who">{t('Someone sent me a link', 'Bana bir bağlantı gönderildi')}</span><h2>{t('Open an invite link', 'Davet bağlantısı aç')}</h2>
+              <p>{t('Copy the link you received, then press the button. The project downloads after the sender approves you.', 'Gelen bağlantıyı kopyala, sonra düğmeye bas. Gönderen seni onaylayınca proje iner.')}</p>
+              <button disabled={busy} onClick={() => void pasteInvite()}>{t('Paste invite link', 'Davet bağlantısını yapıştır')}</button></section>
           </div>
-          <p className="muted">Closing the window keeps TrackMesh running next to the clock, so your collaborator can still get your versions.</p>
+          <p className="muted">{t('Closing the window keeps TrackMesh running next to the clock, so your collaborator can still get your versions.', 'Pencereyi kapatınca TrackMesh saatin yanında çalışmaya devam eder; iş arkadaşın sürümlerini almaya devam edebilir.')}</p>
         </section>}
         <div className="project-list">{status && projects.map(card => <Card key={card.project.project_id} card={card} status={status} jobStartedAt={jobStartedAt} focusProjectId={focusProjectId} act={act} openAdvanced={openAdvanced} />)}</div>
-        {(offset > 0 || status?.page?.has_more) && <div className="pagination"><button disabled={!offset || busy} onClick={() => setOffset(Math.max(0, offset - 32))}>Previous</button><span className="muted">Page {offset / 32 + 1}</span><button disabled={!status?.page?.has_more || busy} onClick={() => setOffset(offset + 32)}>Next</button></div>}
+        {(offset > 0 || status?.page?.has_more) && <div className="pagination"><button disabled={!offset || busy} onClick={() => setOffset(Math.max(0, offset - 32))}>{t('Previous', 'Önceki')}</button><span className="muted">{t('Page', 'Sayfa')} {offset / 32 + 1}</span><button disabled={!status?.page?.has_more || busy} onClick={() => setOffset(offset + 32)}>{t('Next', 'Sonraki')}</button></div>}
       </>}
     </main>
   </div>;

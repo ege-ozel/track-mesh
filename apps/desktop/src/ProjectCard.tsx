@@ -1,37 +1,40 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { chooseFolder, openPreviousVersion, openProjectFolder, stopOperation } from './api';
 import type { Action, DesktopStatus, ProjectCard } from './api';
 import { ErrorDetails, InProgress, InviteCopiedNotice, JobNotice, StopButton, Waiting, friendlyError } from './Jobs';
 import { bytes, displayPath, short, time } from './format';
+import { named, t } from './i18n';
 
 export type AdvancedSection = 'connection' | 'service' | 'manual' | 'history' | 'access';
 
 type Problem = { tone: 'warn' | 'danger'; title: string; body: string; fix: string; section: AdvancedSection };
+
+const RECEIVE_LABELS = ["Get collaborator's version", "Use collaborator's version", 'Recover installation'];
 
 export function Card({ card, status, jobStartedAt, focusProjectId, act, openAdvanced }: {
   card: ProjectCard; status: DesktopStatus; jobStartedAt: Record<string, number>; focusProjectId: string | null;
   act: (action: Action) => Promise<boolean>; openAdvanced: (projectId: string, section: AdvancedSection) => void;
 }) {
   const [selected, setSelected] = useState('');
-  const [dawClosed, setDawClosed] = useState(false);
   const [folderError, setFolderError] = useState('');
   const [keepMinePending, setKeepMinePending] = useState(false);
   const project = card.project;
   const projectId = project.project_id;
   const peer = card.peers.find(p => p.device.device_id === selected) ?? card.peers[0];
   const peerId = peer?.device.device_id;
-  const peerName = peer?.device.name ?? 'your collaborator';
+  const collab = peer?.device.name;
+  const peerName = collab ?? 'your collaborator';
   const pairingApproval = peer ? status.pairing_approvals.find(item => item.project_id === projectId && item.device_id === peer.device.device_id)?.state ?? 'UNKNOWN' : 'UNKNOWN';
   const online = (peer ? status.network?.peers[peer.device.peer_id]?.online : false) ?? false;
+  // The backend keeps one job per project: the running one or the latest result.
   const job = status.jobs.find(j => j.project_id === projectId);
   const busy = !status.ready || status.closing || status.jobs.some(j => j.running && (!j.project_id || j.project_id === projectId));
   const check = status.checks.find(c => c.result.project_id === projectId && c.device_id === peerId);
   const divergence = (check?.fresh && check.result.snapshot_status === 'DIVERGED') || peer?.known_lineage === 'DIVERGED';
-  const blockedCode = status.jobs.find(item => item.project_id === projectId && !!item.outcome?.receive_blocked)?.outcome?.receive_blocked;
+  const blockedCode = job?.outcome?.receive_blocked;
   const resolveDivergence = divergence || blockedCode === 'DIVERGED';
   const resolveLocalChanges = blockedCode === 'LOCAL_CHANGES';
-  const resolutionJob = status.jobs.find(item => item.project_id === projectId && item.label === "Use collaborator's version");
-  const usedTransferId = resolutionJob && !resolutionJob.running && !resolutionJob.error && typeof resolutionJob.outcome?.transfer_id === 'string' ? String(resolutionJob.outcome.transfer_id) : null;
+  const usedTransferId = job && job.label === "Use collaborator's version" && !job.running && !job.error && typeof job.outcome?.transfer_id === 'string' ? String(job.outcome.transfer_id) : null;
   const peerHasVersion = card.peers.some(item => !!item.announcement || !!item.offline_head || !!item.known_lineage);
   const firstShareBlocked = !card.local_snapshot && (card.root_empty || peerHasVersion);
   const remoteAhead = online && peer?.known_lineage === 'REMOTE_AHEAD';
@@ -41,6 +44,7 @@ export function Card({ card, status, jobStartedAt, focusProjectId, act, openAdva
   const transfer = card.transfer;
   const resumable = transfer?.state === 'PAUSED' && peerId === transfer.source_device_id;
   const receiving = transfer?.state === 'RECEIVING' || transfer?.state === 'APPLYING';
+  const upToDate = online && !resumable && (peer?.known_lineage === 'EQUAL' || peer?.known_lineage === 'LOCAL_AHEAD');
   const percent = transfer?.total_bytes ? Math.min(100, Math.round(transfer.completed_bytes * 100 / transfer.total_bytes)) : 0;
   // A version made only of empty files has 0 bytes to download: show it as done once download is
   // over, and as indeterminate while TrackMesh still works out the size.
@@ -51,20 +55,20 @@ export function Card({ card, status, jobStartedAt, focusProjectId, act, openAdva
     (project.verified_peer_id === peer.device.peer_id && project.verified_snapshot_id === card.local_snapshot.snapshot_id)
     || !!status.network?.received_snapshots.some(item => item.project_id === projectId && item.peer_id === peer.device.peer_id && item.snapshot_id === card.local_snapshot?.snapshot_id)
   );
-  const sharedLatest = !!card.local_snapshot && status.jobs.some(item => item.project_id === projectId && item.outcome?.snapshot_id === card.local_snapshot?.snapshot_id);
+  const sharedLatest = !!card.local_snapshot && job?.outcome?.snapshot_id === card.local_snapshot.snapshot_id;
   const waitingFirstVersion = !!peer && card.root_empty && !card.local_snapshot && !project.latest_local_snapshot
     && !project.recovery_required && !peer.announcement
     && (!transfer || transfer.state === 'COMPLETE')
-    && !status.jobs.some(item => item.project_id === projectId && item.running)
+    && !job?.running
     && pairingApproval !== 'PENDING' && pairingApproval !== 'NOT_REACHABLE';
   const rootMissing = !card.root_available;
-  const disabledReceive = busy || !peer || !online || !dawClosed || project.recovery_required || divergence || rootMissing;
+  const disabledReceive = busy || !peer || !online || project.recovery_required || divergence || rootMissing;
   const candidates = status.pairing.project_id === projectId ? status.pairing.requests : [];
   const pairingOpen = status.pairing.project_id === projectId;
   const backend = status.project_backends[projectId]?.backend;
   const inviteState = status.supabase_states[projectId] ?? 'NOT_CONFIGURED';
   const inviteReady = backend === 'SUPABASE' && ['CLAIMED', 'MEMBER'].includes(inviteState);
-  const inviteJob = status.jobs.find(item => item.project_id === projectId && item.label === 'Copy invite link');
+  const inviteJob = job?.label === 'Copy invite link' ? job : undefined;
   const copyInviteSuccess = !!inviteJob && !inviteJob.running && !inviteJob.error && inviteJob.outcome?.invite_copied === true;
   const chooseProjectRoot = async () => {
     try {
@@ -77,114 +81,145 @@ export function Card({ card, status, jobStartedAt, focusProjectId, act, openAdva
     catch (err) { setFolderError(String(err)); }
   };
   const share = () => act({ kind: 'send', project_id: projectId });
-  // The DAW-closed tick is for one Get; a later Get asks again.
-  const finishedReceive = job && !job.running && !job.error
-    && ["Get collaborator's version", "Use collaborator's version", 'Recover installation'].includes(job.label) ? job.job_id : null;
-  useEffect(() => { if (finishedReceive) setDawClosed(false); }, [finishedReceive]);
   const stop = () => void stopOperation(projectId).catch(err => setFolderError(String(err)));
+  // One question right before files change, instead of a checkbox to tick first.
+  const dawClosed = (what: string) => window.confirm(`${t('Is this project closed in your DAW?', "Proje DAW'da kapalı mı?")}\n\n${what}`);
+  const receive = () => peer && dawClosed(t(`TrackMesh will replace the files in this folder with ${peerName}'s version.`, `TrackMesh bu klasördeki dosyaları ${named(collab, 'gen')} sürümüyle değiştirecek.`))
+    && act({ kind: 'receive', project_id: projectId, device_id: peer.device.device_id, snapshot_id: resumable ? transfer.snapshot_id : null, daw_closed: true });
+  const usePeerVersion = () => peer && dawClosed(t(`This folder will be replaced with ${peerName}'s version. Your current files are saved first and kept next to the project.`,
+    `Bu klasör ${named(collab, 'gen')} sürümüyle değiştirilecek. Şu anki dosyaların önce kaydedilir ve projenin yanında saklanır.`))
+    && act({ kind: 'use_peer_version', project_id: projectId, device_id: peer.device.device_id, daw_closed: true });
+  const recover = () => dawClosed(t('TrackMesh will finish putting the files in place.', 'TrackMesh dosyaları yerleştirmeyi bitirecek.'))
+    && act({ kind: 'recover', project_id: projectId, daw_closed: true });
 
   // One problem at a time, most blocking first; each routes to the Advanced section that can fix it.
   let problem: Problem | null = null;
   if (peer && pairingApproval !== 'PENDING' && pairingApproval !== 'NOT_REACHABLE' && !online && !(job?.running && job.label === 'Check connection'))
-    problem = { tone: 'warn', title: `TrackMesh can't reach ${peerName}.`, body: `Ask ${peerName} to open TrackMesh. If it still fails, check the connection.`, fix: 'Fix connection', section: 'connection' };
+    problem = { tone: 'warn', title: t(`TrackMesh can't reach ${peerName}.`, `TrackMesh ${named(collab, 'dat')} ulaşamıyor.`),
+      body: t(`Ask ${peerName} to open TrackMesh. If it still fails, check the connection.`, `${named(collab, 'dat')} TrackMesh'i açmasını söyle. Yine olmazsa bağlantıyı kontrol et.`),
+      fix: t('Fix connection', 'Bağlantıyı düzelt'), section: 'connection' };
   else if (card.missing_functions.length)
-    problem = { tone: 'danger', title: 'The invite service needs an update.', body: 'Some invite service functions are missing.', fix: 'See invite service', section: 'service' };
+    problem = { tone: 'danger', title: t('The invite service needs an update.', 'Davet servisinin güncellenmesi gerekiyor.'), body: t('Some invite service functions are missing.', 'Davet servisinde bazı fonksiyonlar eksik.'),
+      fix: t('See invite service', 'Davet servisine bak'), section: 'service' };
   else if (card.grant_problem === 'UNREACHABLE' || inviteState === 'UNREACHABLE')
-    problem = { tone: 'warn', title: "The invite service can't be reached.", body: 'Direct sharing still works. Invite links and version notices need the service.', fix: 'Check invite service', section: 'service' };
+    problem = { tone: 'warn', title: t("The invite service can't be reached.", 'Davet servisine ulaşılamıyor.'),
+      body: t('Direct sharing still works. Invite links and version notices need the service.', 'Doğrudan paylaşım çalışmaya devam eder. Davet bağlantıları ve sürüm bildirimleri için servis gerekir.'),
+      fix: t('Check invite service', 'Davet servisini kontrol et'), section: 'service' };
   else if (!peer && !inviteReady && inviteState !== 'UNKNOWN' && inviteState !== 'WAITING_FOR_GRANT')
-    problem = { tone: 'warn', title: 'Invite links need the invite service.', body: 'Add your Supabase address once, then Invite collaborator works.', fix: 'Set up invite service', section: 'service' };
+    problem = { tone: 'warn', title: t('Invite links need the invite service.', 'Davet bağlantıları için davet servisi gerekir.'),
+      body: t('Add your Supabase address once, then Invite collaborator works.', 'Supabase adresini bir kez ekle, sonra davet etme çalışır.'),
+      fix: t('Set up invite service', 'Davet servisini kur'), section: 'service' };
 
-  const badge = pairingApproval === 'PENDING' ? { text: 'Waiting for approval', tone: '' }
-    : online ? { text: `Connected · ${peerName}`, tone: 'online' }
-    : peer ? { text: `Can't reach ${peerName}`, tone: 'warn' }
-    : { text: 'No collaborator yet', tone: '' };
+  const badge = pairingApproval === 'PENDING' ? { text: t('Waiting for approval', 'Onay bekleniyor'), tone: '' }
+    : online ? { text: t(`Connected · ${peerName}`, `Bağlı · ${peerName}`), tone: 'online' }
+    : peer ? { text: t(`Can't reach ${peerName}`, `${named(collab, 'dat')} ulaşılamıyor`), tone: 'warn' }
+    : { text: t('No collaborator yet', 'Henüz iş arkadaşı yok'), tone: '' };
+
+  const transferError = transfer?.error ?? (job?.error && RECEIVE_LABELS.includes(job.label) ? job.error : null);
+  const transferBox = transfer && <div className="transfer">
+    <div><span>{receiving
+      ? (transfer.state === 'APPLYING' ? t("Putting the files in place… this can't be stopped", 'Dosyalar yerleştiriliyor… bu durdurulamaz') : t(`Getting ${peerName}'s version…`, `${named(collab, 'gen')} sürümü alınıyor…`))
+      : transfer.state === 'PAUSED' ? t('Paused · press Resume getting to continue', "Duraklatıldı · devam etmek için Almaya devam et'e bas")
+      : transfer.state === 'RECOVERY_REQUIRED' ? t('Not finished · press Recover above', "Bitmedi · yukarıdaki Kurtar'a bas")
+      : t('Waiting to start…', 'Başlaması bekleniyor…')}</span>
+      <span>{noFileData ? (transferDone ? t('Only empty files · nothing to download', 'Yalnızca boş dosyalar · indirilecek bir şey yok') : '') : `${bytes(transfer.completed_bytes)} / ${bytes(transfer.total_bytes)} · ${percent} %`}</span></div>
+    {noFileData && !transferDone ? <progress /> : <progress max={noFileData ? 1 : transfer.total_bytes} value={noFileData ? 1 : transfer.completed_bytes} />}
+    {transfer.state === 'RECEIVING' && job?.running && <div className="actions"><StopButton key={job.job_id} onStop={stop} /></div>}
+    {transferError && <><p className="error">{friendlyError(transferError, collab) ?? transferError}</p><ErrorDetails raw={transferError} collaboratorName={collab} /></>}</div>;
+
+  // A single status line per card, by priority: work running now, an unfinished Get, the latest
+  // result while it is fresh, then what the card is waiting for. Errors stay until the next action.
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const resultFresh = !!job && !job.running && !job.outcome?.receive_blocked && (!!job.error || job.outcome?.pairing_state === 'retry' || !!usedTransferId
+    || nowSeconds - (job.completed_at ?? nowSeconds) < (copyInviteSuccess ? 75 : 20));
+  const statusLine = transfer && receiving ? transferBox
+    : inviteJob?.running ? <InProgress>{t('Creating invite link…', 'Davet bağlantısı oluşturuluyor…')}</InProgress>
+    : job?.running ? <JobNotice job={job} startedAt={jobStartedAt[job.job_id]} collaboratorName={collab} online={online} onStop={stop} />
+    : transfer && transfer.state !== 'COMPLETE' ? transferBox
+    : job && resultFresh ? (usedTransferId
+        ? <div className="delivery-receipt" role="status">{t(`Now using ${peerName}'s version ✓`, `Artık ${named(collab, 'gen')} sürümü kullanılıyor ✓`)} <button className="text-button" onClick={() => void openPreviousVersion(projectId, usedTransferId).catch(error => setFolderError(String(error)))}>{t('Open my previous files', 'Önceki dosyalarımı aç')}</button></div>
+        : copyInviteSuccess ? <><InviteCopiedNotice job={job} />
+          {typeof job.outcome?.cleared_pending === 'string' && <div className="job" role="status">{t(`Pending approvals for ${job.outcome.cleared_pending} were cleared; only one project can accept new devices at a time.`, `${job.outcome.cleared_pending} için bekleyen onaylar silindi; aynı anda yalnızca bir proje yeni cihaz kabul edebilir.`)}</div>}</>
+        : <JobNotice job={job} startedAt={jobStartedAt[job.job_id]} collaboratorName={collab} online={online} />)
+    : peer && pairingApproval === 'PENDING' ? <Waiting>{t(`Waiting for ${peerName} to approve this device…`, `${named(collab, 'gen')} bu cihazı onaylaması bekleniyor…`)}</Waiting>
+    : peer && waitingFirstVersion ? <Waiting>{t(`Waiting for ${peerName} to share the first version…`, `${named(collab, 'gen')} ilk sürümü paylaşması bekleniyor…`)}</Waiting>
+    : peer && receipt ? <div className="delivery-receipt" role="status">{t(`Received by ${peerName} ✓`, `${peerName} aldı ✓`)}</div>
+    : peer && authoredHere && sharedLatest && online ? <Waiting>{t(`Shared. ${peerName} hasn't got this version yet.`, `Paylaşıldı. ${peerName} bu sürümü henüz almadı.`)}</Waiting>
+    : null;
 
   return <article id={`project-${projectId}`} className={`project-card${focusProjectId === projectId ? ' focus-highlight' : ''}`}>
     <header className="card-title">
-      <div className="card-name"><h2>{project.name}</h2><button className="path-link" title="Open in Explorer" onClick={() => void openProject()}>{displayPath(project.root)}</button></div>
+      <div className="card-name"><h2>{project.name}</h2><button className="path-link" title={t('Open in Explorer', "Gezgin'de aç")} onClick={() => void openProject()}>{displayPath(project.root)}</button></div>
       <span className={`badge ${badge.tone}`}>{badge.text}</span>
     </header>
 
-    {rootMissing && <section className="notice danger"><strong>Project folder not found</strong><p>It may have been moved, renamed or on a drive that is not connected.</p><div className="actions"><button className="primary" disabled={busy} onClick={() => void chooseProjectRoot()}>Locate folder</button></div></section>}
-    {project.recovery_required && <section className="notice danger"><strong>The last Get did not finish.</strong><p>Close this project in your DAW, then recover it before getting another version.</p>
-      <label className="confirmation"><input type="checkbox" checked={dawClosed} disabled={busy} onChange={e => setDawClosed(e.target.checked)} /> I closed this project in my DAW</label>
-      <div className="actions"><button className="primary" disabled={busy || !dawClosed} onClick={() => act({ kind: 'recover', project_id: projectId, daw_closed: dawClosed })}>Recover</button></div></section>}
+    {rootMissing && <section className="notice danger"><strong>{t('Project folder not found', 'Proje klasörü bulunamadı')}</strong><p>{t('It may have been moved, renamed or on a drive that is not connected.', 'Taşınmış, adı değişmiş ya da bağlı olmayan bir sürücüde olabilir.')}</p><div className="actions"><button className="primary" disabled={busy} onClick={() => void chooseProjectRoot()}>{t('Locate folder', 'Klasörü bul')}</button></div></section>}
+    {project.recovery_required && <section className="notice danger"><strong>{t('The last Get did not finish.', 'Son alma işlemi bitmedi.')}</strong><p>{t('Close this project in your DAW, then recover it before getting another version.', "Başka bir sürüm almadan önce projeyi DAW'da kapat ve kurtar.")}</p>
+      <div className="actions"><button className="primary" disabled={busy} onClick={() => void recover()}>{t('Recover', 'Kurtar')}</button></div></section>}
     {problem && <section className={`problem ${problem.tone}`} role="alert"><div><strong>{problem.title}</strong><p>{problem.body}</p></div>
       <button className="primary" onClick={() => openAdvanced(projectId, problem.section)}>{problem.fix} →</button></section>}
-    {!peer && inviteState === 'WAITING_FOR_GRANT' && <Waiting>Waiting for your collaborator's TrackMesh to confirm this device with the invite service. Keep both apps open.</Waiting>}
-    {!peer && backend === 'SUPABASE' && inviteState === 'UNKNOWN' && <Waiting>Connecting to the invite service…</Waiting>}
-    {status.presence[projectId]?.map(warning => <p key={warning.device_id} className={`notice ${warning.both_working ? 'danger' : ''}`} role="status">{warning.line}{!warning.both_working && ` (since ${new Date(warning.since * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })})`}</p>)}
-    {status.plugin_handoff?.project_id === projectId && <p className="notice" role="status">Save and close this project in your DAW, then press Get {peerName}'s version.</p>}
+    {!peer && inviteState === 'WAITING_FOR_GRANT' && <Waiting>{t("Waiting for your collaborator's TrackMesh to confirm this device with the invite service. Keep both apps open.", "İş arkadaşının TrackMesh'inin bu cihazı davet servisine onaylaması bekleniyor. İki uygulamayı da açık tut.")}</Waiting>}
+    {!peer && backend === 'SUPABASE' && inviteState === 'UNKNOWN' && <Waiting>{t('Connecting to the invite service…', 'Davet servisine bağlanılıyor…')}</Waiting>}
+    {status.presence[projectId]?.map(warning => <p key={warning.device_id} className={`notice ${warning.both_working ? 'danger' : ''}`} role="status">
+      {warning.both_working ? t(warning.line, `${warning.name} de bu projede çalışıyor. İkiniz de kaydederseniz sürümleriniz ayrılır.`) : t(warning.line, `${warning.name} şu an bu projede çalışıyor`)}
+      {!warning.both_working && ` (${t('since', 'başlangıç')} ${new Date(warning.since * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })})`}</p>)}
+    {status.plugin_handoff?.project_id === projectId && <p className="notice" role="status">{t(`Save and close this project in your DAW, then press Get ${peerName}'s version.`, `Projeyi DAW'da kaydedip kapat, sonra “${named(collab, 'gen')} sürümünü al” düğmesine bas.`)}</p>}
     {folderError && <p className="error">{folderError}</p>}
 
-    {candidates.length > 0 && <section className="approval-box"><h3>Someone opened your invite link</h3>{candidates.map(candidate => <div key={candidate.request_id}>
-      <p><strong>{candidate.name}</strong> · device {short(candidate.device_id)}</p>
-      <p className="muted">Approve only if this is the person you invited. Approval gives them this project.</p>
-      <div className="actions"><button className="primary" disabled={busy} onClick={() => window.confirm(`Approve ${candidate.name} (${short(candidate.device_id)}) for ${project.name}?`) && act({ kind: 'approve_pairing', project_id: projectId, request_id: candidate.request_id })}>Approve</button>
-        <button disabled={busy} onClick={() => act({ kind: 'reject_pairing', project_id: projectId, request_id: candidate.request_id })}>Reject</button></div></div>)}</section>}
+    {candidates.length > 0 && <section className="approval-box"><h3>{t('Someone opened your invite link', 'Biri davet bağlantını açtı')}</h3>{candidates.map(candidate => <div key={candidate.request_id}>
+      <p><strong>{candidate.name}</strong> · {t('device', 'cihaz')} {short(candidate.device_id)}</p>
+      <p className="muted">{t('Approve only if this is the person you invited. Approval gives them this project.', 'Yalnızca davet ettiğin kişiyse onayla. Onay, bu projeyi ona verir.')}</p>
+      <div className="actions"><button className="primary" disabled={busy} onClick={() => window.confirm(t(`Approve ${candidate.name} (${short(candidate.device_id)}) for ${project.name}?`, `${candidate.name} (${short(candidate.device_id)}) ${project.name} projesi için onaylansın mı?`)) && act({ kind: 'approve_pairing', project_id: projectId, request_id: candidate.request_id })}>{t('Approve', 'Onayla')}</button>
+        <button disabled={busy} onClick={() => act({ kind: 'reject_pairing', project_id: projectId, request_id: candidate.request_id })}>{t('Reject', 'Reddet')}</button></div></div>)}</section>}
 
-    {!peer && <section className="invite-flow"><h3>Invite your collaborator</h3>
-      <p className="muted">Copies a private link. Send it to one person; it works once, for 15 minutes.</p>
-      <button className="primary" disabled={busy || !inviteReady} onClick={() => act({ kind: 'copy_invite_link', project_id: projectId })}>Invite collaborator</button></section>}
-    {pairingOpen && !candidates.length && <Waiting action={<button disabled={busy} onClick={() => act({ kind: 'close_pairing', project_id: projectId })}>Stop waiting</button>}>
-      Waiting for your collaborator to open the link{status.pairing.remaining_seconds > 0 ? ` · ${Math.ceil(status.pairing.remaining_seconds / 60)} min left` : ''}. Keep TrackMesh open.</Waiting>}
-    {!pairingOpen && !candidates.length && !!inviteJob && !inviteJob.running && <p className="muted">Collaborator opened the link but nothing appeared? <button className="text-button" disabled={busy} onClick={() => act({ kind: 'open_pairing', project_id: projectId })}>Reopen approval window</button></p>}
-    {card.grant_problem === 'REJECTED' && peer && <p className="muted">The invite service didn't accept {peerName} (the project may already have 3 devices, or too many requests). Direct sharing still works.</p>}
+    {!peer && <section className="invite-flow"><h3>{t('Invite your collaborator', 'İş arkadaşını davet et')}</h3>
+      <p className="muted">{t('Copies a private link. Send it to one person; it works once, for 15 minutes.', 'Özel bir bağlantı kopyalar. Tek bir kişiye gönder; bir kez ve 15 dakika boyunca çalışır.')}</p>
+      <button className="primary" disabled={busy || !inviteReady} onClick={() => act({ kind: 'copy_invite_link', project_id: projectId })}>{t('Invite collaborator', 'Davet et')}</button></section>}
+    {pairingOpen && !candidates.length && <Waiting action={<button disabled={busy} onClick={() => act({ kind: 'close_pairing', project_id: projectId })}>{t('Stop waiting', 'Beklemeyi bırak')}</button>}>
+      {t('Waiting for your collaborator to open the link', 'İş arkadaşının bağlantıyı açması bekleniyor')}{status.pairing.remaining_seconds > 0 ? ` · ${Math.ceil(status.pairing.remaining_seconds / 60)} ${t('min left', 'dk kaldı')}` : ''}. {t('Keep TrackMesh open.', "TrackMesh'i açık tut.")}</Waiting>}
+    {!pairingOpen && !candidates.length && !!inviteJob && !inviteJob.running && <p className="muted">{t('Collaborator opened the link but nothing appeared?', 'İş arkadaşın bağlantıyı açtı ama burada bir şey çıkmadı mı?')} <button className="text-button" disabled={busy} onClick={() => act({ kind: 'open_pairing', project_id: projectId })}>{t('Reopen approval window', 'Onay penceresini yeniden aç')}</button></p>}
+    {card.grant_problem === 'REJECTED' && peer && <p className="muted">{t(`The invite service didn't accept ${peerName} (the project may already have 3 devices, or too many requests). Direct sharing still works.`, `Davet servisi ${named(collab, 'acc')} kabul etmedi (projede zaten 3 cihaz olabilir ya da çok fazla istek gelmiş olabilir). Doğrudan paylaşım çalışmaya devam eder.`)}</p>}
 
-    {remoteAhead && peer?.announcement && <div className="new-version-notice" role="status">New version from {peerName} · {time(peer.announcement.created_at)}</div>}
-    {showOfflineHead && offlineHead && <div className="new-version-notice" role="status">New version from {peerName} · {time(offlineHead.created_at)} · available when {peerName} is online</div>}
+    {remoteAhead && peer?.announcement && <div className="new-version-notice" role="status">{t(`New version from ${peerName}`, `${named(collab, 'abl')} yeni sürüm`)} · {time(peer.announcement.created_at)}</div>}
+    {showOfflineHead && offlineHead && <div className="new-version-notice" role="status">{t(`New version from ${peerName}`, `${named(collab, 'abl')} yeni sürüm`)} · {time(offlineHead.created_at)} · {t(`available when ${peerName} is online`, `${peerName} bağlanınca alınabilir`)}</div>}
 
-    {peer && (resolveDivergence || resolveLocalChanges) && <section className="notice resolution-box" role="region" aria-label="Resolve project versions">
-      <h3>{resolveLocalChanges && !resolveDivergence ? "This folder has changes you haven't shared" : `Your version and ${peerName}'s version both changed`}</h3>
-      <p>TrackMesh does not merge projects. Choose which version to keep.</p>
-      {(!online || !dawClosed) && <p className="muted">{!online ? `Open TrackMesh on both PCs to use ${peerName}'s version.` : 'Close the project in your DAW and tick “I closed this project in my DAW” below.'}</p>}
+    {peer && (resolveDivergence || resolveLocalChanges) && <section className="notice resolution-box" role="region" aria-label={t('Resolve project versions', 'Sürüm seçimi')}>
+      <h3>{resolveLocalChanges && !resolveDivergence ? t("This folder has changes you haven't shared", 'Bu klasörde paylaşmadığın değişiklikler var') : t(`Your version and ${peerName}'s version both changed`, `Senin sürümün de ${named(collab, 'gen')} sürümü de değişti`)}</h3>
+      <p>{t('TrackMesh does not merge projects. Choose which version to keep.', 'TrackMesh projeleri birleştirmez. Hangi sürümün kalacağını seç.')}</p>
+      {!online && <p className="muted">{t(`Open TrackMesh on both PCs to use ${peerName}'s version.`, `${named(collab, 'gen')} sürümünü kullanmak için TrackMesh'i iki bilgisayarda da aç.`)}</p>}
       <div className="actions">
-        <button className="primary" disabled={busy || !online || !dawClosed} onClick={() => window.confirm(`Replace this folder with ${peerName}'s version? Your current files are saved first and kept next to the project.`) && act({ kind: 'use_peer_version', project_id: projectId, device_id: peer.device.device_id, daw_closed: dawClosed })}>Use {peerName}'s version</button>
-        <button disabled={busy || rootMissing || project.recovery_required} onClick={() => { setKeepMinePending(true); void share(); }}>Keep mine</button>
+        <button className="primary" disabled={busy || !online} onClick={() => void usePeerVersion()}>{t(`Use ${peerName}'s version`, `${named(collab, 'gen')} sürümünü kullan`)}</button>
+        <button disabled={busy || rootMissing || project.recovery_required} onClick={() => { setKeepMinePending(true); void share(); }}>{t('Keep mine', 'Benimki kalsın')}</button>
       </div>
-      {keepMinePending && job?.label === 'Share current version' && !job.running && !job.error && <p role="status">Ask {peerName} to choose ‘Use {status.device?.name ?? 'your device'}'s version’.</p>}
+      {keepMinePending && job?.label === 'Share current version' && !job.running && !job.error && <p role="status">{t(`Ask ${peerName} to choose ‘Use ${status.device?.name ?? 'your device'}'s version’.`, `${named(collab, 'dat')} “${named(status.device?.name, 'gen')} sürümünü kullan” seçeneğini seçmesini söyle.`)}</p>}
     </section>}
-    {peer && usedTransferId && <div className="delivery-receipt" role="status">Now using {peerName}'s version ✓ <button className="text-button" onClick={() => void openPreviousVersion(projectId, usedTransferId).catch(error => setFolderError(String(error)))}>Open my previous files</button></div>}
 
     {peer && pairingApproval !== 'PENDING' && <>
-      {card.peers.length > 1 && <label className="peer-picker">Collaborator <select value={peerId ?? ''} disabled={busy} onChange={e => { setSelected(e.target.value); setDawClosed(false); }}>
+      {card.peers.length > 1 && <label className="peer-picker">{t('Collaborator', 'İş arkadaşı')} <select value={peerId ?? ''} disabled={busy} onChange={e => setSelected(e.target.value)}>
         {card.peers.map(p => <option key={p.device.device_id} value={p.device.device_id}>{p.device.name}</option>)}</select></label>}
       <section className="share-flow">
-        <div className="pane"><h3>Send my changes</h3>
-          <p className="muted">Saves this folder as a new version {peerName} can get.</p>
+        <div className="pane"><h3>{t('Send my changes', 'Değişikliklerimi gönder')}</h3>
+          <p className="muted">{t(`Saves this folder as a new version ${peerName} can get.`, `Bu klasörü ${peerName} için yeni bir sürüm olarak kaydeder.`)}</p>
           {firstShareBlocked
-            ? <p className="muted">{card.root_empty && !peerHasVersion ? 'Add your project files to this folder first.' : `Get ${peerName}'s version first.`}</p>
-            : <button className={remoteAhead ? '' : 'primary'} disabled={busy || rootMissing || project.recovery_required} onClick={() => void share()}>Share current version</button>}
-          {!online && !firstShareBlocked && <p className="muted">{peerName} can get it when you are both online.</p>}
+            ? <p className="muted">{card.root_empty && !peerHasVersion ? t('Add your project files to this folder first.', 'Önce proje dosyalarını bu klasöre ekle.') : t(`Get ${peerName}'s version first.`, `Önce ${named(collab, 'gen')} sürümünü al.`)}</p>
+            : <button className={remoteAhead ? '' : 'primary'} disabled={busy || rootMissing || project.recovery_required} onClick={() => void share()}>{t('Share current version', 'Güncel sürümü paylaş')}</button>}
+          {!online && !firstShareBlocked && <p className="muted">{t(`${peerName} can get it when you are both online.`, `İkiniz de bağlı olunca ${peerName} alabilir.`)}</p>}
         </div>
-        <div className="pane"><h3>Get {peerName}'s changes</h3>
-          {status.presence[projectId]?.filter(warning => warning.device_id === peer.device.device_id).map(warning => <p key={warning.device_id} className="muted" role="status">{warning.get_line}</p>)}
-          <label className="confirmation"><input type="checkbox" checked={dawClosed} disabled={busy} onChange={e => setDawClosed(e.target.checked)} /> I closed this project in my DAW</label>
-          <button className={remoteAhead ? 'primary' : ''} disabled={disabledReceive} onClick={() => act({ kind: 'receive', project_id: projectId, device_id: peer.device.device_id, snapshot_id: resumable ? transfer.snapshot_id : null, daw_closed: dawClosed })}>{resumable ? 'Resume getting' : `Get ${peerName}'s version`}</button>
-          {!online && <p className="muted">Available when {peerName} is online.</p>}
+        <div className="pane"><h3>{t(`Get ${peerName}'s changes`, `${named(collab, 'gen')} değişikliklerini al`)}</h3>
+          {status.presence[projectId]?.filter(warning => warning.device_id === peer.device.device_id).map(warning => <p key={warning.device_id} className="muted" role="status">{t(warning.get_line, `${warning.name} yakında daha yeni bir sürüm paylaşabilir.`)}</p>)}
+          {upToDate && <p className="muted">{t(`You have ${peerName}'s latest version ✓`, `${named(collab, 'gen')} son sürümü sende ✓`)}</p>}
+          <button className={remoteAhead || resumable ? 'primary' : ''} disabled={disabledReceive} onClick={() => void receive()}>{resumable ? t('Resume getting', 'Almaya devam et') : t(`Get ${peerName}'s version`, `${named(collab, 'gen')} sürümünü al`)}</button>
         </div>
       </section></>}
 
-    {authoredHere && sharedLatest && peer && online && card.local_snapshot && !receipt && <Waiting>Shared. {peerName} hasn't got this version yet.</Waiting>}
-    {receipt && peer && <div className="delivery-receipt" role="status">Received by {peerName} ✓</div>}
-    {!receiving && pairingApproval === 'PENDING' && peer && <Waiting>Waiting for {peerName} to approve this device…</Waiting>}
-    {!receiving && pairingApproval === 'NOT_REACHABLE' && peer && <section className="notice" role="status"><p>{peerName} hasn't approved this device yet. Ask them to open TrackMesh; if approval timed out, they can press ‘Reopen approval window’. Then press Try again.</p><div className="actions"><button disabled={busy} onClick={() => act({ kind: 'request_pairing', project_id: projectId, device_id: peer.device.device_id })}>Try again</button></div></section>}
-    {waitingFirstVersion && peer && <Waiting>Waiting for {peerName} to share the first version…</Waiting>}
-    {transfer && transfer.state !== 'COMPLETE' && <div className="transfer">
-      <div><span>{receiving ? (transfer.state === 'APPLYING' ? "Putting the files in place… this can't be stopped" : `Getting ${peerName}'s version…`) : transfer.state === 'PAUSED' ? 'Paused · press Resume getting to continue' : transfer.state === 'RECOVERY_REQUIRED' ? 'Not finished · press Recover above' : 'Waiting to start…'}</span>
-        <span>{noFileData ? (transferDone ? 'Only empty files · nothing to download' : '') : `${bytes(transfer.completed_bytes)} / ${bytes(transfer.total_bytes)} · ${percent} %`}</span></div>
-      {noFileData && !transferDone ? <progress /> : <progress max={noFileData ? 1 : transfer.total_bytes} value={noFileData ? 1 : transfer.completed_bytes} />}
-      {transfer.state === 'RECEIVING' && job?.running && <div className="actions"><StopButton key={job.job_id} onStop={stop} /></div>}
-      {transfer.error && <><p className="error">{friendlyError(transfer.error, peer?.device.name) ?? transfer.error}</p><ErrorDetails raw={transfer.error} collaboratorName={peer?.device.name} /></>}</div>}
-    {inviteJob?.running && <InProgress>Creating invite link…</InProgress>}
-    {copyInviteSuccess && inviteJob && <InviteCopiedNotice job={inviteJob} />}
-    {copyInviteSuccess && typeof inviteJob?.outcome?.cleared_pending === 'string' && <div className="job" role="status">Pending approvals for {inviteJob.outcome.cleared_pending} were cleared; only one project can accept new devices at a time.</div>}
-    {job && !(job.label === 'Copy invite link' && (job.running || copyInviteSuccess)) && !(job.label === "Get collaborator's version" && job.running && receiving)
-      && <JobNotice job={job} startedAt={jobStartedAt[job.job_id]} collaboratorName={peer?.device.name} online={online} onStop={receiving && job.label.endsWith("collaborator's version") ? undefined : stop} />}
+    {!receiving && pairingApproval === 'NOT_REACHABLE' && peer && <section className="notice" role="status"><p>{t(`${peerName} hasn't approved this device yet. Ask them to open TrackMesh; if approval timed out, they can press ‘Reopen approval window’. Then press Try again.`,
+      `${peerName} bu cihazı henüz onaylamadı. TrackMesh'i açmasını söyle; onay süresi dolduysa “Onay penceresini yeniden aç” düğmesine basabilir. Sonra Tekrar dene'ye bas.`)}</p>
+      <div className="actions"><button disabled={busy} onClick={() => act({ kind: 'request_pairing', project_id: projectId, device_id: peer.device.device_id })}>{t('Try again', 'Tekrar dene')}</button></div></section>}
+    {statusLine}
 
     <footer className="card-footer">
-      {peer && <button className="text-button" disabled={busy || !inviteReady} title={inviteReady ? 'Up to 3 devices per project' : 'Needs the invite service'} onClick={() => act({ kind: 'copy_invite_link', project_id: projectId })}>Invite another collaborator</button>}
-      <button className="text-button" onClick={() => openAdvanced(projectId, 'connection')}>Advanced →</button>
+      {peer && <button className="text-button" disabled={busy || !inviteReady} title={inviteReady ? t('Up to 3 devices per project', 'Proje başına en fazla 3 cihaz') : t('Needs the invite service', 'Davet servisi gerekir')} onClick={() => act({ kind: 'copy_invite_link', project_id: projectId })}>{t('Invite another collaborator', 'Başka birini davet et')}</button>}
+      <button className="text-button" onClick={() => openAdvanced(projectId, 'connection')}>{t('Advanced →', 'Gelişmiş →')}</button>
     </footer>
   </article>;
 }
