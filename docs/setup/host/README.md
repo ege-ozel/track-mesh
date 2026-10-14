@@ -1,10 +1,10 @@
 # Host bilgisayarı: ilk gönderen A
 
-Host ilk aktarımın kaynağıdır. Ortak sıra ve bağlantı sorunları [kurulum girişinde](../README.md) tutulur. Güncel deneme paketi yoktur; gerektiğinde incelenmiş master'dan yeni paket hazırlanır. İki tarafta aynı build kullanın. Build için [DEVELOPMENT.md](../../DEVELOPMENT.md) izlenir; hazır executable kullanmak için Rust/Node gerekmez.
+Host ilk aktarımın kaynağıdır. Ortak sıra ve bağlantı sorunları [kurulum girişinde](../README.md) tutulur. İki tarafta aynı build'in `TRACKMESH_<sürüm>_x64-setup.exe` kurulum dosyasını kullanın; uygulama ve VST3 plugin birlikte kurulur. Kurulum dosyası [DEVELOPMENT.md](../../DEVELOPMENT.md) adımlarıyla incelenmiş master'dan hazırlanır; kurmak için Rust/Node gerekmez.
 
 ## Klasörü bağla ve bağlantıyı paylaş
 
-1. Güncel `trackmesh-desktop.exe` açın. Küçük proje kopyasını **+ Link folder** ile seçip **Link project** yapın. Yerel veri profili ve DAW klasörü ayrı olsun.
+1. Başlat menüsünden TRACKMESH'i açın. Küçük proje kopyasını **+ Link folder** ile seçip **Link project** yapın. Yerel veri profili ve DAW klasörü ayrı olsun.
 2. Kendi Supabase projenizin URL ve publishable key'ini **Settings → Advanced → Default Supabase service** içinde ayarlayın. Secret key veya DB parolası girilmez. Gerekirse proje kartındaki **Advanced → Connection details → ENDPOINT BACKEND** ayarlarını kontrol edin.
 3. Proje kartında **Invite collaborator** seçin. İlk kullanımda **Router setup** sorusu gelir; **Allow (recommended)** süreli UPnP eşlemesine izin verir, **Not now** izin vermez.
 4. Oluşan v2 bağlantıyı B'ye özel kanaldan gönderin. 15 dakika geçerlidir ve bir kez tüketilir. B yeni bağlantı için URL/key yazmaz. Bağlantıyı, fragment anahtarını veya davet içeriğini ajan/log bağlamına vermeyin.

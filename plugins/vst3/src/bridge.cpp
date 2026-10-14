@@ -65,6 +65,10 @@ bool launchAgent(HMODULE module) {
         if (!size || size >= binary.size()) return false;
         binary.resize(size);
         path = (std::filesystem::path(binary).parent_path() / L"trackmesh-desktop.exe").wstring();
+        // Installer layout: the plugin lives in Common Files\VST3, the app in Program Files\TRACKMESH.
+        const auto programs = environment(L"ProgramW6432");
+        if (!std::filesystem::is_regular_file(path) && !programs.empty())
+            path = (std::filesystem::path(programs) / L"TRACKMESH" / L"trackmesh-desktop.exe").wstring();
     }
     if (!std::filesystem::path(path).is_absolute() || !std::filesystem::is_regular_file(path)) return false;
     auto command = L"\"" + path + L"\"";

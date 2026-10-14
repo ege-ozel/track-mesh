@@ -1,6 +1,6 @@
 # Peer bilgisayarı: ilk alıcı B
 
-Peer ilk sürümü alan cihazdır. Ortak akış ve ağ sorunları [kurulum girişinde](../README.md) tutulur. Henüz güncel deneme paketi yoktur; gerektiğinde incelenmiş master'dan yeni paket hazırlanır. Eski ZIP'ler güncel bağlantı akışını içermez. Gönderenden aynı build'i alın; EXE/DLL'leri birlikte tutun. Windows Desktop WebView2 ister, hazır executable için Rust/Node veya repo gerekmez.
+Peer ilk sürümü alan cihazdır. Ortak akış ve ağ sorunları [kurulum girişinde](../README.md) tutulur. Gönderenden aynı build'in `TRACKMESH_<sürüm>_x64-setup.exe` kurulum dosyasını alın ve çalıştırın; yönetici izni ister, imzasız olduğu için SmartScreen bir kez **More info → Run anyway** sorabilir. Uygulama `Program Files\TRACKMESH`, VST3 plugin `Common Files\VST3` altına kurulur; WebView2 yoksa kurulum indirir. Rust/Node veya repo gerekmez. Eski ZIP'ler güncel bağlantı akışını içermez.
 
 ## Davet bağlantısını kabul et
 
