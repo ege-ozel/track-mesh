@@ -20,6 +20,7 @@ private:
     std::vector<ProjectChoice> choices;
     bool changing {false};
     std::wstring selectionError;
+    std::wstring drawnLabels; // language and Get label the owner-drawn buttons were painted with
     HWND window {nullptr}, sendButton {nullptr}, receiveButton {nullptr};
     HWND picker {nullptr}, chooseButton {nullptr}, changeButton {nullptr}, openButton {nullptr};
     HWND autoShareCheckbox {nullptr};

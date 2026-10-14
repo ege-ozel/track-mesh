@@ -171,6 +171,13 @@ void View::refresh() {
     EnableWindow(receiveButton, status.connected && status.getEnabled);
     EnableWindow(openButton, status.connected && status.desktopAvailable);
     EnableWindow(chooseButton, status.connected && SendMessageW(picker, CB_GETCURSEL, 0, 0) != CB_ERR);
+    // Owner-drawn buttons repaint only when asked; ask when their words change.
+    const auto labels = status.language + L"|" + status.getLabel;
+    if (labels != drawnLabels) {
+        drawnLabels = labels;
+        InvalidateRect(sendButton, nullptr, FALSE);
+        InvalidateRect(receiveButton, nullptr, FALSE);
+    }
     InvalidateRect(window, nullptr, FALSE);
 }
 LRESULT CALLBACK View::procedure(HWND handle, UINT message, WPARAM wparam, LPARAM lparam) {
