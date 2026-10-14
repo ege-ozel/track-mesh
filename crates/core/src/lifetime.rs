@@ -25,6 +25,32 @@ impl SessionGrace {
 }
 
 impl Engine {
+    pub fn tray_notice_shown(&self) -> Result<bool> {
+        Ok(self
+            .settings
+            .lock()
+            .map_err(|_| anyhow::anyhow!("settings lock poisoned"))?
+            .value
+            .tray_notice_shown)
+    }
+
+    pub fn mark_tray_notice_shown(&self) -> Result<()> {
+        self.settings
+            .lock()
+            .map_err(|_| anyhow::anyhow!("settings lock poisoned"))?
+            .mark_tray_notice_shown(&self.directory)
+    }
+
+    /// Collaborators lose access to locally served versions even when currently offline.
+    pub fn shutdown_recipients(&self) -> Result<Vec<String>> {
+        let mut recipients = std::collections::BTreeSet::new();
+        for project in self.store.projects()? {
+            for peer in self.store.peers(Some(project.project_id))? {
+                recipients.insert(peer.name);
+            }
+        }
+        Ok(recipients.into_iter().collect())
+    }
     /// A narrow query; adapters schedule this outside their UI/network threads.
     pub fn has_pending_publication(&self) -> Result<bool> {
         for project in self.store.projects()? {

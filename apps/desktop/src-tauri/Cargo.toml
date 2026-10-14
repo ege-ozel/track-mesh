@@ -17,7 +17,7 @@ path = "src/main.rs"
 tauri-build = "2.6"
 
 [dependencies]
-tauri = "2.12.1"
+tauri = { version = "2.12.1", features = ["tray-icon"] }
 tauri-plugin-dialog = "2.7"
 tauri-plugin-single-instance = "2.5.2"
 trackmesh-core = { path = "../../../crates/core" }
