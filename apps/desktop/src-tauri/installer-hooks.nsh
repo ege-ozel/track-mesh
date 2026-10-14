@@ -16,6 +16,9 @@
   nsExec::Exec /TIMEOUT=30000 '"$SYSDIR\netsh.exe" advfirewall firewall add rule name="TrackMesh" dir=in action=allow program="$INSTDIR\trackmesh-desktop.exe" enable=yes profile=any'
   Pop $0
   DetailPrint "Firewall rule result: $0"
+  ; Go straight to the Finish page when the files are in place, instead of stopping on
+  ; "Completed" with a Next button.
+  SetAutoClose true
 !macroend
 
 !macro NSIS_HOOK_POSTUNINSTALL
@@ -23,4 +26,5 @@
   DetailPrint "Removing Windows Firewall rules for TrackMesh..."
   nsExec::Exec /TIMEOUT=30000 '"$SYSDIR\netsh.exe" advfirewall firewall delete rule name=all dir=in program="$INSTDIR\trackmesh-desktop.exe"'
   Pop $0
+  SetAutoClose true
 !macroend
