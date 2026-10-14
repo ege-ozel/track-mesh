@@ -1,24 +1,50 @@
 //! The native tray is owned by the existing desktop process and network session.
-use crate::runtime::Desktop;
+use crate::runtime::{tr, Desktop};
 use anyhow::{Context, Result};
 use std::sync::Arc;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Manager,
+    AppHandle, Manager, Wry,
 };
 
+fn menu(app: &AppHandle) -> Result<Menu<Wry>> {
+    let open = MenuItem::with_id(
+        app,
+        "trackmesh-open",
+        tr("Open TrackMesh", "TrackMesh'i aç"),
+        true,
+        None::<&str>,
+    )?;
+    let quit = MenuItem::with_id(
+        app,
+        "trackmesh-quit",
+        tr("Quit TrackMesh", "TrackMesh'ten çık"),
+        true,
+        None::<&str>,
+    )?;
+    Ok(Menu::with_items(app, &[&open, &quit])?)
+}
+
+/// Rebuilds the menu after the window changes language.
+pub fn relabel(app: &AppHandle) -> Result<()> {
+    let tray = app
+        .tray_by_id("trackmesh-tray")
+        .context("TRACKMESH tray icon is unavailable")?;
+    tray.set_menu(Some(menu(app)?))?;
+    tray.set_tooltip(Some(tr("TrackMesh — running", "TrackMesh — çalışıyor")))?;
+    Ok(())
+}
+
 pub fn install(app: &AppHandle) -> Result<()> {
-    let open = MenuItem::with_id(app, "trackmesh-open", "Open TRACKMESH", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "trackmesh-quit", "Quit", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&open, &quit])?;
+    let menu = menu(app)?;
     let icon = app
         .default_window_icon()
         .cloned()
         .context("TRACKMESH tray icon is unavailable")?;
     TrayIconBuilder::with_id("trackmesh-tray")
         .icon(icon)
-        .tooltip("TRACKMESH — running")
+        .tooltip(tr("TrackMesh — running", "TrackMesh — çalışıyor"))
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| {

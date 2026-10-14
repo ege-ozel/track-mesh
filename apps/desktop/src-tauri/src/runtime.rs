@@ -8,7 +8,10 @@ use serde_json::{json, Value};
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
     time::{Duration, Instant},
 };
 use tauri::{AppHandle, Manager};
@@ -21,6 +24,22 @@ use trackmesh_core::{
     SummaryPage, SupabaseDefaultConfig, SupabaseProjectState,
 };
 use uuid::Uuid;
+
+// The window's language, so native dialogs match it; the window sends it on start and on change.
+static TURKISH: AtomicBool = AtomicBool::new(false);
+
+pub fn is_turkish() -> bool {
+    TURKISH.load(Ordering::Relaxed)
+}
+
+/// Picks the dialog text for the window's language.
+pub fn tr<'a>(en: &'a str, turkish: &'a str) -> &'a str {
+    if is_turkish() {
+        turkish
+    } else {
+        en
+    }
+}
 
 fn receive_blocked_or_error(error: anyhow::Error) -> Result<Value> {
     if let Some(refusal) = error.downcast_ref::<transfer::ReceiveRefusal>() {
@@ -386,8 +405,6 @@ struct Session {
     window_session: bool,
     tray_session: bool,
     close_prompt_active: bool,
-    // The window's language, so the native quit and tray dialogs match it.
-    turkish: bool,
     engine: Option<Arc<Engine>>,
     device: Option<Device>,
     peer: Option<PeerRuntime>,
@@ -1569,13 +1586,13 @@ impl Desktop {
                         .message(
                             warnings
                                 .iter()
-                                .map(|warning| warning.share_confirmation.as_str())
+                                .map(|warning| tr(&warning.share_confirmation, &format!("{} şu an bu projede çalışıyor. Yine de paylaşılsın mı?", warning.name)).to_owned())
                                 .collect::<Vec<_>>()
-                                .join("\n"),
+                                .join("\n\n"),
                         )
-                        .title("Share current version?")
+                        .title(tr("Share current version?", "Güncel sürüm paylaşılsın mı?"))
                         .kind(tauri_plugin_dialog::MessageDialogKind::Warning)
-                        .buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancel)
+                        .buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancelCustom(tr("Share", "Paylaş").to_owned(), tr("Cancel", "Vazgeç").to_owned()))
                         .blocking_show())
                 })
                 .await??;
@@ -1857,8 +1874,14 @@ impl Desktop {
                     match action {
                         Action::DeleteBackups { selected } => {
                             let total = selected.iter().try_fold(0u64, |sum, item| sum.checked_add(item.bytes)).context("backup size overflow")?;
-                            let accepted = dialog_app.dialog().message(format!("Delete {} old backups ({:.2} GB)? Each project's newest backup will be kept.", selected.len(), total as f64 / 1_000_000_000.0))
-                                .title("Delete old backups?").buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancel).blocking_show();
+                            let size = total as f64 / 1_000_000_000.0;
+                            let message = if is_turkish() {
+                                format!("{} eski yedek silinsin mi ({size:.2} GB)?\n\nHer projenin en yeni yedeği tutulur.", selected.len())
+                            } else {
+                                format!("Delete {} old backups ({size:.2} GB)?\n\nEach project's newest backup will be kept.", selected.len())
+                            };
+                            let accepted = dialog_app.dialog().message(message)
+                                .title(tr("Delete old backups?", "Eski yedekler silinsin mi?")).buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancelCustom(tr("Delete", "Sil").to_owned(), tr("Cancel", "Vazgeç").to_owned())).blocking_show();
                             ensure!(accepted, "Backup deletion cancelled");
                             let bytes = disk.delete_old_backups(&selected)?;
                             Ok(json!({"message": format!("Deleted {bytes} bytes of old backups")}))
@@ -1882,7 +1905,8 @@ impl Desktop {
                         Action::ChangeProjectRoot { project_id, folder } => {
                             let differs = disk.project_root_differs(project_id, &folder)?;
                             if differs {
-                                let accepted = dialog_app.dialog().message("This folder differs from your last shared version").title("Change project folder?").kind(tauri_plugin_dialog::MessageDialogKind::Warning).blocking_show();
+                                let accepted = dialog_app.dialog().message(tr("This folder differs from your last shared version.\n\nUse it as the project folder anyway?", "Bu klasör son paylaştığın sürümden farklı.\n\nYine de proje klasörü olarak kullanılsın mı?")).title(tr("Change project folder?", "Proje klasörü değiştirilsin mi?")).kind(tauri_plugin_dialog::MessageDialogKind::Warning)
+                                    .buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancelCustom(tr("Use this folder", "Bu klasörü kullan").to_owned(), tr("Cancel", "Vazgeç").to_owned())).blocking_show();
                                 ensure!(accepted, "Folder change cancelled");
                             }
                             disk.change_project_root(project_id, &folder, differs)?;
@@ -2027,13 +2051,12 @@ impl Desktop {
         json!({"project_id": project, "invitation_imported": imported, "pairing_state": state, "message": message})
     }
 
-    pub fn set_language(&self, lang: &str) -> Result<()> {
-        self.lock()?.turkish = lang == "tr";
-        Ok(())
+    pub fn set_language(&self, lang: &str) {
+        TURKISH.store(lang == "tr", Ordering::Relaxed);
     }
 
     pub fn hide_to_tray(self: &Arc<Self>, app: AppHandle) {
-        let (engine, turkish) = {
+        let engine = {
             let Ok(mut state) = self.lock() else {
                 return;
             };
@@ -2041,7 +2064,7 @@ impl Desktop {
                 return;
             }
             state.close_prompt_active = true;
-            (state.engine.clone(), state.turkish)
+            state.engine.clone()
         };
         let desktop = self.clone();
         tauri::async_runtime::spawn(async move {
@@ -2049,18 +2072,10 @@ impl Desktop {
             let result = tauri::async_runtime::spawn_blocking(move || -> Result<()> {
                 let shown = engine.as_ref().map(|engine| engine.tray_notice_shown()).transpose()?.unwrap_or(false);
                 if !shown {
-                    let (title, message) = if turkish {
-                        ("TrackMesh açık kalıyor", "Pencere ya da DAW kapanınca TrackMesh saatin yanında çalışmaya devam eder; iş arkadaşların sürümlerini alabilir.
-
-Yeniden açmak için saatin yanındaki TrackMesh simgesine tıkla.
-
-Tamamen kapatmak için TrackMesh'ten çık düğmesini ya da simgedeki Quit'i kullan.")
+                    let (title, message) = if is_turkish() {
+                        ("TrackMesh açık kalıyor", "Pencere ya da DAW kapanınca TrackMesh saatin yanında çalışmaya devam eder; iş arkadaşların sürümlerini alabilir.\n\nYeniden açmak için saatin yanındaki TrackMesh simgesine tıkla.\n\nTamamen kapatmak için penceredeki ya da simge menüsündeki TrackMesh'ten çık'ı kullan.")
                     } else {
-                        ("TrackMesh stays available", "TrackMesh keeps running next to the clock after the window or DAW closes, so collaborators can get your versions.
-
-Click the TrackMesh icon next to the clock to reopen it.
-
-To exit, use Quit TrackMesh or Quit in the icon's menu.")
+                        ("TrackMesh stays available", "TrackMesh keeps running next to the clock after the window or DAW closes, so collaborators can get your versions.\n\nClick the TrackMesh icon next to the clock to reopen it.\n\nTo exit, use Quit TrackMesh in the window or in the icon's menu.")
                     };
                     dialog_app.dialog().message(message).title(title).blocking_show();
                     if let Some(engine) = engine { engine.mark_tray_notice_shown()?; }
@@ -2094,7 +2109,7 @@ To exit, use Quit TrackMesh or Quit in the icon's menu.")
     }
 
     pub fn request_quit(self: &Arc<Self>, app: AppHandle) {
-        let (engine, turkish) = {
+        let engine = {
             let Ok(mut state) = self.lock() else {
                 return;
             };
@@ -2102,7 +2117,7 @@ To exit, use Quit TrackMesh or Quit in the icon's menu.")
                 return;
             }
             state.close_prompt_active = true;
-            (state.engine.clone(), state.turkish)
+            state.engine.clone()
         };
         let desktop = self.clone();
         tauri::async_runtime::spawn(async move {
@@ -2114,20 +2129,11 @@ To exit, use Quit TrackMesh or Quit in the icon's menu.")
                     return Ok(true);
                 }
                 // One name per line so a long list stays readable.
-                let names = recipients.iter().map(|name| format!("    • {name}")).collect::<Vec<_>>().join("
-");
-                let (title, message, quit, cancel) = if turkish {
-                    ("TrackMesh kapatılsın mı?", format!("TrackMesh kapalıyken bu kişiler sürümlerini alamaz:
-
-{names}
-
-Başlamış işler kapanmadan önce biter."), "Çık", "Vazgeç")
+                let names = recipients.iter().map(|name| format!("    • {name}")).collect::<Vec<_>>().join("\n");
+                let (title, message, quit, cancel) = if is_turkish() {
+                    ("TrackMesh kapatılsın mı?", format!("TrackMesh kapalıyken bu kişiler sürümlerini alamaz:\n\n{names}\n\nBaşlamış işler kapanmadan önce biter."), "Çık", "Vazgeç")
                 } else {
-                    ("Quit TrackMesh?", format!("While TrackMesh is closed, these collaborators can't get your versions:
-
-{names}
-
-Work that has already started finishes before TrackMesh closes."), "Quit", "Cancel")
+                    ("Quit TrackMesh?", format!("While TrackMesh is closed, these collaborators can't get your versions:\n\n{names}\n\nWork that has already started finishes before TrackMesh closes."), "Quit", "Cancel")
                 };
                 Ok(dialog_app.dialog().message(message).title(title).buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancelCustom(quit.to_owned(), cancel.to_owned())).blocking_show())
             }).await;

@@ -15,6 +15,8 @@ fn main() {
             "open_previous_version",
             "submit_action",
             "set_upnp_mapping",
+            "set_language",
+            "ask",
             "close_app",
         ]),
     ))

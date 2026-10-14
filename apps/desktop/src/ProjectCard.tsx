@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { chooseFolder, openPreviousVersion, openProjectFolder, stopOperation } from './api';
+import { ask, chooseFolder, openPreviousVersion, openProjectFolder, stopOperation } from './api';
 import type { Action, DesktopStatus, ProjectCard } from './api';
 import { ErrorDetails, InProgress, InviteCopiedNotice, JobNotice, StopButton, Waiting, friendlyError } from './Jobs';
 import { bytes, displayPath, short, time } from './format';
@@ -113,13 +113,14 @@ export function Card({ card, status, jobStartedAt, focusProjectId, act, openAdva
   const share = () => act({ kind: 'send', project_id: projectId });
   const stop = () => void stopOperation(projectId).catch(err => setFolderError(String(err)));
   // One question right before files change, instead of a checkbox to tick first.
-  const dawClosed = (what: string) => window.confirm(`${t('Is this project closed in your DAW?', "Proje DAW'da kapalı mı?")}\n\n${what}`);
-  const receive = () => peer && dawClosed(t(`TrackMesh will replace the files in this folder with ${peerName}'s version.`, `TrackMesh bu klasördeki dosyaları ${named(collab, 'gen')} sürümüyle değiştirecek.`))
+  const dawClosed = (what: string) => ask(t('Is this project closed in your DAW?', "Proje DAW'da kapalı mı?"), what, t("Yes, it's closed", 'Evet, kapalı'), t('Cancel', 'Vazgeç'))
+    .catch(err => { setFolderError(String(err)); return false; });
+  const receive = async () => peer && await dawClosed(t(`TrackMesh will replace the files in this folder with ${peerName}'s version.`, `TrackMesh bu klasördeki dosyaları ${named(collab, 'gen')} sürümüyle değiştirecek.`))
     && act({ kind: 'receive', project_id: projectId, device_id: peer.device.device_id, snapshot_id: resumable ? transfer.snapshot_id : null, daw_closed: true });
-  const usePeerVersion = () => peer && dawClosed(t(`This folder will be replaced with ${peerName}'s version. Your current files are saved first and kept next to the project.`,
-    `Bu klasör ${named(collab, 'gen')} sürümüyle değiştirilecek. Şu anki dosyaların önce kaydedilir ve projenin yanında saklanır.`))
+  const usePeerVersion = async () => peer && await dawClosed(t(`This folder will be replaced with ${peerName}'s version.\n\nYour current files are saved first and kept next to the project.`,
+    `Bu klasör ${named(collab, 'gen')} sürümüyle değiştirilecek.\n\nŞu anki dosyaların önce kaydedilir ve projenin yanında saklanır.`))
     && act({ kind: 'use_peer_version', project_id: projectId, device_id: peer.device.device_id, daw_closed: true });
-  const recover = () => dawClosed(t('TrackMesh will finish putting the files in place.', 'TrackMesh dosyaları yerleştirmeyi bitirecek.'))
+  const recover = async () => await dawClosed(t('TrackMesh will finish putting the files in place.', 'TrackMesh dosyaları yerleştirmeyi bitirecek.'))
     && act({ kind: 'recover', project_id: projectId, daw_closed: true });
 
   // One problem at a time, most blocking first; each routes to the Advanced section that can fix it.
@@ -199,7 +200,9 @@ export function Card({ card, status, jobStartedAt, focusProjectId, act, openAdva
     {candidates.length > 0 && <section className="approval-box"><h3>{t('Someone opened your invite link', 'Biri davet bağlantını açtı')}</h3>{candidates.map(candidate => <div key={candidate.request_id}>
       <p><strong>{candidate.name}</strong> · {t('device', 'cihaz')} {short(candidate.device_id)}</p>
       <p className="muted">{t('Approve only if this is the person you invited. Approval gives them this project.', 'Yalnızca davet ettiğin kişiyse onayla. Onay, bu projeyi ona verir.')}</p>
-      <div className="actions"><button className="primary" disabled={busy} onClick={() => window.confirm(t(`Approve ${candidate.name} (${short(candidate.device_id)}) for ${project.name}?`, `${candidate.name} (${short(candidate.device_id)}) ${project.name} projesi için onaylansın mı?`)) && act({ kind: 'approve_pairing', project_id: projectId, request_id: candidate.request_id })}>{t('Approve', 'Onayla')}</button>
+      <div className="actions"><button className="primary" disabled={busy} onClick={async () => await ask(t('Approve this device?', 'Bu cihaz onaylansın mı?'),
+          t(`${candidate.name} (device ${short(candidate.device_id)}) will get ${project.name}.\n\nApprove only if this is the person you invited.`, `${candidate.name} (cihaz ${short(candidate.device_id)}) ${project.name} projesini alacak.\n\nYalnızca davet ettiğin kişiyse onayla.`),
+          t('Approve', 'Onayla'), t('Cancel', 'Vazgeç')).catch(() => false) && act({ kind: 'approve_pairing', project_id: projectId, request_id: candidate.request_id })}>{t('Approve', 'Onayla')}</button>
         <button disabled={busy} onClick={() => act({ kind: 'reject_pairing', project_id: projectId, request_id: candidate.request_id })}>{t('Reject', 'Reddet')}</button></div></div>)}</section>}
 
     {!peer && <section className="invite-flow"><h3>{t('Invite your collaborator', 'İş arkadaşını davet et')}</h3>

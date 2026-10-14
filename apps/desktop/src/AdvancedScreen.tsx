@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { chooseFolder, stopOperation } from './api';
+import { ask, chooseFolder, stopOperation } from './api';
 import type { Action, CheckView, DesktopStatus, ProjectBackend, ProjectBackendConfig, ProjectCard, SnapshotInfo, SupabaseDefaultConfig } from './api';
 import { JobNotice } from './Jobs';
 import { ProjectTabs } from './ProjectCard';
@@ -292,7 +292,9 @@ export function AdvancedScreen({ status, projectId, section, jobStartedAt, act, 
       <div className="actions"><button disabled={busy} onClick={() => void chooseProjectRoot()}>{card.root_available ? t('Change folder…', 'Klasörü değiştir…') : t('Locate folder…', 'Klasörü bul…')}</button></div>
       {card.peers.map(item => <div className="access-row" key={item.device.device_id}>
         <div><strong>{item.device.name}</strong><p className="muted">{t('Device', 'Cihaz')} <code>{item.device.device_id}</code> · {t('Identity', 'Kimlik')} <code>{item.device.peer_id}</code></p></div>
-        <button className="danger" disabled={busy} onClick={() => window.confirm(t(`Remove ${item.device.name}'s access to ${project.name}? They keep the files they already received.`, `${named(item.device.name, 'gen')} ${project.name} erişimi kaldırılsın mı? Daha önce aldığı dosyalar onda kalır.`)) && act({ kind: 'revoke', project_id: id, device_id: item.device.device_id })}>{t('Remove access', 'Erişimi kaldır')}</button>
+        <button className="danger" disabled={busy} onClick={async () => await ask(t('Remove access?', 'Erişim kaldırılsın mı?'),
+          t(`${item.device.name} will no longer get versions of ${project.name}.\n\nThey keep the files they already received.`, `${item.device.name} artık ${project.name} sürümlerini alamayacak.\n\nDaha önce aldığı dosyalar onda kalır.`),
+          t('Remove access', 'Erişimi kaldır'), t('Cancel', 'Vazgeç')).catch(() => false) && act({ kind: 'revoke', project_id: id, device_id: item.device.device_id })}>{t('Remove access', 'Erişimi kaldır')}</button>
       </div>)}
       <p className="muted">{card.mailbox_enabled ? t('The mailbox stores encrypted metadata and version notices only.', 'Mailbox yalnızca şifreli bilgileri ve sürüm bildirimlerini tutar.') : t('Version notices use the invite service; the legacy mailbox is off for this project.', 'Sürüm bildirimleri davet servisini kullanır; bu projede eski mailbox kapalı.')}</p>
     </Section>

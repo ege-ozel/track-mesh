@@ -256,11 +256,6 @@ h3 {
   color:var(--text);
   box-shadow:inset 3px 0 0 var(--accent)
 }
-.rail-note {
-  font-size:12px;
-  color:var(--muted-dim);
-  padding:0 var(--s3) var(--s2)
-}
 .rail-bottom {
   margin-top:auto;
   display:grid;
@@ -426,7 +421,7 @@ main {
   padding:var(--s3) var(--s4);
   font-weight:650
 }
-.delivery-receipt {
+.delivery-receipt,.saved-note {
   color:var(--accent);
   font-weight:650
 }
@@ -981,7 +976,7 @@ progress {
 }
 @media(max-width:760px) {
   :root { --rail-width:var(--rail-width-small) }
-  .brand span:not(.brand-mark),.rail-note,.device { display:none }
+  .brand span:not(.brand-mark),.device { display:none }
   .rail-bottom button { font-size:11px; padding:var(--s1) }
   .rail { padding:var(--s4) var(--s2) }
   .rail-nav { font-size:11px; padding:var(--s2) var(--s1); text-align:center }

@@ -12,6 +12,9 @@ import type { Lang } from './i18n';
 
 type Screen = 'projects' | 'advanced' | 'settings';
 
+// A saved setting shows in its own control; only its errors need the line at the top.
+const QUIET_SETTINGS = new Set(['Save DAW auto-share setting', 'Save device name', 'Save Projects location', 'Save default Supabase settings', 'Save manual port forwarding']);
+
 const screenTitles = (): Record<Screen, [string, string]> => ({
   projects: [t('Projects', 'Projeler'), t('Each card is one DAW project folder you share with your collaborator.', 'Her kart, iş arkadaşınla paylaştığın bir DAW proje klasörü.')],
   advanced: [t('Advanced', 'Gelişmiş'), t('Connection, invite service and version details. TrackMesh sends you here when something needs fixing.', 'Bağlantı, davet servisi ve sürüm ayrıntıları. Bir şeyin düzeltilmesi gerektiğinde TrackMesh seni buraya getirir.')],
@@ -232,20 +235,19 @@ export default function App() {
   const shownProject = projects.find(item => item.project.project_id === selectedProjectId) ?? projects[0];
   // Running work plus the latest result while it is fresh: successes for 20 s, errors for 2 min.
   const nowSeconds = Math.floor(Date.now() / 1000);
-  const projectlessJobs = (status?.jobs.filter(j => !j.project_id) ?? []).filter((job, _index, all) => job.running
+  const projectlessJobs = (status?.jobs.filter(j => !j.project_id && !(QUIET_SETTINGS.has(j.label) && !j.error)) ?? []).filter((job, _index, all) => job.running
     || (job === all.filter(item => !item.running).slice(-1)[0] && nowSeconds - (job.completed_at ?? nowSeconds) < (job.error ? 120 : 20)));
   const firstRun = !!status?.ready && !projects.length && !setup && offset === 0;
   const [title, subtitle] = screenTitles()[screen];
   const runtimeError = error || status?.error || status?.network?.error;
-  const nav = (target: Screen, label: string, note?: string) => <>
-    <button className={screen === target ? 'rail-nav active' : 'rail-nav'} aria-current={screen === target ? 'page' : undefined} onClick={() => go(target)}>{label}</button>
-    {note && <span className="rail-note">{note}</span>}</>;
+  const nav = (target: Screen, label: string) =>
+    <button className={screen === target ? 'rail-nav active' : 'rail-nav'} aria-current={screen === target ? 'page' : undefined} onClick={() => go(target)}>{label}</button>;
 
   return <div className="app-shell">
     <aside className="rail" aria-label="Main">
       <div className="brand"><span className="brand-mark">TM</span><span>TRACKMESH</span></div>
       {nav('projects', t('Projects', 'Projeler'))}
-      {nav('advanced', t('Advanced', 'Gelişmiş'), t('Connection and technical details', 'Bağlantı ve teknik ayrıntılar'))}
+      {nav('advanced', t('Advanced', 'Gelişmiş'))}
       {nav('settings', t('Settings', 'Ayarlar'))}
       <div className="rail-bottom">
         <div className="device"><span className={`status-dot ${status?.ready ? 'active' : ''}`} /><span>{status?.device?.name ?? t('Starting…', 'Başlatılıyor…')}</span><small>{short(status?.device?.device_id)}</small></div>

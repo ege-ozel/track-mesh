@@ -5,6 +5,7 @@ use crate::{
 };
 use std::sync::Arc;
 use tauri::{AppHandle, State};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 use uuid::Uuid;
 
 #[tauri::command]
@@ -166,10 +167,30 @@ pub async fn set_upnp_mapping(
 }
 
 #[tauri::command]
-pub fn set_language(desktop: State<'_, Arc<Desktop>>, lang: String) -> Result<(), String> {
-    desktop
-        .set_language(&lang)
-        .map_err(|error| error.to_string())
+pub fn set_language(app: AppHandle, desktop: State<'_, Arc<Desktop>>, lang: String) {
+    desktop.set_language(&lang);
+    // The tray keeps working with its old labels if it can't be relabelled.
+    let _ = crate::tray::relabel(&app);
+}
+
+/// A native yes/no question for the window, so every confirmation looks the same.
+#[tauri::command]
+pub async fn ask(
+    app: AppHandle,
+    title: String,
+    message: String,
+    ok: String,
+    cancel: String,
+) -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .message(message)
+            .title(title)
+            .buttons(MessageDialogButtons::OkCancelCustom(ok, cancel))
+            .blocking_show()
+    })
+    .await
+    .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
