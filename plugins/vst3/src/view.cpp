@@ -91,9 +91,11 @@ void View::paint(HWND handle) {
     if (!selecting) {
         label(dc, font, status.line, {24, 105, 556, 163}, foreground, DT_LEFT | DT_WORDBREAK);
         label(dc, font, status.createdAt, {24, 173, 556, 195}, muted);
-        label(dc, font, L"Last known collaborator: " + status.author, {24, 204, 556, 224}, muted);
+        if (!status.author.empty()) label(dc, font, L"Collaborator: " + status.author, {24, 204, 556, 224}, muted);
         label(dc, smallFont, L"Project: " + status.project, {24, 229, 556, 249}, muted);
-        label(dc, smallFont, L"Version: " + status.local.substr(0, 8) + L" / " + status.remote.substr(0, 8), {24, 253, 556, 274}, muted);
+        if (!status.local.empty() || !status.remote.empty())
+            label(dc, smallFont, L"Version: " + (status.local.empty() ? L"none" : status.local.substr(0, 8)) + L" / "
+                + (status.remote.empty() ? L"none" : status.remote.substr(0, 8)), {24, 253, 556, 274}, muted);
     } else {
         const auto text = !status.pickerSupported ? (status.connected ? status.line : status.message)
             : choices.empty() ? L"Link this project's folder in TrackMesh first" : L"Choose the project whose folder contains this DAW project.";
