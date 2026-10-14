@@ -274,6 +274,9 @@ pub struct Job {
     pub outcome: Option<Value>,
     pub error: Option<String>,
     pub completed_at: Option<u64>,
+    /// Only Check connection is stoppable: it reads peer state and writes nothing durable.
+    #[serde(skip)]
+    pub abort: Option<tokio::task::AbortHandle>,
 }
 
 fn prune_finished_jobs(jobs: &mut Vec<Job>) {
@@ -1133,22 +1136,37 @@ impl Desktop {
             outcome: None,
             error: None,
             completed_at: None,
+            abort: None,
         });
+        let stoppable = matches!(action, Action::Check { .. });
         let desktop = self.clone();
         let engine = state.engine.clone().context("Engine is unavailable")?;
         let network = state.network.clone().context("Network is unavailable")?;
         state.tasks.push(tauri::async_runtime::spawn(async move {
             let worker_desktop = desktop.clone();
             // Join the inner task so a panic becomes a visible completed job, never a stuck gate.
-            let result =
+            let worker =
                 tokio::spawn(
                     async move { worker_desktop.execute(app, engine, network, action).await },
-                )
-                .await
-                .unwrap_or_else(|_| Err(anyhow::anyhow!("Operation worker stopped unexpectedly")));
+                );
+            if stoppable {
+                if let Ok(mut state) = desktop.lock() {
+                    if let Some(job) = state.jobs.iter_mut().find(|job| job.job_id == job_id) {
+                        job.abort = Some(worker.abort_handle());
+                    }
+                }
+            }
+            let result = match worker.await {
+                Ok(result) => result,
+                Err(error) if error.is_cancelled() => {
+                    Ok(json!({"message": "Connection check stopped"}))
+                }
+                Err(_) => Err(anyhow::anyhow!("Operation worker stopped unexpectedly")),
+            };
             if let Ok(mut state) = desktop.lock() {
                 if let Some(job) = state.jobs.iter_mut().find(|job| job.job_id == job_id) {
                     job.running = false;
+                    job.abort = None;
                     job.completed_at = Some(
                         std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
@@ -1182,6 +1200,18 @@ impl Desktop {
         tauri::async_runtime::spawn_blocking(move || disk.set_upnp_mapping_enabled(enabled))
             .await??;
         network.set_mapping_consent(enabled);
+        Ok(())
+    }
+
+    pub fn stop_check(&self, project_id: Uuid) -> Result<()> {
+        let state = self.lock()?;
+        let abort = state
+            .jobs
+            .iter()
+            .find(|job| job.running && job.project_id == Some(project_id))
+            .and_then(|job| job.abort.clone())
+            .context("No connection check is running for this project")?;
+        abort.abort();
         Ok(())
     }
 
@@ -1941,7 +1971,7 @@ impl Desktop {
             let result = tauri::async_runtime::spawn_blocking(move || -> Result<()> {
                 let shown = engine.as_ref().map(|engine| engine.tray_notice_shown()).transpose()?.unwrap_or(false);
                 if !shown {
-                    dialog_app.dialog().message("TRACKMESH keeps running in the system tray after the window or DAW closes so collaborators can get your versions. Click the tray icon to reopen. Use Close safely or the tray's Quit to exit.").title("TRACKMESH stays available").blocking_show();
+                    dialog_app.dialog().message("TRACKMESH keeps running in the system tray after the window or DAW closes so collaborators can get your versions. Click the tray icon to reopen. Use Quit TrackMesh or the tray's Quit to exit.").title("TRACKMESH stays available").blocking_show();
                     if let Some(engine) = engine { engine.mark_tray_notice_shown()?; }
                 }
                 Ok(())
@@ -1993,7 +2023,7 @@ impl Desktop {
                     return Ok(true);
                 }
                 let message = format!("{} can't get your versions while TRACKMESH is closed. Quit? Accepted work will finish before closing.", recipients.join(", "));
-                Ok(dialog_app.dialog().message(message).title("Close safely?").buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancel).blocking_show())
+                Ok(dialog_app.dialog().message(message).title("Quit TrackMesh?").buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancel).blocking_show())
             }).await;
             let close = desktop.lock().is_ok_and(|mut state| {
                 state.close_prompt_active = false;
@@ -2086,6 +2116,7 @@ impl Desktop {
                     }
                 ),
                 completed_at: None,
+                abort: None,
             });
             prune_finished_jobs(&mut state.jobs);
         }

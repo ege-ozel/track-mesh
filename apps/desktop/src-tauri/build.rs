@@ -11,6 +11,7 @@ fn main() {
             "open_invite_parent_folder",
             "paste_invite_link",
             "cancel_invite_link",
+            "stop_check",
             "open_previous_version",
             "submit_action",
             "set_upnp_mapping",
