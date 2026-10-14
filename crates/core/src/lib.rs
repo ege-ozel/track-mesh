@@ -11,6 +11,8 @@ use std::{
 use storage::Store;
 use uuid::Uuid;
 mod auto_share;
+mod presence;
+pub use presence::PresenceWarning;
 mod connection;
 mod endpoints;
 mod firewall_observation;
@@ -53,6 +55,7 @@ mod lifetime;
 pub use lifetime::SessionGrace;
 
 pub struct Engine {
+    presence: Mutex<presence::PresenceState>,
     pub directory: PathBuf,
     pub store: Arc<Store>,
     pub chunks: ChunkStore,
@@ -95,6 +98,7 @@ impl Engine {
             &identity.public_key(),
         )?;
         Ok(Self {
+            presence: Mutex::new(presence::PresenceState::default()),
             directory,
             store,
             chunks,

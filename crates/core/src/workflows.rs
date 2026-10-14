@@ -211,6 +211,9 @@ impl Engine {
         let mut receiver = self.receiver(network.clone());
         receiver.download_limit = download_limit;
         let result = receiver.receive(snapshot, peer).await;
+        if result.is_ok() {
+            self.presence_applied(project);
+        }
         self.maintain_storage_after_transfer().await;
         result
     }
@@ -259,17 +262,29 @@ impl Engine {
         let mut receiver = self.receiver(network.clone());
         receiver.download_limit = download_limit;
         let result = receiver.receive_diverged(snapshot, peer).await;
+        if result.is_ok() {
+            self.presence_applied(project);
+        }
         self.maintain_storage_after_transfer().await;
         result
     }
 
     pub fn recover(&self, project: Uuid) -> Result<()> {
+        let recovering = self.store.project(project)?.recovery_required
+            || self
+                .store
+                .latest_transfer(project)?
+                .is_some_and(|transfer| transfer.state.requires_recovery());
         transfer::recover_project(
             &self.store,
             &self.chunks,
             &self.identity,
             &self.directory,
             project,
-        )
+        )?;
+        if recovering {
+            self.presence_applied(project);
+        }
+        Ok(())
     }
 }

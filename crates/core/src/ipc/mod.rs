@@ -53,7 +53,8 @@ impl Shared {
     }
     async fn status(&self, project: Uuid) -> Result<PluginStatus> {
         let engine = self.engine.clone();
-        let (summary, projects, more, auto_share) =
+        let network = self.network.clone();
+        let (summary, projects, more, auto_share, warnings) =
             tokio::task::spawn_blocking(move || -> Result<_> {
                 let (projects, more) = status::projects(&engine)?;
                 Ok((
@@ -61,6 +62,7 @@ impl Shared {
                     projects,
                     more,
                     engine.auto_share_enabled(project)?,
+                    engine.presence_warnings(project, &network)?,
                 ))
             })
             .await??;
@@ -77,6 +79,17 @@ impl Shared {
         reply.desktop_available = self.desktop_available;
         reply.get_enabled &= self.desktop_available;
         reply.auto_share = auto_share && reply.auto_share_supported;
+        if let Some(warning) = warnings.first() {
+            reply.presence_warning = status::bounded(&warning.line);
+            reply.presence_since = warning.since;
+            reply.share_confirmation = status::bounded(&warning.share_confirmation);
+            reply.presence_danger = warning.both_working;
+            reply.presence_get_line = status::bounded(&warning.get_line);
+            if reply.message == status::GET_GUIDANCE {
+                reply.message.push(' ');
+                reply.message.push_str(&reply.presence_get_line);
+            }
+        }
         Ok(reply)
     }
 }
@@ -224,7 +237,7 @@ async fn serve(
                         _ = stop.changed() => {},
                         _ = connection(connected, &shared, &mut binding) => {},
                     }
-                    if let Some((session, _)) = binding { if let Ok(mut state) = shared.lock() { state.sessions.remove(&session); } }
+                    if let Some((session, _)) = binding { if let Ok(mut state) = shared.lock() { state.sessions.remove(&session); shared.engine.presence_bind(session, None); } }
                 });
             },
         }
@@ -234,7 +247,12 @@ async fn serve(
     // abort only pipe tasks; snapshot workers are owned separately and awaited by stop.
     clients.abort_all();
     while clients.join_next().await.is_some() {}
-    shared.lock()?.sessions.clear();
+    let mut state = shared.lock()?;
+    for session in state.sessions.keys() {
+        shared.engine.presence_bind(*session, None);
+    }
+    state.sessions.clear();
+    drop(state);
     drop(pipe);
     outcome
 }
@@ -278,6 +296,7 @@ async fn connection(
                     "Plugin session already connected"
                 );
                 state.sessions.insert(session, project);
+                shared.engine.presence_bind(session, Some(project));
                 state.epoch = state.epoch.wrapping_add(1);
                 *binding = Some((session, project));
             }
@@ -287,6 +306,7 @@ async fn connection(
                     "Plugin session is not bound"
                 );
                 shared.lock()?.sessions.insert(session, project);
+                shared.engine.presence_bind(session, Some(project));
                 *binding = Some((session, project));
             }
             _ => ensure!(
@@ -354,6 +374,10 @@ async fn connection(
                     });
                     state.epoch = state.epoch.wrapping_add(1);
                     reply.message = status::GET_GUIDANCE.into();
+                    if !reply.presence_get_line.is_empty() {
+                        reply.message.push(' ');
+                        reply.message.push_str(&reply.presence_get_line);
+                    }
                     if state.messages.contains_key(&project) || state.messages.len() < 64 {
                         state.messages.insert(project, status::Notice::Receive);
                     }

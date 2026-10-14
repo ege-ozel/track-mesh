@@ -91,7 +91,8 @@ void View::paint(HWND handle) {
     const bool selecting = !status.linked || changing;
     label(dc, font, selecting ? L"Choose a linked TrackMesh project" : status.name, {24, 63, 410, 90}, foreground);
     if (!selecting) {
-        label(dc, font, status.line, {24, 105, 556, 163}, foreground, DT_LEFT | DT_WORDBREAK);
+        label(dc, font, status.presenceWarning.empty() ? status.line : status.presenceWarning, {24, 105, 556, 163},
+            status.presenceWarning.empty() ? foreground : status.presenceDanger ? RGB(255, 112, 112) : RGB(244, 195, 96), DT_LEFT | DT_WORDBREAK);
         label(dc, font, status.createdAt, {24, 173, 556, 195}, muted);
         if (!status.author.empty()) label(dc, font, L"Collaborator: " + status.author, {24, 204, 556, 224}, muted);
         label(dc, smallFont, L"Project: " + status.project, {24, 229, 556, 249}, muted);
@@ -157,7 +158,11 @@ LRESULT CALLBACK View::procedure(HWND handle, UINT message, WPARAM wparam, LPARA
             return 0;
         }
         case WM_COMMAND:
-            if (HIWORD(wparam) == BN_CLICKED && LOWORD(wparam) == 1) self->bridge->send();
+            if (HIWORD(wparam) == BN_CLICKED && LOWORD(wparam) == 1) {
+                const auto status = self->bridge->status();
+                if (status.shareConfirmation.empty() || MessageBoxW(handle, status.shareConfirmation.c_str(), L"Share current version?", MB_OKCANCEL | MB_ICONWARNING) == IDOK)
+                    self->bridge->send();
+            }
             if (HIWORD(wparam) == BN_CLICKED && LOWORD(wparam) == 2) self->bridge->receive();
             if (HIWORD(wparam) == BN_CLICKED && LOWORD(wparam) == 13) self->bridge->receive();
             if (HIWORD(wparam) == BN_CLICKED && LOWORD(wparam) == 14)

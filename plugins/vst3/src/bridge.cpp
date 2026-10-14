@@ -1,4 +1,5 @@
 #include "bridge.h"
+#include <ctime>
 #include "public.sdk/source/vst/moduleinfo/json.h"
 #include <sddl.h>
 #include <objbase.h>
@@ -188,6 +189,19 @@ bool request(HANDLE pipe, const char* event, const std::string& session, const P
     view.pickerSupported = optionalBool(object, "picker_supported");
     view.autoShareSupported = optionalBool(object, "auto_share_supported");
     view.autoShare = optionalBool(object, "auto_share");
+    view.presenceDanger = optionalBool(object, "presence_danger");
+    if (field(object, "presence_warning")) view.presenceWarning = wide(jsonString(object, "presence_warning"));
+    if (field(object, "share_confirmation")) view.shareConfirmation = wide(jsonString(object, "share_confirmation"));
+    const auto since = field(object, "presence_since");
+    if (since && since->type == json_type_number && !view.presenceWarning.empty() && !view.presenceDanger) {
+        const auto number = static_cast<json_number_s*>(since->payload);
+        const auto seconds = static_cast<__time64_t>(std::stoull(std::string(number->number, number->number_size)));
+        tm local {};
+        if (_localtime64_s(&local, &seconds) == 0) {
+            wchar_t time[16] {};
+            if (wcsftime(time, 16, L"%H:%M", &local)) view.presenceWarning += L" (since " + std::wstring(time) + L")";
+        }
+    }
     if (view.pickerSupported) {
         view.projects = projectChoices(object);
         view.projectsMore = optionalBool(object, "projects_more");

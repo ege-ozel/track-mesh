@@ -82,6 +82,11 @@ pub fn unavailable(project_id: Uuid, message: &str) -> PluginStatus {
         pending_publications: 0,
         auto_share_supported: false,
         auto_share: false,
+        presence_warning: String::new(),
+        share_confirmation: String::new(),
+        presence_danger: false,
+        presence_since: 0,
+        presence_get_line: String::new(),
     }
 }
 pub fn summarize(
@@ -214,6 +219,11 @@ pub fn summarize(
         },
         auto_share_supported: true,
         auto_share: false,
+        presence_warning: String::new(),
+        share_confirmation: String::new(),
+        presence_danger: false,
+        presence_since: 0,
+        presence_get_line: String::new(),
     }
 }
 pub fn bounded(text: &str) -> String {

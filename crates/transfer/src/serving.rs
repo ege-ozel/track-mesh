@@ -16,6 +16,9 @@ pub fn serve(
         "project access denied"
     );
     match request {
+        PeerRequest::Presence { .. } => {
+            anyhow::bail!("presence notices are handled by the core runtime")
+        }
         PeerRequest::SnapshotAvailable { .. } => {
             anyhow::bail!("snapshot availability notices are handled by the core runtime")
         }

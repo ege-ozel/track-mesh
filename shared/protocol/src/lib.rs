@@ -477,11 +477,34 @@ pub struct PluginStatus {
     pub auto_share_supported: bool,
     #[serde(default)]
     pub auto_share: bool,
+    #[serde(default)]
+    pub presence_warning: String,
+    #[serde(default)]
+    pub share_confirmation: String,
+    #[serde(default)]
+    pub presence_danger: bool,
+    #[serde(default)]
+    pub presence_since: u64,
+    #[serde(default)]
+    pub presence_get_line: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PresenceSource {
+    Plugin,
+    Folder,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub enum PeerRequest {
+    Presence {
+        project_id: Uuid,
+        working: bool,
+        since: u64,
+        source: PresenceSource,
+    },
     SnapshotAvailable {
         project_id: Uuid,
         snapshot_id: Uuid,
@@ -522,7 +545,8 @@ pub enum PeerResponse {
 
 pub fn request_project(request: &PeerRequest) -> Uuid {
     match request {
-        PeerRequest::SnapshotAvailable { project_id, .. }
+        PeerRequest::Presence { project_id, .. }
+        | PeerRequest::SnapshotAvailable { project_id, .. }
         | PeerRequest::EndpointUpdate { project_id, .. }
         | PeerRequest::Head { project_id }
         | PeerRequest::Manifest { project_id, .. }
