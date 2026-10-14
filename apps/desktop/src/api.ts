@@ -84,7 +84,7 @@ export interface DesktopStatus {
   manual_public_endpoint: { public_ipv4: string; external_port: number } | null;
 }
 export type Action =
-  | { kind: 'delete_backups'; selected: { transfer_id: string; bytes: number }[] }
+  | { kind: 'delete_backups'; selected: { transfer_id: string; path: string; bytes: number }[] }
   | { kind: 'link'; project_id: string; name: string; folder: string; mailbox_url: string | null; relay_address: string | null }
   | { kind: 'change_project_root'; project_id: string; folder: string }
   | { kind: 'set_project_backend'; project_id: string; backend: ProjectBackend; supabase_url: string | null; supabase_anon_key: string | null }
