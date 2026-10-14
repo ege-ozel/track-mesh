@@ -292,6 +292,7 @@ function Card({ card, status, jobStartedAt, focusProjectId, act }: { card: Proje
   return <article id={`project-${project.project_id}`} className={`project-card${focusProjectId === project.project_id ? ' focus-highlight' : ''}`}>
     <header className="card-title"><div><h2>{project.name}</h2><button className="path-link" title="Open in Explorer" onClick={() => void openProject()}>{displayPath(project.root)}</button></div>
       <span className={`badge ${online ? 'online' : ''}`}>{projectStatus}</span></header>
+    {status.presence[project.project_id]?.map(warning => <p key={warning.device_id} className={`notice ${warning.both_working ? 'danger' : ''}`} role="status">{warning.line}{!warning.both_working && ` (since ${new Date(warning.since * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })})`}</p>)}
     {rootMissing && <section className="notice danger"><strong>Project folder not found</strong><div className="actions"><button className="primary" disabled={busy} onClick={() => void chooseProjectRoot()}>Locate folder</button></div></section>}
     {status.plugin_handoff?.project_id === project.project_id && <p className="notice" role="status">Save and close this project in your DAW, then press Get collaborator's version.</p>}
     {folderError && <p className="error">{folderError}</p>}
@@ -329,6 +330,7 @@ function Card({ card, status, jobStartedAt, focusProjectId, act }: { card: Proje
         ? <p className="muted">{card.root_empty && !card.peers.some(item => !!item.announcement || !!item.offline_head || !!item.known_lineage) ? 'Add your project files to this folder first.' : `Get ${peer.device.name}'s version first.`}</p>
         : <button className={remoteAhead ? '' : 'primary'} disabled={busy || rootMissing || project.recovery_required} onClick={() => request('send')}>Share current version</button>}</div>
       <div><h3>Get collaborator's version</h3><p className="muted">Receive copies the selected collaborator's snapshot into this folder.</p>
+        {status.presence[project.project_id]?.filter(warning => warning.device_id === peer.device.device_id).map(warning => <p key={warning.device_id} className="muted" role="status">{warning.get_line}</p>)}
         <label className="confirmation"><input type="checkbox" checked={dawClosed} disabled={busy} onChange={e => setDawClosed(e.target.checked)} /> I closed this project in the DAW</label>
         <button className={remoteAhead ? 'primary' : ''} disabled={disabledReceive || rootMissing} onClick={() => act({ kind: 'receive', project_id: project.project_id, device_id: peer.device.device_id, snapshot_id: resumable ? transfer.snapshot_id : null, daw_closed: dawClosed })}>{resumable ? 'Resume receive' : "Get collaborator's version"}</button>
         {!online && <p className="muted">Open TrackMesh on both PCs to receive files.</p>}</div></section>}

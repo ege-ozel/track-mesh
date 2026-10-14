@@ -47,7 +47,7 @@ fn receive_blocked_or_error(error: anyhow::Error) -> Result<Value> {
     about = "Private Windows project snapshots and transfers"
 )]
 pub struct Options {
-    /// Plugin-launched owner: exit after sessions and durable work finish plus grace.
+    /// Plugin-launched owner: start hidden and stay available in the system tray.
     #[arg(long)]
     plugin_owner: bool,
     #[arg(long, env = "TRACKMESH_DATA_DIR")]
@@ -334,6 +334,7 @@ pub struct PluginHandoff {
 
 #[derive(Serialize)]
 pub struct DesktopStatus {
+    pub presence: HashMap<Uuid, Vec<trackmesh_core::PresenceWarning>>,
     pub daw_plugin_settings: Vec<trackmesh_core::DawPluginSetting>,
     pub plugin_handoff: Option<PluginHandoff>,
     pub pairing: PairingStatus,
@@ -529,6 +530,7 @@ impl Desktop {
                     .unwrap_or(true),
                     None => true,
                 };
+                let mut stay_in_tray = false;
                 let should_stop = desktop.lock().is_ok_and(|mut state| {
                     if work_epoch != state.work_epoch {
                         grace = SessionGrace::default();
@@ -557,7 +559,11 @@ impl Desktop {
                             .is_some_and(MailboxRuntime::is_finished);
                     let busy =
                         pending || state.tasks.iter().any(|task| !task.inner().is_finished());
-                    if failed || (grace.ready(plugin, peer, busy) && plugin.close_if_idle()) {
+                    if !failed && grace.ready(plugin, peer, busy) {
+                        stay_in_tray = true;
+                        return false;
+                    }
+                    if failed {
                         // Same gate as desktop submit/reopen: no new operation can enter.
                         plugin.begin_close();
                         state.closing = true;
@@ -566,6 +572,9 @@ impl Desktop {
                         false
                     }
                 });
+                if stay_in_tray {
+                    desktop.hide_to_tray(app.clone());
+                }
                 if should_stop {
                     desktop.finish_close(app.clone()).await;
                     break;
@@ -662,40 +671,54 @@ impl Desktop {
         } else {
             tauri::async_runtime::spawn_blocking(documents::default_projects_location).await??
         };
-        let (page, pairing, project_backends, default_supabase, daw_plugin_settings) = match engine
-        {
-            Some(engine) => {
-                tauri::async_runtime::spawn_blocking(move || -> Result<_> {
-                    let page = engine.summary_page(offset)?;
-                    let project_backends = page
-                        .projects
-                        .iter()
-                        .map(|item| {
-                            Ok((
-                                item.project.project_id,
-                                engine.project_backend_config(item.project.project_id)?,
-                            ))
-                        })
-                        .collect::<Result<HashMap<_, _>>>()?;
-                    let default_supabase = engine.default_supabase_config()?;
-                    Ok((
-                        Some(page),
-                        engine.pairing_status()?,
-                        project_backends,
-                        default_supabase,
-                        engine.daw_plugin_settings()?,
-                    ))
-                })
-                .await??
-            }
-            None => (
-                None,
-                PairingStatus::default(),
-                HashMap::new(),
-                None,
-                Vec::new(),
-            ),
-        };
+        let presence_network = self.lock()?.network.clone();
+        let (page, pairing, project_backends, default_supabase, daw_plugin_settings, presence) =
+            match engine {
+                Some(engine) => {
+                    tauri::async_runtime::spawn_blocking(move || -> Result<_> {
+                        let page = engine.summary_page(offset)?;
+                        let project_backends = page
+                            .projects
+                            .iter()
+                            .map(|item| {
+                                Ok((
+                                    item.project.project_id,
+                                    engine.project_backend_config(item.project.project_id)?,
+                                ))
+                            })
+                            .collect::<Result<HashMap<_, _>>>()?;
+                        let default_supabase = engine.default_supabase_config()?;
+                        let presence = if let Some(network) = presence_network {
+                            page.projects
+                                .iter()
+                                .map(|project| {
+                                    let id = project.project.project_id;
+                                    Ok((id, engine.presence_warnings(id, &network)?))
+                                })
+                                .collect::<Result<HashMap<_, _>>>()?
+                        } else {
+                            HashMap::new()
+                        };
+                        Ok((
+                            Some(page),
+                            engine.pairing_status()?,
+                            project_backends,
+                            default_supabase,
+                            engine.daw_plugin_settings()?,
+                            presence,
+                        ))
+                    })
+                    .await??
+                }
+                None => (
+                    None,
+                    PairingStatus::default(),
+                    HashMap::new(),
+                    None,
+                    Vec::new(),
+                    HashMap::new(),
+                ),
+            };
         let state_engine = { self.lock()?.engine.clone() };
         let supabase_states = match state_engine.clone() {
             Some(engine) => {
@@ -845,6 +868,7 @@ impl Desktop {
             })
             .collect();
         Ok(DesktopStatus {
+            presence,
             daw_plugin_settings,
             plugin_handoff: state.plugin_handoff.clone(),
             pairing,
@@ -1429,11 +1453,40 @@ impl Desktop {
                 self.automatic_pairing(&engine, &network, project_id, device_id, false)
                     .await
             }
-            Action::Send { project_id } => serde_json::to_value(
-                engine
-                    .send_snapshot(&network, project_id, allow_http)
-                    .await?,
-            )?,
+            Action::Send { project_id } => {
+                let disk = engine.clone();
+                let net = network.clone();
+                let dialog_app = app.clone();
+                let accepted = tauri::async_runtime::spawn_blocking(move || -> Result<bool> {
+                    let warnings = disk.presence_warnings(project_id, &net)?;
+                    if warnings.is_empty() {
+                        return Ok(true);
+                    }
+                    Ok(dialog_app
+                        .dialog()
+                        .message(
+                            warnings
+                                .iter()
+                                .map(|warning| warning.share_confirmation.as_str())
+                                .collect::<Vec<_>>()
+                                .join("\n"),
+                        )
+                        .title("Share current version?")
+                        .kind(tauri_plugin_dialog::MessageDialogKind::Warning)
+                        .buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancel)
+                        .blocking_show())
+                })
+                .await??;
+                if accepted {
+                    serde_json::to_value(
+                        engine
+                            .send_snapshot(&network, project_id, allow_http)
+                            .await?,
+                    )?
+                } else {
+                    json!({"message": "Sharing cancelled"})
+                }
+            }
             Action::ApprovePairing {
                 project_id,
                 request_id,
@@ -1888,7 +1941,7 @@ impl Desktop {
             let result = tauri::async_runtime::spawn_blocking(move || -> Result<()> {
                 let shown = engine.as_ref().map(|engine| engine.tray_notice_shown()).transpose()?.unwrap_or(false);
                 if !shown {
-                    dialog_app.dialog().message("Closing this window keeps TRACKMESH running in the system tray so collaborators can get your versions. Click the tray icon to reopen. Use Close safely or the tray's Quit to exit.").title("TRACKMESH stays available").blocking_show();
+                    dialog_app.dialog().message("TRACKMESH keeps running in the system tray after the window or DAW closes so collaborators can get your versions. Click the tray icon to reopen. Use Close safely or the tray's Quit to exit.").title("TRACKMESH stays available").blocking_show();
                     if let Some(engine) = engine { engine.mark_tray_notice_shown()?; }
                 }
                 Ok(())

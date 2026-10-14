@@ -61,6 +61,7 @@ export interface NetworkObservation {
   mappings: { method: 'UPNP_IGD' | 'PCP'; transport: 'TCP' | 'UDP'; state: 'NOT_ATTEMPTED' }[];
 }
 export interface DesktopStatus {
+  presence: Record<string, { device_id: string; name: string; since: number; both_working: boolean; line: string; get_line: string }[]>;
   daw_plugin_settings: { project_id: string; name: string; auto_share: boolean }[];
   plugin_handoff: { revision: number; project_id: string | null; offset: number } | null;
   pairing: { project_id: string | null; remaining_seconds: number; requests: { request_id: string; device_id: string; name: string; peer_id: string }[] };

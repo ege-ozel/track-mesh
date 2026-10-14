@@ -10,6 +10,18 @@ use rusqlite::{params, OptionalExtension};
 use uuid::Uuid;
 
 impl Store {
+    /// Existing completion metadata only; advisory callers must not write presence to storage.
+    pub fn last_completed_apply(&self, project: Uuid) -> Result<Option<std::time::SystemTime>> {
+        let completed: Option<String> = self.lock()?.query_row(
+            "SELECT MAX(updated_at) FROM transfer_sessions WHERE project_id=?1 AND state=?2",
+            params![project.to_string(), TransferState::Complete],
+            |row| row.get(0),
+        )?;
+        completed
+            .map(|value| Ok(chrono::DateTime::parse_from_rfc3339(&value)?.into()))
+            .transpose()
+    }
+
     pub fn has_active_transfer(&self, project: Uuid) -> Result<bool> {
         Ok(self.lock()?.query_row(
             "SELECT EXISTS(SELECT 1 FROM transfer_sessions WHERE project_id=?1 AND state<>?2)",

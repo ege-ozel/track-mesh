@@ -1,5 +1,7 @@
 # TrackMesh: iki bilgisayarda kurulum ve ilk deneme
 
+Collaborator projede çalışırken ana kart ve VST3 durum alanı bir uyarı gösterir; iki taraf da çalışıyorsa kaydedilen değişikliklerin sürümleri ayırabileceğini belirtir. Plugin oturumu ana sinyaldir; plugin yokken sınırlı, dakikalık dosya-tarihi kontrolü yaklaşık bir uyarı sağlar ve yanlış/gecikmiş uyarılar mümkündür. Share current version önce onay ister; otomatik DAW paylaşımı onay istemez. Get engellenmez, collaborator'ın yakında yeni sürüm paylaşabileceği belirtilir. Offline veya presence desteklemeyen eski cihaz için uyarı gösterilmez. Plugin'in başlattığı TrackMesh, DAW kapandıktan sonra da Windows tepsisinde kalır; ilk kez aynı tek-seferlik açıklamayı gösterir. Tepsiden açın; çıkmak için Quit veya Close safely kullanın. Açık kaldığı sürece collaborator Get yapabilir.
+
 Bu rehber Windows Desktop'ın güncel bağlantı akışını anlatır. Henüz güncel bir deneme paketi yoktur; gerektiğinde incelenmiş `master` üzerinden yeni paket hazırlanır. Eski paketler bağlantı akışını içermez. İki cihaz aynı güncel build'i kullansın. Hazır executable için Rust/Node gerekmez; Desktop WebView2 ister.
 
 Küçük bir proje kopyası ve boş alıcı klasörü kullanın. VST3 ilk aktarım için gerekli değildir. Bu sayfa yönergedir; gerçek kontrollerin sonuçları yalnızca [IMPLEMENTATION.md](../IMPLEMENTATION.md) içindedir.

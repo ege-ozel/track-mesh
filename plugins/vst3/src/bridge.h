@@ -23,6 +23,8 @@ struct ViewStatus {
     bool pickerSupported {false}, projectsMore {false}, desktopAvailable {false};
     bool shareEnabled {false}, getEnabled {false};
     bool autoShareSupported {false}, autoShare {false};
+    bool presenceDanger {false};
+    std::wstring presenceWarning, shareConfirmation;
 };
 struct BridgeState {
     std::mutex mutex;

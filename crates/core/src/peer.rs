@@ -31,6 +31,8 @@ pub struct PeerRuntime {
     supabase: Option<crate::SupabaseRuntime>,
     online_pull: JoinHandle<()>,
     online_pull_cancel: tokio::sync::watch::Sender<bool>,
+    presence: JoinHandle<()>,
+    presence_cancel: tokio::sync::watch::Sender<bool>,
 }
 #[derive(Default)]
 struct ResponderActivity {
@@ -71,6 +73,12 @@ impl PeerRuntime {
         let (online_pull_cancel, online_pull_rx) = tokio::sync::watch::channel(false);
         let online_pull =
             spawn_online_pull_monitor(engine.clone(), network.clone(), online_pull_rx);
+        let (presence_cancel, presence_rx) = tokio::sync::watch::channel(false);
+        let presence = tokio::spawn(crate::presence::run(
+            engine.clone(),
+            network.clone(),
+            presence_rx,
+        ));
         if start_mapping {
             network.set_mapping_consent(engine.upnp_mapping_enabled());
         }
@@ -200,9 +208,14 @@ impl PeerRuntime {
                             }
                             _ => false,
                         };
-                        responder_activity.active.fetch_add(1, Ordering::SeqCst);
-                        responder_activity.epoch.fetch_add(1, Ordering::SeqCst);
-                        let work = ResponderWork(responder_activity.clone());
+                        // Advisory refreshes must not keep a CLI-only owner alive.
+                        let work = if matches!(&message.request, network::IncomingRequest::Transfer(protocol::PeerRequest::Presence { .. })) {
+                            None
+                        } else {
+                            responder_activity.active.fetch_add(1, Ordering::SeqCst);
+                            responder_activity.epoch.fetch_add(1, Ordering::SeqCst);
+                            Some(ResponderWork(responder_activity.clone()))
+                        };
                         let engine=engine.clone();let network=network_copy.clone();
                         workers.spawn(async move {
                             let _work = work;
@@ -216,6 +229,16 @@ impl PeerRuntime {
                                     let _ = network.respond(message, response).await;
                                 }
                                 network::IncomingRequest::Transfer(request) => {
+                                    if matches!(&request, protocol::PeerRequest::Presence { .. }) {
+                                        let status_network = network.clone();
+                                        let response = tokio::task::spawn_blocking(move || engine.accept_presence(&status_network, &peer, &request)).await;
+                                        let response = match response {
+                                            Ok(Ok(response)) => response,
+                                            _ => PeerResponse::Error { message: "presence rejected".into() },
+                                        };
+                                        let _ = network.respond(message, response).await;
+                                        return;
+                                    }
                                     if let protocol::PeerRequest::SnapshotAvailable { project_id, .. } = &request {
                                         let project_id = *project_id;
                                         let store = engine.store.clone();
@@ -273,6 +296,8 @@ impl PeerRuntime {
             online_pull,
             online_pull_cancel,
             mapping_task,
+            presence,
+            presence_cancel,
         })
     }
     pub fn is_finished(&self) -> bool {
@@ -305,6 +330,8 @@ impl PeerRuntime {
         Ok(())
     }
     pub async fn stop(self) -> Result<()> {
+        self.presence_cancel.send_replace(true);
+        self.presence.await.context("presence worker panicked")?;
         let supabase_result = if let Some(supabase) = self.supabase {
             supabase.stop().await
         } else {

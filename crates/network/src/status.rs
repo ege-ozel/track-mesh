@@ -61,6 +61,8 @@ impl Default for PortMappingStatus {
 }
 #[derive(Clone, Debug, Serialize)]
 pub struct ConnectionStatus {
+    /// Changes only when this peer comes online after having no live connection.
+    pub generation: u64,
     pub online: bool,
     pub route: String,
     pub transport: String,
@@ -70,6 +72,11 @@ pub(super) fn refresh_status(
     connections: &HashMap<ConnectionId, (PeerId, bool, String)>,
 ) {
     if let Ok(mut status) = status.write() {
+        let previously_online = status
+            .peers
+            .iter()
+            .filter_map(|(peer, state)| state.online.then_some(peer.clone()))
+            .collect::<std::collections::HashSet<_>>();
         for state in status.peers.values_mut() {
             state.online = false;
             state.route = "OFFLINE".into();
@@ -79,11 +86,15 @@ pub(super) fn refresh_status(
                 .peers
                 .entry(peer.to_string())
                 .or_insert(ConnectionStatus {
+                    generation: 0,
                     online: false,
                     route: String::new(),
                     transport: String::new(),
                 });
             if !state.online || !relayed {
+                if !state.online && !previously_online.contains(&peer.to_string()) {
+                    state.generation = state.generation.wrapping_add(1);
+                }
                 state.online = true;
                 state.route = if *relayed { "RELAYED" } else { "DIRECT" }.into();
                 state.transport = transport.clone();
