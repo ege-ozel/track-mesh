@@ -107,7 +107,7 @@ export type Action =
   | { kind: 'recover'; project_id: string; daw_closed: boolean };
 
 export const getStatus = (offset: number) => invoke<DesktopStatus>('get_status', { offset });
-export type StorageSummary = { cache_bytes: number | null; backups: { project_id: string; project_name: string; transfer_id: string; path: string; bytes: number; protected: boolean }[]; problems: string[] };
+export type StorageSummary = { cache_bytes: number | null; backups: { project_id: string; project_name: string; transfer_id: string; path: string; bytes: number; modified_at: number | null; protected: boolean }[]; problems: string[] };
 export const getStorage = () => invoke<StorageSummary>('get_storage');
 export const chooseFolder = () => invoke<string | null>('choose_folder');
 export const openProjectFolder = (projectId: string) => invoke<void>('open_project_folder', { projectId });

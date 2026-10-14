@@ -214,6 +214,11 @@ async fn main() -> Result<()> {
             output_json(&engine.snapshot(project_id)?, output)?
         }
         Command::Status => output_json(&engine.local_status()?, None)?,
+        Command::Publish { project_id, .. } | Command::Refresh { project_id, .. }
+            if !engine.mailbox_enabled(project_id)? =>
+        {
+            println!("mailbox not used for Supabase projects or projects without a mailbox URL");
+        }
         Command::Publish {
             project_id,
             mailbox,

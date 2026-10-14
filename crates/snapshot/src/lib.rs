@@ -9,6 +9,7 @@ use std::{
     fs::{self, File, OpenOptions},
     io::{Read, Write},
     path::{Path, PathBuf},
+    sync::{atomic::AtomicU64, Arc},
     time::SystemTime,
 };
 use uuid::Uuid;
@@ -52,11 +53,16 @@ fn is_backup_tree_path(relative: &str) -> bool {
 #[derive(Clone)]
 pub struct ChunkStore {
     root: PathBuf,
+    /// Unix seconds of the last chunk read; retention skips pruning while peers are fetching.
+    last_read: Arc<AtomicU64>,
 }
 impl ChunkStore {
     pub fn new(root: PathBuf) -> Result<Self> {
         fs::create_dir_all(&root)?;
-        Ok(Self { root })
+        Ok(Self {
+            root,
+            last_read: Arc::default(),
+        })
     }
     fn path(&self, hash: &str) -> Result<PathBuf> {
         ensure!(protocol::valid_hash(hash), "invalid chunk hash");
@@ -64,6 +70,7 @@ impl ChunkStore {
     }
     pub fn read(&self, hash: &str, size: u32) -> Result<Vec<u8>> {
         let _lease = self.lease(false)?;
+        self.mark_read();
         let path = self.path(hash)?;
         let file = File::open(&path)?;
         ensure!(

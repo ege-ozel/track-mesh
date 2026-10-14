@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { getStorage } from './api';
+import { getStorage, openPreviousVersion } from './api';
 import type { Action, StorageSummary } from './api';
 
 const size = (value: number) => value >= 1_000_000_000 ? `${(value / 1_000_000_000).toFixed(2)} GB` : `${(value / 1_000_000).toFixed(2)} MB`;
@@ -30,7 +30,8 @@ export function StorageSettings({ busy, act }: { busy: boolean; act: (action: Ac
       onChange={event => setSelected(event.target.checked ? storage.backups.filter(b => !b.protected).map(b => b.transfer_id) : [])} /> Select all old backups</label></p>
       <ul>{storage.backups.map(backup => <li key={backup.transfer_id}>
         <label><input type="checkbox" disabled={busy || loading || backup.protected} checked={selected.includes(backup.transfer_id)} onChange={event => setSelected(ids => event.target.checked ? [...ids, backup.transfer_id] : ids.filter(id => id !== backup.transfer_id))} />
-          {backup.project_name} · {size(backup.bytes)} · {backup.protected ? 'Kept' : 'Old backup'}</label>
+          {backup.project_name} · {size(backup.bytes)}{backup.modified_at != null && ` · ${new Date(backup.modified_at * 1000).toLocaleString()}`} · {backup.protected ? 'Kept' : 'Old backup'}</label>
+        <button disabled={busy || loading} onClick={() => void openPreviousVersion(backup.project_id, backup.transfer_id).catch(err => setError(String(err)))}>Open</button>
         <p className="muted"><code>{backup.path.replace(/^\\\\\?\\/, '')}</code></p>
       </li>)}</ul>
       <button className="danger" disabled={busy || loading || !chosen.length || chosen.length > 1024} onClick={() => void act({ kind: 'delete_backups', selected: chosen.map(({ transfer_id, path, bytes }) => ({ transfer_id, path, bytes })) })}>Delete selected backups · {size(total)}</button>

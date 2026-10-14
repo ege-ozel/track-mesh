@@ -46,7 +46,7 @@ impl Desktop {
                     limit = approval.new_bytes;
                     let app = app.clone();
                     let accepted = tauri::async_runtime::spawn_blocking(move || {
-                        app.dialog().message(format!("Get needs to download {:.2} GB of new data ({limit} bytes). Continue?", limit as f64 / 1_000_000_000.0))
+                        app.dialog().message(format!("This version needs about {:.2} GB of new data. TrackMesh also keeps a backup of the files it replaces. Continue?", limit as f64 / 1_000_000_000.0))
                             .title("Confirm download").buttons(MessageDialogButtons::OkCancel).blocking_show()
                     }).await?;
                     ensure!(

@@ -353,7 +353,9 @@ function Card({ card, status, jobStartedAt, focusProjectId, act }: { card: Proje
       <ProjectBackendSettings projectId={project.project_id} config={status.project_backends[project.project_id]} defaultSupabase={status.default_supabase} state={status.supabase_states[project.project_id] ?? 'NOT_CONFIGURED'} revokeProblem={card.revoke_problem} missingFunctions={card.missing_functions} busy={busy} act={act} />
       {(card.grant_problem === 'UNREACHABLE' || inviteState === 'UNREACHABLE') && <p className="muted">Invite service is unreachable. Check its URL and network connection in Advanced settings.</p>}
       <p>UUID <code>{project.project_id}</code></p><p>Mailbox <code>{project.mailbox_url ?? 'Not configured'}</code></p><p>Relay <code>{project.relay_address ?? 'Not configured'}</code></p>
-      <p>Mailbox stores encrypted metadata and snapshot announcements only. The relay field is a legacy setting outside the supported setup.</p>
+      {card.mailbox_enabled
+        ? <p>Mailbox stores encrypted metadata and snapshot announcements only. The relay field is a legacy setting outside the supported setup.</p>
+        : <p className="muted">Version notices use the invite service; the legacy mailbox is off for this project.</p>}
       <button disabled={busy} onClick={() => void chooseProjectRoot()}>{rootMissing ? 'Locate folder' : 'Change folder'}</button>
       {peer && <p>Device ID <code>{peer.device.device_id}</code> · Identity <code>{peer.device.peer_id}</code></p>}
       </section>

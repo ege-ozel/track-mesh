@@ -4,7 +4,18 @@ use anyhow::{ensure, Result};
 use std::{
     collections::HashSet,
     fs::{self, File, OpenOptions},
+    sync::atomic::Ordering,
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+
+/// A prune holds the exclusive lease briefly; shared users wait instead of failing a transfer.
+const SHARED_LEASE_WAIT: Duration = Duration::from_secs(30);
+
+fn unix_now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
+}
 
 pub struct CacheLease {
     _file: File,
@@ -27,17 +38,37 @@ impl ChunkStore {
                     "cache lease is a reparse point"
                 );
             }
-            let file = OpenOptions::new()
-                .read(true)
-                .write(true)
-                .create(true)
-                .truncate(false)
-                .share_mode(if exclusive { 0 } else { 3 })
-                .open(path)?;
-            Ok(CacheLease { _file: file })
+            let open = || {
+                OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .create(true)
+                    .truncate(false)
+                    .share_mode(if exclusive { 0 } else { 3 })
+                    .open(&path)
+            };
+            let started = Instant::now();
+            loop {
+                match open() {
+                    Ok(file) => return Ok(CacheLease { _file: file }),
+                    Err(error) if exclusive || started.elapsed() >= SHARED_LEASE_WAIT => {
+                        return Err(error.into())
+                    }
+                    Err(_) => std::thread::sleep(Duration::from_millis(100)),
+                }
+            }
         }
         #[cfg(not(windows))]
         anyhow::bail!("cache retention requires Windows file locking")
+    }
+
+    pub(crate) fn mark_read(&self) {
+        self.last_read.store(unix_now(), Ordering::Relaxed);
+    }
+
+    /// True while a peer fetched chunks within `window`; retention then waits for a later pass.
+    pub fn recently_read(&self, window: Duration) -> bool {
+        unix_now().saturating_sub(self.last_read.load(Ordering::Relaxed)) < window.as_secs()
     }
 
     /// Caller holds the exclusive lease. Unknown files and reparse points fail closed.

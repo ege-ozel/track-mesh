@@ -11,6 +11,8 @@ pub struct BackupSummary {
     pub transfer_id: Uuid,
     pub path: String,
     pub bytes: u64,
+    /// Unix seconds when the Get that left this backup finished (journal write time).
+    pub modified_at: Option<u64>,
     pub protected: bool,
 }
 #[derive(Serialize)]
@@ -42,7 +44,7 @@ impl Engine {
         }
         for project in self.store.projects()? {
             let mut backups = Vec::new();
-            let mut uncertain = false;
+            let mut unreadable = 0;
             for session in sessions.iter().filter(|s| {
                 s.project_id == project.project_id && s.state == storage::TransferState::Complete
             }) {
@@ -61,18 +63,19 @@ impl Engine {
                         transfer_id: session.transfer_id,
                         path: inventory.path.to_string_lossy().into_owned(),
                         bytes: inventory.bytes,
+                        modified_at: std::fs::metadata(inventory.path.join("journal.json"))
+                            .and_then(|m| m.modified())
+                            .ok()
+                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                            .map(|d| d.as_secs()),
                         protected: backups.is_empty(),
                     }),
-                    Err(_) => {
-                        uncertain = true;
-                    }
+                    // An unreadable folder is never offered for deletion; the others stay usable.
+                    Err(_) => unreadable += 1,
                 }
             }
-            if uncertain {
-                for backup in &mut backups {
-                    backup.protected = true;
-                }
-                result.problems.push(format!("{}: backup data is unfinished, unavailable or changed. Cleanup is blocked; inspect it before deleting anything.", project.name));
+            if unreadable > 0 {
+                result.problems.push(format!("{}: {unreadable} backup folder(s) are unfinished, unavailable or changed and are not listed. Inspect them before deleting anything by hand.", project.name));
             }
             result.backups.extend(backups);
         }
@@ -130,10 +133,7 @@ impl Engine {
         Ok(bytes)
     }
     pub fn maintain_storage(&self) -> Result<u64> {
-        let _lease = self.chunks.lease(true)?;
-        self.chunks.stored_bytes()?;
-        let retained = self.store.retain_current_chunks()?;
-        self.chunks.prune(&retained)
+        prune_cache(&self.chunks, &self.store)
     }
     pub(crate) fn maintain_storage_if_idle(&self) {
         // A busy cache is retried on the next completed operation/session pass.
@@ -144,13 +144,20 @@ impl Engine {
     pub(crate) async fn maintain_storage_after_transfer(&self) {
         let chunks = self.chunks.clone();
         let store = self.store.clone();
-        let _ = tokio::task::spawn_blocking(move || -> Result<()> {
-            let _lease = chunks.lease(true)?;
-            chunks.stored_bytes()?;
-            let retained = store.retain_current_chunks()?;
-            chunks.prune(&retained)?;
-            Ok(())
-        })
-        .await;
+        let _ = tokio::task::spawn_blocking(move || prune_cache(&chunks, &store)).await;
     }
+}
+
+/// Peers fetching from this device keep their chunks readable; pruning waits for a quiet pass.
+const SERVING_QUIET: std::time::Duration = std::time::Duration::from_secs(120);
+
+fn prune_cache(chunks: &snapshot::ChunkStore, store: &storage::Store) -> Result<u64> {
+    anyhow::ensure!(
+        !chunks.recently_read(SERVING_QUIET),
+        "a collaborator is fetching versions; retention deferred"
+    );
+    let _lease = chunks.lease(true)?;
+    chunks.stored_bytes()?;
+    let retained = store.retain_current_chunks()?;
+    chunks.prune(&retained)
 }

@@ -213,7 +213,8 @@ impl MailboxRuntime {
                 let projects =
                     tokio::task::spawn_blocking(move || engine_for_disk.store.projects()).await??;
                 for project in projects {
-                    if !engine.mailbox_enabled(project.project_id)? {
+                    // One unreadable project config must not stop the other projects' passes.
+                    if !engine.mailbox_enabled(project.project_id).unwrap_or(false) {
                         continue;
                     }
                     let operation = async {

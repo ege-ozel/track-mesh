@@ -45,7 +45,7 @@ The first Invite or Accept asks permission to attempt a time-limited UPnP mappin
 3. Persist verified chunks to the local content store.
 4. Sign the complete immutable manifest. Unchanged files reuse the current snapshot.
 5. Commit snapshot, files, chunk index/catalog, and new local head in one SQLite transaction with an expected-head check.
-6. Keep authored metadata `PENDING` until the mailbox client receives a matching server ACK.
+6. Keep authored metadata `PENDING` until the mailbox client receives a matching server ACK. Supabase projects never use the legacy mailbox; their version notices travel as direct notices or encrypted head hints, and status reports no pending publications for them.
 
 The scanner omits only Ableton `.asd` analysis files, the top-level `Backup/` tree, and Windows/macOS metadata files (`desktop.ini`, `Thumbs.db`, `ehthumbs.db`, `.DS_Store`). These files neither delay save settlement nor enter new manifests. Older signed manifests remain unchanged; comparisons filter those paths on both sides, and receive leaves ignored files in the working folder without moving or overwriting them. A folder with no remaining project files cannot be shared as its first snapshot.
 

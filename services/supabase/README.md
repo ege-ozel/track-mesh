@@ -2,6 +2,8 @@
 
 This directory contains the optional Supabase invite service: encrypted single-read invite drops, signed encrypted endpoint records, encrypted head hints, and device membership. The client implementation lives in `crates/mailbox`, `crates/crypto`, `crates/core`, and the Windows Desktop adapter. [IMPLEMENTATION.md](../../docs/IMPLEMENTATION.md) records a live host/Windows Sandbox invite and transfer trial. The m7 migration reached pushed `master` on 2026-10-13, but its application has not been checked in the Dashboard; `head-publish` and `head-list` deployment remains unconfirmed. Project UUIDs are opaque routes, not project content. Plaintext addresses, project keys, invite contents, files and samples never go to Supabase.
 
+Projects that use this service do not use the legacy self-hosted mailbox: Share publishes no mailbox metadata, and offline collaborators learn about new versions from the encrypted head hints.
+
 ## Before deployment
 
 - Review the owner decisions and signing contract in [`docs/plans/phase1-supabase-backend.md`](../../docs/plans/phase1-supabase-backend.md), especially TOFU `project-claim`, member grants/revocations, and the exact tuple bytes.
