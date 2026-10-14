@@ -169,10 +169,15 @@ impl Engine {
             let name: String = peer.name.chars().take(80).map(|ch| if ch.is_control() { ' ' } else { ch }).collect();
             Some(PresenceWarning {
                 device_id: peer.device_id, name: name.clone(), since: received.since, both_working: both,
-                line: if both { format!("{name} is also working on this project. If you both save changes, your versions will split.") }
+                line: if both {
+                    if crate::lang::is_turkish() { format!("{name} de bu projede çalışıyor. İkiniz de kaydederseniz sürümleriniz ayrılır.") }
+                    else { format!("{name} is also working on this project. If you both save changes, your versions will split.") }
+                } else if crate::lang::is_turkish() { format!("{name} şu an bu projede çalışıyor") }
                     else { format!("{name} is working on this project now") },
-                share_confirmation: format!("{name} is working on this project now. Share anyway?"),
-                get_line: format!("{name} may share a newer version soon."),
+                share_confirmation: if crate::lang::is_turkish() { format!("{name} şu an bu projede çalışıyor. Yine de paylaşılsın mı?") }
+                    else { format!("{name} is working on this project now. Share anyway?") },
+                get_line: if crate::lang::is_turkish() { format!("{name} yakında daha yeni bir sürüm paylaşabilir.") }
+                    else { format!("{name} may share a newer version soon.") },
             })
         }).collect())
     }

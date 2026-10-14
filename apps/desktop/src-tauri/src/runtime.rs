@@ -8,10 +8,7 @@ use serde_json::{json, Value};
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
-    },
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 use tauri::{AppHandle, Manager};
@@ -25,21 +22,8 @@ use trackmesh_core::{
 };
 use uuid::Uuid;
 
-// The window's language, so native dialogs match it; the window sends it on start and on change.
-static TURKISH: AtomicBool = AtomicBool::new(false);
-
-pub fn is_turkish() -> bool {
-    TURKISH.load(Ordering::Relaxed)
-}
-
-/// Picks the dialog text for the window's language.
-pub fn tr<'a>(en: &'a str, turkish: &'a str) -> &'a str {
-    if is_turkish() {
-        turkish
-    } else {
-        en
-    }
-}
+// The window sends its language on start and on change; native dialogs and the plugin follow it.
+pub use trackmesh_core::lang::{is_turkish, tr};
 
 fn receive_blocked_or_error(error: anyhow::Error) -> Result<Value> {
     if let Some(refusal) = error.downcast_ref::<transfer::ReceiveRefusal>() {
@@ -1586,7 +1570,7 @@ impl Desktop {
                         .message(
                             warnings
                                 .iter()
-                                .map(|warning| tr(&warning.share_confirmation, &format!("{} şu an bu projede çalışıyor. Yine de paylaşılsın mı?", warning.name)).to_owned())
+                                .map(|warning| warning.share_confirmation.as_str())
                                 .collect::<Vec<_>>()
                                 .join("\n\n"),
                         )
@@ -2052,7 +2036,7 @@ impl Desktop {
     }
 
     pub fn set_language(&self, lang: &str) {
-        TURKISH.store(lang == "tr", Ordering::Relaxed);
+        trackmesh_core::lang::set_turkish(lang == "tr");
     }
 
     pub fn hide_to_tray(self: &Arc<Self>, app: AppHandle) {

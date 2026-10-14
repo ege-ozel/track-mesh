@@ -487,6 +487,11 @@ pub struct PluginStatus {
     pub presence_since: u64,
     #[serde(default)]
     pub presence_get_line: String,
+    /// "en" or "tr": the plugin's own labels follow the Desktop language.
+    #[serde(default)]
+    pub language: String,
+    #[serde(default)]
+    pub get_label: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

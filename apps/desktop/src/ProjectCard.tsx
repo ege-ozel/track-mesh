@@ -192,7 +192,7 @@ export function Card({ card, status, jobStartedAt, focusProjectId, act, openAdva
     {!peer && inviteState === 'WAITING_FOR_GRANT' && <Waiting>{t("Waiting for your collaborator's TrackMesh to confirm this device with the invite service. Keep both apps open.", "İş arkadaşının TrackMesh'inin bu cihazı davet servisine onaylaması bekleniyor. İki uygulamayı da açık tut.")}</Waiting>}
     {!peer && backend === 'SUPABASE' && inviteState === 'UNKNOWN' && <Waiting>{t('Connecting to the invite service…', 'Davet servisine bağlanılıyor…')}</Waiting>}
     {status.presence[projectId]?.map(warning => <p key={warning.device_id} className={`notice ${warning.both_working ? 'danger' : ''}`} role="status">
-      {warning.both_working ? t(warning.line, `${warning.name} de bu projede çalışıyor. İkiniz de kaydederseniz sürümleriniz ayrılır.`) : t(warning.line, `${warning.name} şu an bu projede çalışıyor`)}
+      {warning.line}
       {!warning.both_working && ` (${t('since', 'başlangıç')} ${new Date(warning.since * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })})`}</p>)}
     {status.plugin_handoff?.project_id === projectId && <p className="notice" role="status">{t(`Save and close this project in your DAW, then press Get ${peerName}'s version.`, `Projeyi DAW'da kaydedip kapat, sonra “${named(collab, 'gen')} sürümünü al” düğmesine bas.`)}</p>}
     {folderError && <p className="error">{folderError}</p>}
@@ -238,7 +238,7 @@ export function Card({ card, status, jobStartedAt, focusProjectId, act, openAdva
             : <button className={remoteAhead ? '' : 'primary'} disabled={busy || rootMissing || project.recovery_required} onClick={() => void share()}>{t('Share current version', 'Güncel sürümü paylaş')}</button>}
         </div>
         <div className="pane"><h3>{t(`Get ${peerName}'s changes`, `${named(collab, 'gen')} değişikliklerini al`)}</h3>
-          {status.presence[projectId]?.filter(warning => warning.device_id === peer.device.device_id).map(warning => <p key={warning.device_id} className="muted" role="status">{t(warning.get_line, `${warning.name} yakında daha yeni bir sürüm paylaşabilir.`)}</p>)}
+          {status.presence[projectId]?.filter(warning => warning.device_id === peer.device.device_id).map(warning => <p key={warning.device_id} className="muted" role="status">{warning.get_line}</p>)}
           {upToDate && <p className="muted">{t(`You have ${peerName}'s latest version ✓`, `${named(collab, 'gen')} son sürümü sende ✓`)}</p>}
           <button className={remoteAhead || resumable ? 'primary' : ''} disabled={disabledReceive} onClick={() => void receive()}>{resumable ? t('Resume getting', 'Almaya devam et') : t(`Get ${peerName}'s version`, `${named(collab, 'gen')} sürümünü al`)}</button>
         </div>

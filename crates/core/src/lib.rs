@@ -18,6 +18,7 @@ mod endpoints;
 mod firewall_observation;
 mod network_observation;
 mod settings;
+pub mod lang;
 pub use auto_share::DawPluginSetting;
 mod supabase;
 pub use firewall_observation::{observe_firewall, FirewallObservation};

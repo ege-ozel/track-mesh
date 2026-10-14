@@ -2,7 +2,7 @@
 mod jobs;
 mod security;
 mod status;
-use crate::Engine;
+use crate::{lang::tr, Engine};
 use anyhow::{ensure, Context, Result};
 use network::Network;
 use protocol::{PluginEvent, PluginStatus, MAX_IPC_BYTES};
@@ -72,7 +72,7 @@ impl Shared {
                 &self.network,
                 self.lock()?.messages.get(&project).cloned(),
             ),
-            Err(_) => status::unavailable(project, "Link this project's folder in TrackMesh first"),
+            Err(_) => status::unavailable(project, tr("Add this project's folder in TrackMesh first (Share a project folder).", "Önce bu projenin klasörünü TrackMesh'e ekle (Proje klasörü paylaş).")),
         };
         reply.projects = projects;
         reply.projects_more = more;
@@ -85,7 +85,7 @@ impl Shared {
             reply.share_confirmation = status::bounded(&warning.share_confirmation);
             reply.presence_danger = warning.both_working;
             reply.presence_get_line = status::bounded(&warning.get_line);
-            if reply.message == status::GET_GUIDANCE {
+            if reply.message == status::get_guidance() {
                 reply.message.push(' ');
                 reply.message.push_str(&reply.presence_get_line);
             }
@@ -330,39 +330,37 @@ async fn connection(
                         shared.lock()?.messages.remove(&project);
                         reply = shared.status(project).await?;
                         reply.message = if enabled {
-                            "Automatic sharing is on."
+                            tr("Every DAW save is now shared.", "Artık her DAW kaydı paylaşılıyor.")
                         } else {
-                            "Automatic sharing is off. Use Share current version."
+                            tr("Saves are no longer shared by themselves. Use Share current version.", "Kayıtlar artık kendiliğinden paylaşılmıyor. Güncel sürümü paylaş'ı kullan.")
                         }
                         .into();
                     }
                     Err(_) => {
                         reply.ok = false;
-                        reply.message = "Could not save the automatic sharing setting. Open TrackMesh and retry.".into();
+                        reply.message = tr("Could not save this setting. Open TrackMesh and try again.", "Bu ayar kaydedilemedi. TrackMesh'i aç ve tekrar dene.").into();
                     }
                 }
             }
             PluginEvent::SendSnapshot { .. } if reply.share_enabled => {
                 match shared.schedule(project, false) {
                     Ok(()) => {
-                        reply.message =
-                            "Share current version queued; waiting for project files to settle."
-                                .into()
+                        reply.message = status::queued()
                     }
                     Err(_) => {
                         reply.ok = false;
-                        reply.message = "Agent busy or closing; retry later.".into();
+                        reply.message = tr("TrackMesh is busy or closing. Try again in a moment.", "TrackMesh meşgul ya da kapanıyor. Biraz sonra tekrar dene.").into();
                     }
                 }
             }
             PluginEvent::SendSnapshot { .. } => {
                 reply.ok = false;
-                reply.message = "Share current version is unavailable. Open TrackMesh to finish setup or recovery first.".into();
+                reply.message = tr("Sharing isn't possible yet. Open TrackMesh to see what it needs.", "Şu an paylaşılamıyor. Neyin gerektiğini görmek için TrackMesh'i aç.").into();
             }
             PluginEvent::ReceiveSnapshot { .. } => {
                 if !shared.desktop_available {
                     reply.ok = false;
-                    reply.message = "Open TrackMesh to get your collaborator's version.".into();
+                    reply.message = tr("Open TrackMesh to get your collaborator's version.", "İş arkadaşının sürümünü almak için TrackMesh'i aç.").into();
                 } else {
                     let mut state = shared.lock()?;
                     ensure!(
@@ -373,7 +371,7 @@ async fn connection(
                         project_id: (!reply.project_name.is_empty()).then_some(project),
                     });
                     state.epoch = state.epoch.wrapping_add(1);
-                    reply.message = status::GET_GUIDANCE.into();
+                    reply.message = status::get_guidance();
                     if !reply.presence_get_line.is_empty() {
                         reply.message.push(' ');
                         reply.message.push_str(&reply.presence_get_line);
@@ -387,7 +385,7 @@ async fn connection(
                 if !reply.project_name.is_empty() && !reply.auto_share =>
             {
                 reply.ok = true;
-                reply.message = "Saved. Press Share current version to send it.".into();
+                reply.message = status::saved();
                 let mut state = shared.lock()?;
                 if state.messages.contains_key(&project) || state.messages.len() < 64 {
                     state.messages.insert(project, status::Notice::Saved);
@@ -396,13 +394,11 @@ async fn connection(
             PluginEvent::SaveObserved { .. } if !reply.project_name.is_empty() => {
                 match shared.schedule(project, true) {
                     Ok(()) => {
-                        reply.message = "Save observed; waiting for project files to settle.".into()
+                        reply.message = status::saving()
                     }
                     Err(_) => {
                         reply.ok = false;
-                        reply.message =
-                            "Save not queued; agent busy or closing. Retry Share current version."
-                                .into();
+                        reply.message = tr("TrackMesh is busy or closing, so this save wasn't shared. Press Share current version.", "TrackMesh meşgul ya da kapanıyor, bu kayıt paylaşılmadı. Güncel sürümü paylaş'a bas.").into();
                     }
                 }
             }

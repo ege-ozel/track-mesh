@@ -49,13 +49,14 @@ std::wstring pipeName() {
     })) throw std::runtime_error("Invalid IPC suffix");
     return L"\\\\.\\pipe\\TrackMesh-v1-" + sid + L"-" + suffix;
 }
-void offline(const std::shared_ptr<BridgeState>& state, const wchar_t* message) {
+void offline(const std::shared_ptr<BridgeState>& state, const wchar_t* message, const wchar_t* turkish) {
     std::lock_guard<std::mutex> lock(state->mutex);
     state->view.connected = false;
     state->view.linked = false;
     state->view.connection = L"OFFLINE";
     state->view.state = L"AGENT UNAVAILABLE";
-    state->view.message = message;
+    state->view.language = state->language;
+    state->view.message = state->language == L"tr" ? turkish : message;
 }
 bool launchAgent(HMODULE module) {
     auto path = environment(L"TRACKMESH_AGENT_PATH");
@@ -196,6 +197,8 @@ bool request(HANDLE pipe, const char* event, const std::string& session, const P
     view.presenceDanger = optionalBool(object, "presence_danger");
     if (field(object, "presence_warning")) view.presenceWarning = wide(jsonString(object, "presence_warning"));
     if (field(object, "share_confirmation")) view.shareConfirmation = wide(jsonString(object, "share_confirmation"));
+    if (field(object, "language")) view.language = wide(jsonString(object, "language"));
+    if (field(object, "get_label")) view.getLabel = wide(jsonString(object, "get_label"));
     const auto since = field(object, "presence_since");
     if (since && since->type == json_type_number && !view.presenceWarning.empty() && !view.presenceDanger) {
         const auto number = static_cast<json_number_s*>(since->payload);
@@ -203,7 +206,8 @@ bool request(HANDLE pipe, const char* event, const std::string& session, const P
         tm local {};
         if (_localtime64_s(&local, &seconds) == 0) {
             wchar_t time[16] {};
-            if (wcsftime(time, 16, L"%H:%M", &local)) view.presenceWarning += L" (since " + std::wstring(time) + L")";
+            if (wcsftime(time, 16, L"%H:%M", &local))
+                view.presenceWarning += (view.language == L"tr" ? L" (başlangıç " : L" (since ") + std::wstring(time) + L")";
         }
     }
     if (view.pickerSupported) {
@@ -223,6 +227,7 @@ bool request(HANDLE pipe, const char* event, const std::string& session, const P
     view.peerOnline = jsonBool(object, "peer_online");
     if (!ok && view.state.empty()) view.state = L"ACTION REFUSED";
     std::lock_guard<std::mutex> lock(state->mutex);
+    if (!view.language.empty()) state->language = view.language;
     if (state->project == project) state->view = std::move(view);
     return true;
 }
@@ -255,7 +260,7 @@ void run(Work& work) {
             FILE_FLAG_OVERLAPPED | SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION, nullptr));
         if (pipe.value == INVALID_HANDLE_VALUE) {
             const auto error = GetLastError();
-            offline(state, L"Waiting for TrackMesh. Open TrackMesh to link this project's folder.");
+            offline(state, L"Waiting for TrackMesh to open…", L"TrackMesh'in açılması bekleniyor…");
             if (!everConnected && (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND) && GetTickCount64() - lastLaunch >= 10000) {
                 launchAgent(work.module);
                 lastLaunch = GetTickCount64();
@@ -308,7 +313,7 @@ void run(Work& work) {
             if (healthy && !state->ending.load()) WaitForSingleObject(state->wake, 500);
         }
         if (!healthy) {
-            offline(state, L"Agent connection interrupted. Check desktop before retrying an action.");
+            offline(state, L"Lost the connection to TrackMesh. Reconnecting…", L"TrackMesh ile bağlantı koptu. Yeniden bağlanılıyor…");
             WaitForSingleObject(state->wake, 500);
         }
     }
@@ -317,7 +322,7 @@ DWORD WINAPI worker(void* argument) {
     std::unique_ptr<Work> work(static_cast<Work*>(argument));
     const auto module = work->module;
     try { run(*work); }
-    catch (...) { offline(work->state, L"Agent bridge unavailable. Check TRACKMESH configuration."); }
+    catch (...) { offline(work->state, L"Can't talk to TrackMesh. Reinstall TrackMesh if this stays.", L"TrackMesh ile konuşulamıyor. Böyle kalırsa TrackMesh'i yeniden kur."); }
     work.reset();
     // The host can release the component immediately: the module remains loaded
     // until all worker C++ objects have been destroyed, including the shared state.
@@ -351,7 +356,8 @@ void Bridge::setProject(const ProjectId& project) {
       state->generation.fetch_add(1);
       state->view = {};
       state->view.project = wide(projectText(project));
-      state->view.message = L"Connecting to TRACKMESH agent..."; }
+      state->view.language = state->language;
+      state->view.message = state->language == L"tr" ? L"TrackMesh'e bağlanılıyor…" : L"Connecting to TrackMesh…"; }
     SetEvent(state->wake);
 }
 ProjectId Bridge::project() const { return projectOf(state); }

@@ -1,7 +1,9 @@
 #include "view.h"
 #include "plugin.h"
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
+#include <ctime>
 #include <utility>
 
 using namespace Steinberg;
@@ -17,6 +19,27 @@ void label(HDC dc, HFONT font, const std::wstring& value, RECT area, COLORREF co
     SetTextColor(dc, color);
     DrawTextW(dc, value.c_str(), static_cast<int>(value.size()), &area, flags);
     SelectObject(dc, previous);
+}
+// The plugin follows the TrackMesh window's language; older agents send none, which reads as English.
+std::wstring pick(const ViewStatus& status, const wchar_t* english, const wchar_t* turkish) {
+    return status.language == L"tr" ? turkish : english;
+}
+void setText(HWND control, const std::wstring& text) {
+    wchar_t current[128] {};
+    GetWindowTextW(control, current, 128);
+    if (text != current) SetWindowTextW(control, text.c_str());
+}
+// RFC 3339 UTC from the agent ("2026-10-14T12:34:56+00:00") as local "14.10 15:34"; empty if unreadable.
+std::wstring localTime(const std::wstring& value) {
+    tm utc {};
+    if (swscanf_s(value.c_str(), L"%4d-%2d-%2dT%2d:%2d", &utc.tm_year, &utc.tm_mon, &utc.tm_mday, &utc.tm_hour, &utc.tm_min) != 5) return {};
+    utc.tm_year -= 1900;
+    utc.tm_mon -= 1;
+    const auto seconds = _mkgmtime64(&utc);
+    tm local {};
+    if (seconds == -1 || _localtime64_s(&local, &seconds) != 0) return {};
+    wchar_t text[32] {};
+    return wcsftime(text, 32, L"%d.%m %H:%M", &local) ? std::wstring(text) : std::wstring();
 }
 }
 View::View(std::shared_ptr<Bridge> b, Plugin* p) : CPluginView(&rectangle), bridge(std::move(b)), plugin(p) {
@@ -86,24 +109,28 @@ void View::paint(HWND handle) {
     FillRect(dc, &client, brush); DeleteObject(brush);
     SetBkMode(dc, TRANSPARENT);
     const auto status = bridge->status();
-    label(dc, titleFont, L"TRACKMESH", {24, 20, 360, 54}, foreground);
-    label(dc, font, status.connection.empty() ? L"CONNECTING" : status.connection, {400, 28, 556, 52}, RGB(111, 218, 193), DT_RIGHT | DT_SINGLELINE);
+    label(dc, titleFont, L"TRACKMESH", {24, 20, 300, 54}, foreground);
     const bool selecting = !status.linked || changing;
-    label(dc, font, selecting ? L"Choose a linked TrackMesh project" : status.name, {24, 63, 410, 90}, foreground);
+    // Same words as the Desktop card badge, never the raw route.
+    const auto connection = !status.connected ? pick(status, L"Connecting…", L"Bağlanıyor…")
+        : selecting ? std::wstring()
+        : status.peerOnline ? pick(status, L"Connected", L"Bağlı") + (status.author.empty() ? L"" : L" · " + status.author)
+        : status.author.empty() ? pick(status, L"No collaborator yet", L"Henüz iş arkadaşı yok") : pick(status, L"Not connected", L"Bağlı değil");
+    label(dc, font, connection, {300, 28, 556, 52}, status.peerOnline ? RGB(111, 218, 193) : muted, DT_RIGHT | DT_SINGLELINE | DT_END_ELLIPSIS);
+    label(dc, font, selecting ? pick(status, L"Which TrackMesh project is this?", L"Bu hangi TrackMesh projesi?") : status.name, {24, 63, 410, 90}, foreground);
     if (!selecting) {
         label(dc, font, status.presenceWarning.empty() ? status.line : status.presenceWarning, {24, 105, 556, 163},
             status.presenceWarning.empty() ? foreground : status.presenceDanger ? RGB(255, 112, 112) : RGB(244, 195, 96), DT_LEFT | DT_WORDBREAK);
-        label(dc, font, status.createdAt, {24, 173, 556, 195}, muted);
-        if (!status.author.empty()) label(dc, font, L"Collaborator: " + status.author, {24, 204, 556, 224}, muted);
-        label(dc, smallFont, L"Project: " + status.project, {24, 229, 556, 249}, muted);
-        if (!status.local.empty() || !status.remote.empty())
-            label(dc, smallFont, L"Version: " + (status.local.empty() ? L"none" : status.local.substr(0, 8)) + L" / "
-                + (status.remote.empty() ? L"none" : status.remote.substr(0, 8)), {24, 253, 556, 274}, muted);
+        // The collaborator's latest version, in local time.
+        const auto when = localTime(status.createdAt);
+        if (!status.author.empty() && !when.empty())
+            label(dc, font, pick(status, L"Latest version from ", L"Son sürüm: ") + status.author + L" · " + when, {24, 173, 556, 195}, muted);
     } else {
         const auto text = !status.pickerSupported ? (status.connected ? status.line : status.message)
-            : choices.empty() ? L"Link this project's folder in TrackMesh first" : L"Choose the project whose folder contains this DAW project.";
+            : choices.empty() ? pick(status, L"Add this project's folder in TrackMesh first (Share a project folder).", L"Önce bu projenin klasörünü TrackMesh'e ekle (Proje klasörü paylaş).")
+            : pick(status, L"Choose the TrackMesh project whose folder holds this DAW project.", L"Bu DAW projesinin klasörünü içeren TrackMesh projesini seç.");
         label(dc, font, text, {24, 139, 556, 166}, muted);
-        if (status.projectsMore) label(dc, font, L"Showing the first 64 projects linked in TrackMesh.", {24, 214, 556, 238}, muted);
+        if (status.projectsMore) label(dc, font, pick(status, L"Showing the first 64 TrackMesh projects.", L"TrackMesh'teki ilk 64 proje gösteriliyor."), {24, 214, 556, 238}, muted);
     }
     label(dc, font, selectionError.empty() ? status.message : selectionError, {24, 366, 556, 430}, muted, DT_LEFT | DT_WORDBREAK);
     EndPaint(handle, &paint);
@@ -130,7 +157,10 @@ void View::refresh() {
     ShowWindow(picker, selecting && !choices.empty() ? SW_SHOW : SW_HIDE);
     ShowWindow(chooseButton, selecting && !choices.empty() ? SW_SHOW : SW_HIDE);
     ShowWindow(changeButton, status.linked ? SW_SHOW : SW_HIDE);
-    SetWindowTextW(changeButton, changing ? L"Cancel" : L"Change project");
+    setText(changeButton, changing ? pick(status, L"Cancel", L"Vazgeç") : pick(status, L"Change project", L"Projeyi değiştir"));
+    setText(chooseButton, pick(status, L"Use project", L"Bu projeyi kullan"));
+    setText(openButton, pick(status, L"Open TrackMesh", L"TrackMesh'i aç"));
+    setText(autoShareCheckbox, pick(status, L"Share when I save in the DAW", L"DAW'da kaydedince paylaş"));
     ShowWindow(openButton, selecting ? SW_SHOW : SW_HIDE);
     ShowWindow(sendButton, selecting ? SW_HIDE : SW_SHOW);
     ShowWindow(receiveButton, selecting ? SW_HIDE : SW_SHOW);
@@ -160,7 +190,8 @@ LRESULT CALLBACK View::procedure(HWND handle, UINT message, WPARAM wparam, LPARA
         case WM_COMMAND:
             if (HIWORD(wparam) == BN_CLICKED && LOWORD(wparam) == 1) {
                 const auto status = self->bridge->status();
-                if (status.shareConfirmation.empty() || MessageBoxW(handle, status.shareConfirmation.c_str(), L"Share current version?", MB_OKCANCEL | MB_ICONWARNING) == IDOK)
+                if (status.shareConfirmation.empty() || MessageBoxW(handle, status.shareConfirmation.c_str(),
+                        pick(status, L"Share current version?", L"Güncel sürüm paylaşılsın mı?").c_str(), MB_OKCANCEL | MB_ICONWARNING) == IDOK)
                     self->bridge->send();
             }
             if (HIWORD(wparam) == BN_CLICKED && LOWORD(wparam) == 2) self->bridge->receive();
@@ -174,7 +205,7 @@ LRESULT CALLBACK View::procedure(HWND handle, UINT message, WPARAM wparam, LPARA
                 if (index >= 0 && static_cast<size_t>(index) < self->choices.size()) {
                     if (self->plugin->selectProject(self->choices[static_cast<size_t>(index)].id)) {
                         self->changing = false; self->selectionError.clear();
-                    } else self->selectionError = L"The DAW could not mark this project choice for saving. Project choice was not changed.";
+                    } else self->selectionError = pick(self->bridge->status(), L"The DAW could not save this project choice. Nothing was changed.", L"DAW bu proje seçimini kaydedemedi. Hiçbir şey değişmedi.");
                     self->refresh();
                 }
             }
@@ -186,8 +217,11 @@ LRESULT CALLBACK View::procedure(HWND handle, UINT message, WPARAM wparam, LPARA
             const auto brush = CreateSolidBrush(disabled ? RGB(39, 46, 57) : RGB(51, 94, 89));
             FillRect(item->hDC, &item->rcItem, brush); DeleteObject(brush);
             SetBkMode(item->hDC, TRANSPARENT);
-            label(item->hDC, self->font, item->CtlID == 1 ? L"Share current version" : L"Get collaborator's version", item->rcItem,
-                disabled ? muted : foreground, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            // Get opens TrackMesh on this project, hence the ellipsis.
+            const auto status = self->bridge->status();
+            const auto text = item->CtlID == 1 ? pick(status, L"Share current version", L"Güncel sürümü paylaş")
+                : (status.getLabel.empty() ? pick(status, L"Get collaborator's version", L"İş arkadaşının sürümünü al") : status.getLabel) + L"…";
+            label(item->hDC, self->font, text, item->rcItem, disabled ? muted : foreground, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
             if (item->itemState & ODS_FOCUS) DrawFocusRect(item->hDC, &item->rcItem);
             return TRUE;
         }
