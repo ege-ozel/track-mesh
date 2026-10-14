@@ -1861,11 +1861,11 @@ impl Desktop {
             let dialog_app = app.clone();
             let result = tauri::async_runtime::spawn_blocking(move || -> Result<bool> {
                 let recipients = engine.as_ref().map(|engine| engine.shutdown_recipients()).transpose()?.unwrap_or_default();
-                let message = if recipients.is_empty() {
-                    "Quit TRACKMESH? Versions from this PC will be unavailable until you reopen it. Accepted work will finish before closing.".to_owned()
-                } else {
-                    format!("{} can't get your versions while TRACKMESH is closed. Quit? Accepted work will finish before closing.", recipients.join(", "))
-                };
+                // Nobody loses access without collaborators, so quit needs no confirmation.
+                if recipients.is_empty() {
+                    return Ok(true);
+                }
+                let message = format!("{} can't get your versions while TRACKMESH is closed. Quit? Accepted work will finish before closing.", recipients.join(", "));
                 Ok(dialog_app.dialog().message(message).title("Close safely?").buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancel).blocking_show())
             }).await;
             let close = desktop.lock().is_ok_and(|mut state| {
