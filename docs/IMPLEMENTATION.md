@@ -826,5 +826,11 @@ Checks actually run: `cargo fmt --all -- --check`; locked/offline check and stri
   - Plugin status lines and replies use the Desktop words (Get, Resume getting, Recover, Share current version, "Share when I save in the DAW") in both languages. Get explains that TrackMesh opened on the project.
   - The VST3 view no longer shows the project UUID or version IDs, shows "Connected · X" / "Not connected" instead of the raw route, shows the collaborator's latest version in local time, names the collaborator on the Get button (with an ellipsis, since it opens TrackMesh) and translates its own labels and offline messages from the last language the agent sent.
   - Native confirmations from the window allow one question at a time.
+- Card and status polish (follow-up on the same branch):
+  - While the connection problem banner shows, the badge says only "Not connected". "Received by X ✓" shows while connected; while disconnected the card says, muted, "Your latest version reached X ✓". The Get pane says "Available when you are connected." while disconnected.
+  - The rail shows only the device name; the device ID moved to Advanced → This PC → This device.
+  - The selected project tab has an accent outline instead of a white fill.
+  - Settings → Connection shows the router state with the card badge style (green "Router set up ✓", amber "Router didn't allow it", neutral "Trying…").
+  - Checks run: `tsc --noEmit`. Not yet run: the window.
   - Checks run: `tsc --noEmit`, `rustfmt --check` on the changed core files, `cargo check --workspace --locked --offline` (clean), the VST3 Release build (`/W4 /WX`, clean) and `npx tauri build` (installer built 2026-10-14, Cargo.toml rewrite restored). Not yet run: the window, dialogs, tray and plugin in a DAW in either language, the tabs with several projects.
 - Checks run: `tsc --noEmit`, `rustfmt --check` on the changed Rust files; later `cargo check --workspace --locked --offline` (clean) and `npx tauri build` (installer built 2026-10-14, Cargo.toml rewrite restored). Not yet run: the redesigned window, Stop on a running check, Stop during Share scan and Get download followed by Resume getting, zoom, narrow-window layout, the reconnect head pull, and the offline Share message and 0-byte transfer on two PCs.

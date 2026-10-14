@@ -6,7 +6,7 @@ import { JobNotice } from './Jobs';
 import { Card, ProjectTabs } from './ProjectCard';
 import type { AdvancedSection } from './ProjectCard';
 import { DeviceName, SettingsScreen, ZOOM_LEVELS } from './SettingsScreen';
-import { displayPath, short } from './format';
+import { displayPath } from './format';
 import { readLang, saveLang, setLang, t } from './i18n';
 import type { Lang } from './i18n';
 
@@ -250,7 +250,7 @@ export default function App() {
       {nav('advanced', t('Advanced', 'Gelişmiş'))}
       {nav('settings', t('Settings', 'Ayarlar'))}
       <div className="rail-bottom">
-        <div className="device"><span className={`status-dot ${status?.ready ? 'active' : ''}`} /><span>{status?.device?.name ?? t('Starting…', 'Başlatılıyor…')}</span><small>{short(status?.device?.device_id)}</small></div>
+        <div className="device"><span className={`status-dot ${status?.ready ? 'active' : ''}`} /><span>{status?.device?.name ?? t('Starting…', 'Başlatılıyor…')}</span></div>
         <button title={t('Confirm who will lose access to your versions, finish accepted work, then quit TrackMesh. Closing the window keeps it in the system tray.', 'Sürümlerine kimin erişemeyeceğini onayla, süren işler bitsin, sonra TrackMesh kapansın. Pencereyi kapatmak onu saatin yanında açık tutar.')} disabled={status?.closing} onClick={() => void closeApp().catch(err => setError(String(err)))}>{t('Quit TrackMesh', "TrackMesh'ten çık")}</button>
       </div>
     </aside>

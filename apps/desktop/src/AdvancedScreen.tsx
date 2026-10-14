@@ -195,6 +195,13 @@ export function AdvancedScreen({ status, projectId, section, jobStartedAt, act, 
   const mapping = status.network?.port_mapping;
   const thisPc = <>
     <h2 className="group-title">{t('This PC', 'Bu bilgisayar')}</h2>
+    <Section id="device" title={t('This device', 'Bu cihaz')} summary={status.device?.name ?? ''} open={!!open.device} highlight={false} onToggle={toggle('device')}>
+      <div className="status-rows">
+        <div><span>{t('Name', 'Ad')}</span><span>{status.device?.name ?? '—'}</span></div>
+        <div><span>{t('Device ID', 'Cihaz kimliği')}</span><code>{status.device?.device_id ?? '—'}</code></div>
+      </div>
+      <p className="muted">{t('Your collaborator sees the start of this ID when approving you; compare it if you are unsure.', 'İş arkadaşın seni onaylarken bu kimliğin başını görür; emin değilsen karşılaştırın.')}</p>
+    </Section>
     <Section id="default-service" title={t('Default invite service', 'Varsayılan davet servisi')} summary={status.default_supabase ? t('Saved', 'Kayıtlı') : t('Not set', 'Ayarlanmadı')} tone={status.default_supabase ? 'ok' : undefined} open={!!open['default-service']} highlight={false} onToggle={toggle('default-service')}>
       <DefaultSupabaseSettings config={status.default_supabase} busy={globalBusy} act={act} />
     </Section>

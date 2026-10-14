@@ -141,9 +141,10 @@ export function Card({ card, status, jobStartedAt, focusProjectId, act, openAdva
       body: t('Add your Supabase address once, then Invite collaborator works.', 'Supabase adresini bir kez ekle, sonra davet etme çalışır.'),
       fix: t('Set up invite service', 'Davet servisini kur'), section: 'service' };
 
+  // The problem banner names the collaborator; the badge then only says the state.
   const badge = pairingApproval === 'PENDING' ? { text: t('Waiting for approval', 'Onay bekleniyor'), tone: '' }
     : online ? { text: t(`Connected · ${peerName}`, `Bağlı · ${peerName}`), tone: 'online' }
-    : peer ? { text: t(`Not connected · ${peerName}`, `Bağlı değil · ${peerName}`), tone: 'warn' }
+    : peer ? { text: problem?.section === 'connection' ? t('Not connected', 'Bağlı değil') : t(`Not connected · ${peerName}`, `Bağlı değil · ${peerName}`), tone: 'warn' }
     : { text: t('No collaborator yet', 'Henüz iş arkadaşı yok'), tone: '' };
 
   const transferError = transfer?.error ?? (job?.error && RECEIVE_LABELS.includes(job.label) ? job.error : null);
@@ -174,7 +175,10 @@ export function Card({ card, status, jobStartedAt, focusProjectId, act, openAdva
         : <JobNotice job={job} startedAt={jobStartedAt[job.job_id]} collaboratorName={collab} online={online} />)
     : peer && pairingApproval === 'PENDING' ? <Waiting>{t(`Waiting for ${peerName} to approve this device…`, `${named(collab, 'gen')} bu cihazı onaylaması bekleniyor…`)}</Waiting>
     : peer && waitingFirstVersion ? <Waiting>{t(`Waiting for ${peerName} to share the first version…`, `${named(collab, 'gen')} ilk sürümü paylaşması bekleniyor…`)}</Waiting>
-    : peer && receipt ? <div className="delivery-receipt" role="status">{t(`Received by ${peerName} ✓`, `${peerName} aldı ✓`)}</div>
+    : peer && receipt ? (online
+        ? <div className="delivery-receipt" role="status">{t(`Received by ${peerName} ✓`, `${peerName} aldı ✓`)}</div>
+        // While disconnected this is history, not news.
+        : <p className="muted" role="status">{t(`Your latest version reached ${peerName} ✓`, `Son sürümün ${named(collab, 'dat')} ulaştı ✓`)}</p>)
     : peer && authoredHere && sharedLatest && online ? <Waiting>{t(`Shared. ${peerName} hasn't got this version yet.`, `Paylaşıldı. ${peerName} bu sürümü henüz almadı.`)}</Waiting>
     : null;
 
@@ -240,6 +244,7 @@ export function Card({ card, status, jobStartedAt, focusProjectId, act, openAdva
         <div className="pane"><h3>{t(`Get ${peerName}'s changes`, `${named(collab, 'gen')} değişikliklerini al`)}</h3>
           {status.presence[projectId]?.filter(warning => warning.device_id === peer.device.device_id).map(warning => <p key={warning.device_id} className="muted" role="status">{warning.get_line}</p>)}
           {upToDate && <p className="muted">{t(`You have ${peerName}'s latest version ✓`, `${named(collab, 'gen')} son sürümü sende ✓`)}</p>}
+          {!online && !resumable && <p className="muted">{t('Available when you are connected.', 'Bağlanınca alınabilir.')}</p>}
           <button className={remoteAhead || resumable ? 'primary' : ''} disabled={disabledReceive} onClick={() => void receive()}>{resumable ? t('Resume getting', 'Almaya devam et') : t(`Get ${peerName}'s version`, `${named(collab, 'gen')} sürümünü al`)}</button>
         </div>
       </section></>}

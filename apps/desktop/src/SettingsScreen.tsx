@@ -43,9 +43,10 @@ export function SettingsScreen({ status, busy, act, poll, onError, zoom, setZoom
     </section>
 
     <section className="settings-block"><h3>{t('Connection', 'Bağlantı')}</h3>
-      <label className="switch"><input type="checkbox" checked={upnp?.consent_enabled ?? false} disabled={busy} onChange={event => { void setUpnpMapping(event.currentTarget.checked).then(poll).catch(err => onError(String(err))); }} /> {t('Set up my router automatically (UPnP)', 'Modemimi kendisi ayarlasın (UPnP)')}</label>
+      <div className="switch-row"><label className="switch"><input type="checkbox" checked={upnp?.consent_enabled ?? false} disabled={busy} onChange={event => { void setUpnpMapping(event.currentTarget.checked).then(poll).catch(err => onError(String(err))); }} /> {t('Set up my router automatically (UPnP)', 'Modemimi kendisi ayarlasın (UPnP)')}</label>
+        {upnp?.consent_enabled && <span className={`badge ${upnp.state === 'MAPPED' ? 'online' : upnp.state === 'FAILED' ? 'warn' : ''}`}>{upnp.state === 'MAPPED' ? t('Router set up ✓', 'Modem ayarlandı ✓') : upnp.state === 'FAILED' ? t("Router didn't allow it", 'Modem izin vermedi') : t('Trying…', 'Deneniyor…')}</span>}</div>
       <p className="muted">{t('Needed when your collaborator is on a different internet connection. Opens one port for TrackMesh only; it closes when you quit TrackMesh.', "İş arkadaşın farklı bir internet bağlantısındaysa gerekir. Yalnızca TrackMesh için bir port açar; TrackMesh'ten çıkınca kapanır.")}
-        {upnp?.consent_enabled && upnp.state === 'MAPPED' ? t(' Router set up ✓', ' Modem ayarlandı ✓') : upnp?.consent_enabled && upnp.state === 'FAILED' ? t(" The router didn't allow it — see Advanced → Connection.", ' Modem izin vermedi — Gelişmiş → Bağlantı bölümüne bak.') : ''}</p>
+        {upnp?.consent_enabled && upnp.state === 'FAILED' ? t(' See Advanced → Connection.', ' Gelişmiş → Bağlantı bölümüne bak.') : ''}</p>
     </section>
 
     <section className="settings-block"><h3>{t('Where new projects go', 'Yeni projelerin yeri')}</h3>
