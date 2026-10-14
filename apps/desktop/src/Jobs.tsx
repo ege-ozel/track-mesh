@@ -31,14 +31,23 @@ export function Waiting({ children, action }: { children: ReactNode; action?: Re
   return <div className="waiting-line" role="status"><span>{children}</span>{action}</div>;
 }
 
+const STOPPABLE = new Set(['Check connection', 'Share current version', "Get collaborator's version", "Use collaborator's version"]);
+
+/** Pass `onStop` only while stopping is safe; the backend never interrupts installing files. */
 export function JobNotice({ job, startedAt, collaboratorName, onStop }: { job: Job; startedAt: number | undefined; collaboratorName?: string; onStop?: () => void }) {
   const text = jobStatus(job, startedAt, collaboratorName);
-  if (job.running) return <InProgress action={onStop && job.label === 'Check connection' ? <button onClick={onStop}>Stop</button> : undefined}>{text}</InProgress>;
+  if (job.running) return <InProgress action={onStop && STOPPABLE.has(job.label) ? <StopButton onStop={onStop} /> : undefined}>{text}</InProgress>;
   const warning = job.error || job.outcome?.pairing_state === 'retry';
   return <div className={`job ${warning ? 'danger' : ''}`} role="status">
     {text}
     {typeof job.outcome?.path === 'string' && <p>Saved file: <code>{displayPath(job.outcome.path)}</code></p>}
   </div>;
+}
+
+/** Stays pressed after a click: the job ends at its next safe point, which can take a moment. */
+export function StopButton({ onStop }: { onStop: () => void }) {
+  const [stopping, setStopping] = useState(false);
+  return <button disabled={stopping} onClick={() => { setStopping(true); onStop(); }}>{stopping ? 'Stopping…' : 'Stop'}</button>;
 }
 
 export function InviteCopiedNotice({ job }: { job: Job }) {

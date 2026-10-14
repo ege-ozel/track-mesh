@@ -4,6 +4,7 @@ use anyhow::Result;
 use network::Network;
 use protocol::PeerRequest;
 use serde::Serialize;
+use snapshot::Stop;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -21,7 +22,26 @@ impl Engine {
         project: Uuid,
         allow_loopback_http: bool,
     ) -> Result<SendStatus> {
-        self.send_impl(network, project, allow_loopback_http, false)
+        self.send_impl(
+            network,
+            project,
+            allow_loopback_http,
+            false,
+            Stop::default(),
+        )
+        .await
+    }
+
+    /// Like `send_snapshot`, but the folder scan ends with `snapshot::Stopped` when `stop` is
+    /// requested. Nothing is shared then; once a version is committed it is always announced.
+    pub async fn send_snapshot_until(
+        self: &Arc<Self>,
+        network: &Network,
+        project: Uuid,
+        allow_loopback_http: bool,
+        stop: Stop,
+    ) -> Result<SendStatus> {
+        self.send_impl(network, project, allow_loopback_http, false, stop)
             .await
     }
 
@@ -31,7 +51,7 @@ impl Engine {
         project: Uuid,
         allow_loopback_http: bool,
     ) -> Result<SendStatus> {
-        self.send_impl(network, project, allow_loopback_http, true)
+        self.send_impl(network, project, allow_loopback_http, true, Stop::default())
             .await
     }
 
@@ -41,13 +61,14 @@ impl Engine {
         project: Uuid,
         allow_loopback_http: bool,
         settled: bool,
+        stop: Stop,
     ) -> Result<SendStatus> {
         let engine = self.clone();
         let snapshot_id = tokio::task::spawn_blocking(move || {
             let snapshot = if settled {
                 engine.snapshot_after_save(project)
             } else {
-                engine.snapshot(project)
+                engine.snapshot_until(project, stop)
             };
             snapshot.map(|s| s.manifest.snapshot_id)
         })

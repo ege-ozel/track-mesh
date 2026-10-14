@@ -20,6 +20,7 @@ impl Desktop {
         peer: DeviceCard,
         target: Option<Uuid>,
         replace: bool,
+        stop: &transfer::Stop,
     ) -> Result<Uuid> {
         let mut target = target;
         let mut limit = 1_000_000_000;
@@ -32,11 +33,19 @@ impl Desktop {
                         peer.clone(),
                         target,
                         limit,
+                        stop.clone(),
                     )
                     .await
             } else {
                 engine
-                    .receive_from_peer_with_limit(network, project, peer.clone(), target, limit)
+                    .receive_from_peer_with_limit(
+                        network,
+                        project,
+                        peer.clone(),
+                        target,
+                        limit,
+                        stop.clone(),
+                    )
                     .await
             };
             match result {

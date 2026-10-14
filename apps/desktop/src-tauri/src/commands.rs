@@ -122,9 +122,12 @@ pub async fn cancel_invite_link(desktop: State<'_, Arc<Desktop>>) -> Result<(), 
 }
 
 #[tauri::command]
-pub async fn stop_check(desktop: State<'_, Arc<Desktop>>, project_id: Uuid) -> Result<(), String> {
+pub async fn stop_operation(
+    desktop: State<'_, Arc<Desktop>>,
+    project_id: Uuid,
+) -> Result<(), String> {
     desktop
-        .stop_check(project_id)
+        .stop_operation(project_id)
         .map_err(|error| error.to_string())
 }
 

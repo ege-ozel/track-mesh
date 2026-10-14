@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { chooseFolder, openPreviousVersion, openProjectFolder, stopCheck } from './api';
+import { chooseFolder, openPreviousVersion, openProjectFolder, stopOperation } from './api';
 import type { Action, DesktopStatus, ProjectCard } from './api';
-import { InProgress, InviteCopiedNotice, JobNotice, Waiting } from './Jobs';
+import { InProgress, InviteCopiedNotice, JobNotice, StopButton, Waiting } from './Jobs';
 import { bytes, displayPath, short, time } from './format';
 
 export type AdvancedSection = 'connection' | 'service' | 'manual' | 'history' | 'access';
@@ -73,6 +73,7 @@ export function Card({ card, status, jobStartedAt, focusProjectId, act, openAdva
     catch (err) { setFolderError(String(err)); }
   };
   const share = () => act({ kind: 'send', project_id: projectId });
+  const stop = () => void stopOperation(projectId).catch(err => setFolderError(String(err)));
 
   // One problem at a time, most blocking first; each routes to the Advanced section that can fix it.
   let problem: Problem | null = null;
@@ -162,15 +163,16 @@ export function Card({ card, status, jobStartedAt, focusProjectId, act, openAdva
     {!receiving && pairingApproval === 'NOT_REACHABLE' && peer && <section className="notice" role="status"><p>{peerName} hasn't approved this device yet. Ask them to open TrackMesh; if approval timed out, they can press ‘Reopen approval window’. Then press Try again.</p><div className="actions"><button disabled={busy} onClick={() => act({ kind: 'request_pairing', project_id: projectId, device_id: peer.device.device_id })}>Try again</button></div></section>}
     {waitingFirstVersion && peer && <Waiting>Waiting for {peerName} to share the first version…</Waiting>}
     {transfer && transfer.state !== 'COMPLETE' && <div className="transfer">
-      <div><span>{receiving ? (transfer.state === 'APPLYING' ? 'Putting the files in place…' : `Getting ${peerName}'s version…`) : transfer.state === 'PAUSED' ? 'Paused · press Resume getting when you are both online' : transfer.state.replaceAll('_', ' ')}</span>
+      <div><span>{receiving ? (transfer.state === 'APPLYING' ? "Putting the files in place… this can't be stopped" : `Getting ${peerName}'s version…`) : transfer.state === 'PAUSED' ? 'Paused · press Resume getting to continue' : transfer.state.replaceAll('_', ' ')}</span>
         <span>{bytes(transfer.completed_bytes)} / {bytes(transfer.total_bytes)}{transfer.total_bytes ? ` · ${percent} %` : ''}</span></div>
       <progress max={Math.max(transfer.total_bytes, 1)} value={transfer.completed_bytes} />
+      {transfer.state === 'RECEIVING' && job?.running && <div className="actions"><StopButton key={job.job_id} onStop={stop} /></div>}
       {transfer.error && <p className="error">{transfer.error}</p>}</div>}
     {inviteJob?.running && <InProgress>Creating invite link…</InProgress>}
     {copyInviteSuccess && inviteJob && <InviteCopiedNotice job={inviteJob} />}
     {copyInviteSuccess && typeof inviteJob?.outcome?.cleared_pending === 'string' && <div className="job" role="status">Pending approvals for {inviteJob.outcome.cleared_pending} were cleared; only one project can accept new devices at a time.</div>}
     {job && !(job.label === 'Copy invite link' && (job.running || copyInviteSuccess)) && !(job.label === "Get collaborator's version" && job.running && receiving)
-      && <JobNotice job={job} startedAt={jobStartedAt[job.job_id]} collaboratorName={peer?.device.name} onStop={() => void stopCheck(projectId).catch(err => setFolderError(String(err)))} />}
+      && <JobNotice job={job} startedAt={jobStartedAt[job.job_id]} collaboratorName={peer?.device.name} onStop={receiving && job.label.endsWith("collaborator's version") ? undefined : stop} />}
 
     <footer className="card-footer">
       {peer && <button className="text-button" disabled={busy || !inviteReady} title={inviteReady ? 'Up to 3 devices per project' : 'Needs the invite service'} onClick={() => act({ kind: 'copy_invite_link', project_id: projectId })}>Invite another collaborator</button>}

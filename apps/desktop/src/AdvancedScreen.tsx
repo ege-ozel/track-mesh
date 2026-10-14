@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { chooseFolder, stopCheck } from './api';
+import { chooseFolder, stopOperation } from './api';
 import type { Action, CheckView, DesktopStatus, ProjectBackend, ProjectBackendConfig, ProjectCard, SnapshotInfo, SupabaseDefaultConfig } from './api';
 import { JobNotice } from './Jobs';
 import type { AdvancedSection } from './ProjectCard';
@@ -232,7 +232,7 @@ export function AdvancedScreen({ status, projectId, section, jobStartedAt, act, 
         <div><span>Windows Firewall</span><span className={firewallAllowed ? 'ok' : ''}>{firewallAllowed ? 'TrackMesh allowed' : 'No TrackMesh rule found · reinstall TrackMesh'}</span></div>
       </div>
       <p className="next-step"><strong>Next step</strong>{nextStep(card, status, peer, check)}</p>
-      {checkJob && <JobNotice job={checkJob} startedAt={jobStartedAt[checkJob.job_id]} collaboratorName={peer?.device.name} onStop={() => void stopCheck(id).catch(err => onError(String(err)))} />}
+      {checkJob && <JobNotice job={checkJob} startedAt={jobStartedAt[checkJob.job_id]} collaboratorName={peer?.device.name} onStop={() => void stopOperation(id).catch(err => onError(String(err)))} />}
       <div className="actions">
         {peer && <button className="primary" disabled={busy} onClick={() => act({ kind: 'check', project_id: id, device_id: peer.device.device_id })}>Check connection</button>}
         <button onClick={() => { setOpen(current => ({ ...current, 'port-forwarding': true })); window.requestAnimationFrame(() => document.getElementById('advanced-port-forwarding')?.scrollIntoView({ behavior: 'smooth', block: 'start' })); }}>Manual port forwarding…</button>

@@ -104,6 +104,7 @@ pub(crate) fn commit_snapshot(
         Some(&s.manifest),
         &ScanOptions {
             chunk_size: s.manifest.chunk_size,
+            ..ScanOptions::default()
         },
     )?;
     let expected = s

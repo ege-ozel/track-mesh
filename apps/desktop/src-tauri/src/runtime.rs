@@ -274,9 +274,13 @@ pub struct Job {
     pub outcome: Option<Value>,
     pub error: Option<String>,
     pub completed_at: Option<u64>,
-    /// Only Check connection is stoppable: it reads peer state and writes nothing durable.
+    /// Check connection is aborted outright: it reads peer state and writes nothing durable.
     #[serde(skip)]
     pub abort: Option<tokio::task::AbortHandle>,
+    /// Share and Get stop only at the core's safe points (before commit, between chunks,
+    /// before install); installing files always finishes.
+    #[serde(skip)]
+    pub stop: Option<transfer::Stop>,
 }
 
 fn prune_finished_jobs(jobs: &mut Vec<Job>) {
@@ -1137,19 +1141,35 @@ impl Desktop {
             error: None,
             completed_at: None,
             abort: None,
+            stop: None,
         });
-        let stoppable = matches!(action, Action::Check { .. });
+        let abortable = matches!(action, Action::Check { .. });
+        let stop = transfer::Stop::default();
+        let stopped_message = match action {
+            Action::Check { .. } => Some("Connection check stopped"),
+            Action::Send { .. } => Some("Sharing stopped. Nothing was shared."),
+            Action::Receive { .. } | Action::UsePeerVersion { .. } => {
+                Some("Getting stopped. Anything already downloaded is kept for Resume getting.")
+            }
+            _ => None,
+        };
+        if stopped_message.is_some() && !abortable {
+            if let Some(job) = state.jobs.iter_mut().find(|job| job.job_id == job_id) {
+                job.stop = Some(stop.clone());
+            }
+        }
         let desktop = self.clone();
         let engine = state.engine.clone().context("Engine is unavailable")?;
         let network = state.network.clone().context("Network is unavailable")?;
         state.tasks.push(tauri::async_runtime::spawn(async move {
             let worker_desktop = desktop.clone();
             // Join the inner task so a panic becomes a visible completed job, never a stuck gate.
-            let worker =
-                tokio::spawn(
-                    async move { worker_desktop.execute(app, engine, network, action).await },
-                );
-            if stoppable {
+            let worker = tokio::spawn(async move {
+                worker_desktop
+                    .execute(app, engine, network, action, stop)
+                    .await
+            });
+            if abortable {
                 if let Ok(mut state) = desktop.lock() {
                     if let Some(job) = state.jobs.iter_mut().find(|job| job.job_id == job_id) {
                         job.abort = Some(worker.abort_handle());
@@ -1157,9 +1177,12 @@ impl Desktop {
                 }
             }
             let result = match worker.await {
+                Ok(Err(error)) if error.downcast_ref::<transfer::Stopped>().is_some() => {
+                    Ok(json!({"message": stopped_message, "stopped": true}))
+                }
                 Ok(result) => result,
                 Err(error) if error.is_cancelled() => {
-                    Ok(json!({"message": "Connection check stopped"}))
+                    Ok(json!({"message": stopped_message, "stopped": true}))
                 }
                 Err(_) => Err(anyhow::anyhow!("Operation worker stopped unexpectedly")),
             };
@@ -1167,6 +1190,7 @@ impl Desktop {
                 if let Some(job) = state.jobs.iter_mut().find(|job| job.job_id == job_id) {
                     job.running = false;
                     job.abort = None;
+                    job.stop = None;
                     job.completed_at = Some(
                         std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
@@ -1203,15 +1227,20 @@ impl Desktop {
         Ok(())
     }
 
-    pub fn stop_check(&self, project_id: Uuid) -> Result<()> {
+    pub fn stop_operation(&self, project_id: Uuid) -> Result<()> {
         let state = self.lock()?;
-        let abort = state
+        let job = state
             .jobs
             .iter()
             .find(|job| job.running && job.project_id == Some(project_id))
-            .and_then(|job| job.abort.clone())
-            .context("No connection check is running for this project")?;
-        abort.abort();
+            .context("Nothing is running for this project")?;
+        if let Some(abort) = &job.abort {
+            abort.abort();
+        } else if let Some(stop) = &job.stop {
+            stop.request();
+        } else {
+            anyhow::bail!("This operation can't be stopped");
+        }
         Ok(())
     }
 
@@ -1339,6 +1368,7 @@ impl Desktop {
         engine: Arc<Engine>,
         network: Network,
         action: Action,
+        stop: transfer::Stop,
     ) -> Result<Value> {
         let reload = action.changes_setup();
         let allow_http = self.options.allow_loopback_http;
@@ -1510,7 +1540,7 @@ impl Desktop {
                 if accepted {
                     serde_json::to_value(
                         engine
-                            .send_snapshot(&network, project_id, allow_http)
+                            .send_snapshot_until(&network, project_id, allow_http, stop)
                             .await?,
                     )?
                 } else {
@@ -1688,7 +1718,7 @@ impl Desktop {
                     disk.paired_peer(project_id, device_id)
                 })
                 .await??;
-                wait_for_peer(self, &network, &peer.peer_id).await?;
+                transfer::or_stop(&stop, wait_for_peer(self, &network, &peer.peer_id)).await?;
                 let peer_device = peer.device_id;
                 match self
                     .receive_with_confirmation(
@@ -1699,6 +1729,7 @@ impl Desktop {
                         peer,
                         snapshot_id,
                         false,
+                        &stop,
                     )
                     .await
                 {
@@ -1724,10 +1755,10 @@ impl Desktop {
                     disk.paired_peer(project_id, device_id)
                 })
                 .await??;
-                wait_for_peer(self, &network, &peer.peer_id).await?;
+                transfer::or_stop(&stop, wait_for_peer(self, &network, &peer.peer_id)).await?;
                 match self
                     .receive_with_confirmation(
-                        &app, &engine, &network, project_id, peer, None, true,
+                        &app, &engine, &network, project_id, peer, None, true, &stop,
                     )
                     .await
                 {
@@ -2117,6 +2148,7 @@ impl Desktop {
                 ),
                 completed_at: None,
                 abort: None,
+                stop: None,
             });
             prune_finished_jobs(&mut state.jobs);
         }

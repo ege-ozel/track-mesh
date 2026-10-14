@@ -122,7 +122,8 @@ export const chooseInviteParentFolder = () => invoke<string | null>('choose_invi
 export const openInviteParentFolder = () => invoke<void>('open_invite_parent_folder');
 export const pasteInviteLink = () => invoke<void>('paste_invite_link');
 export const cancelInviteLink = () => invoke<void>('cancel_invite_link');
-export const stopCheck = (projectId: string) => invoke<void>('stop_check', { projectId });
+/** Stops the project's running Check, Share or Get at its next safe point. Installing files always finishes. */
+export const stopOperation = (projectId: string) => invoke<void>('stop_operation', { projectId });
 export const submitAction = (action: Action) => invoke<string>('submit_action', { action });
 export const setUpnpMapping = (enabled: boolean) => invoke<void>('set_upnp_mapping', { enabled });
 export const closeApp = () => invoke<void>('close_app');
