@@ -61,6 +61,7 @@ export interface NetworkObservation {
   mappings: { method: 'UPNP_IGD' | 'PCP'; transport: 'TCP' | 'UDP'; state: 'NOT_ATTEMPTED' }[];
 }
 export interface DesktopStatus {
+  plugin_handoff: { revision: number; project_id: string | null; offset: number } | null;
   pairing: { project_id: string | null; remaining_seconds: number; requests: { request_id: string; device_id: string; name: string; peer_id: string }[] };
   listen_port: number; configured_external_addresses: string[];
   ready: boolean; closing: boolean; error: string | null;

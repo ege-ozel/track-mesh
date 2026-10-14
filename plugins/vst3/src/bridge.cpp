@@ -121,6 +121,33 @@ std::string jsonString(json_object_s* object, const char* key) {
     }
     throw std::runtime_error("Missing IPC status field");
 }
+json_value_s* field(json_object_s* object, const char* key) {
+    for (auto el = object->start; el; el = el->next)
+        if (std::string_view(el->name->string, el->name->string_size) == key) return el->value;
+    return nullptr;
+}
+bool optionalBool(json_object_s* object, const char* key) {
+    const auto value = field(object, key);
+    if (!value) return false;
+    if (value->type == json_type_true) return true;
+    if (value->type == json_type_false) return false;
+    throw std::runtime_error("Invalid IPC status boolean");
+}
+std::vector<ProjectChoice> projectChoices(json_object_s* object) {
+    const auto value = field(object, "projects");
+    if (!value) return {};
+    if (value->type != json_type_array) throw std::runtime_error("Invalid project picker");
+    const auto array = static_cast<json_array_s*>(value->payload);
+    if (array->length > 64) throw std::runtime_error("Project picker too large");
+    std::vector<ProjectChoice> result;
+    for (auto entry = array->start; entry; entry = entry->next) {
+        if (entry->value->type != json_type_object) throw std::runtime_error("Invalid project choice");
+        const auto item = static_cast<json_object_s*>(entry->value->payload);
+        result.push_back({parseProjectId(jsonString(item, "project_id")),
+            wide(jsonString(item, "name")), wide(jsonString(item, "folder_name"))});
+    }
+    return result;
+}
 bool jsonBool(json_object_s* object, const char* key) {
     for (auto el = object->start; el; el = el->next) {
         if (std::string_view(el->name->string, el->name->string_size) != key) continue;
@@ -153,6 +180,18 @@ bool request(HANDLE pipe, const char* event, const std::string& session, const P
     view.connection = wide(jsonString(object, "connection"));
     view.state = wide(jsonString(object, "state"));
     view.message = wide(jsonString(object, "message"));
+    view.pickerSupported = optionalBool(object, "picker_supported");
+    if (view.pickerSupported) {
+        view.projects = projectChoices(object);
+        view.projectsMore = optionalBool(object, "projects_more");
+        view.desktopAvailable = optionalBool(object, "desktop_available");
+        view.shareEnabled = optionalBool(object, "share_enabled");
+        view.getEnabled = optionalBool(object, "get_enabled");
+        view.line = wide(jsonString(object, "status_line"));
+    } else {
+        view.line = L"Update TrackMesh to choose a linked project.";
+        view.message.clear();
+    }
     view.connected = true;
     view.linked = !view.name.empty();
     const bool ok = jsonBool(object, "ok");
@@ -191,7 +230,7 @@ void run(Work& work) {
             FILE_FLAG_OVERLAPPED | SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION, nullptr));
         if (pipe.value == INVALID_HANDLE_VALUE) {
             const auto error = GetLastError();
-            offline(state, L"Waiting for TRACKMESH agent. Open desktop to link this project UUID.");
+            offline(state, L"Waiting for TrackMesh. Open TrackMesh to link this project's folder.");
             if (!everConnected && (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND) && GetTickCount64() - lastLaunch >= 10000) {
                 launchAgent(work.module);
                 lastLaunch = GetTickCount64();
@@ -299,6 +338,25 @@ ProjectId newProjectId() {
     return id;
 }
 bool validProjectId(const ProjectId& project) { return std::any_of(project.begin(), project.end(), [](unsigned char c) { return c != 0; }); }
+ProjectId parseProjectId(const std::string& text) {
+    if (text.size() != 36) throw std::runtime_error("Invalid project identifier");
+    const auto digit = [](char c) -> unsigned char {
+        if (c >= '0' && c <= '9') return static_cast<unsigned char>(c - '0');
+        if (c >= 'a' && c <= 'f') return static_cast<unsigned char>(c - 'a' + 10);
+        throw std::runtime_error("Invalid project identifier");
+    };
+    ProjectId id {};
+    size_t offset = 0;
+    for (size_t i = 0; i < id.size(); ++i) {
+        if (i == 4 || i == 6 || i == 8 || i == 10) {
+            if (text[offset++] != '-') throw std::runtime_error("Invalid project identifier");
+        }
+        id[i] = static_cast<unsigned char>((digit(text[offset]) << 4) | digit(text[offset + 1]));
+        offset += 2;
+    }
+    if (!validProjectId(id)) throw std::runtime_error("Nil project identifier");
+    return id;
+}
 std::string projectText(const ProjectId& project) {
     constexpr char digits[] = "0123456789abcdef";
     std::string text;

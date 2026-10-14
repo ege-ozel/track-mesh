@@ -44,7 +44,7 @@ mod retention;
 pub use retention::{BackupSelection, BackupSummary, StorageSummary};
 mod snapshots;
 #[cfg(windows)]
-pub use ipc::{plugin_pipe_name, PluginRuntime};
+pub use ipc::{plugin_pipe_name, PluginDesktopRequest, PluginRuntime};
 #[cfg(windows)]
 mod lifetime;
 #[cfg(windows)]

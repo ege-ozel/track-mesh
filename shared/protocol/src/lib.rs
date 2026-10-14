@@ -407,6 +407,13 @@ impl PluginEvent {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PluginProject {
+    pub project_id: Uuid,
+    pub name: String,
+    pub folder_name: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PluginStatus {
     pub ok: bool,
     pub project_id: Uuid,
@@ -419,6 +426,22 @@ pub struct PluginStatus {
     pub connection: String,
     pub state: String,
     pub message: String,
+    #[serde(default)]
+    pub projects: Vec<PluginProject>,
+    #[serde(default)]
+    pub projects_more: bool,
+    #[serde(default)]
+    pub picker_supported: bool,
+    #[serde(default)]
+    pub desktop_available: bool,
+    #[serde(default)]
+    pub status_line: String,
+    #[serde(default)]
+    pub share_enabled: bool,
+    #[serde(default)]
+    pub get_enabled: bool,
+    #[serde(default)]
+    pub pending_publications: u64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

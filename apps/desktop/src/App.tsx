@@ -293,6 +293,7 @@ function Card({ card, status, jobStartedAt, focusProjectId, act }: { card: Proje
     <header className="card-title"><div><h2>{project.name}</h2><button className="path-link" title="Open in Explorer" onClick={() => void openProject()}>{displayPath(project.root)}</button></div>
       <span className={`badge ${online ? 'online' : ''}`}>{projectStatus}</span></header>
     {rootMissing && <section className="notice danger"><strong>Project folder not found</strong><div className="actions"><button className="primary" disabled={busy} onClick={() => void chooseProjectRoot()}>Locate folder</button></div></section>}
+    {status.plugin_handoff?.project_id === project.project_id && <p className="notice" role="status">Save and close this project in your DAW, then press Get collaborator's version.</p>}
     {folderError && <p className="error">{folderError}</p>}
     {candidates.length > 0 && <section className="approval-box"><h3>Approve collaborator</h3>{candidates.map(candidate => <div key={candidate.request_id}>
       <p><strong>{candidate.name}</strong> · device {short(candidate.device_id)}</p>
@@ -402,6 +403,17 @@ export default function App() {
   const [projectsLocation, setProjectsLocation] = useState('');
   const [jobStartedAt, setJobStartedAt] = useState<Record<string, number>>({});
   const [focusProjectId, setFocusProjectId] = useState<string | null>(null);
+  const pluginHandoffRevision = useRef(0);
+  useEffect(() => {
+    const handoff = status?.plugin_handoff;
+    if (!handoff || handoff.revision === pluginHandoffRevision.current) return;
+    pluginHandoffRevision.current = handoff.revision;
+    focusBaseline.current = null;
+    setScreen('projects');
+    setSetup(null);
+    setOffset(handoff.offset);
+    setFocusProjectId(handoff.project_id);
+  }, [status?.plugin_handoff]);
   const [upnpConsentPrompt, setUpnpConsentPrompt] = useState(false);
   const pendingConsentAction = useRef<Action | null>(null);
   const polling = useRef(false);

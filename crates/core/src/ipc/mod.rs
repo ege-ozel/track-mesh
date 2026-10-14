@@ -30,6 +30,11 @@ struct State {
     sessions: HashMap<Uuid, Uuid>,
     messages: HashMap<Uuid, status::Notice>,
     jobs: HashMap<Uuid, jobs::Job>,
+    desktop_request: Option<PluginDesktopRequest>,
+}
+#[derive(Clone, Copy)]
+pub struct PluginDesktopRequest {
+    pub project_id: Option<Uuid>,
 }
 struct Shared {
     engine: Arc<Engine>,
@@ -37,6 +42,7 @@ struct Shared {
     allow_http: bool,
     closing: AtomicBool,
     state: Mutex<State>,
+    desktop_available: bool,
 }
 impl Shared {
     fn lock(&self) -> Result<std::sync::MutexGuard<'_, State>> {
@@ -46,18 +52,24 @@ impl Shared {
     }
     async fn status(&self, project: Uuid) -> Result<PluginStatus> {
         let engine = self.engine.clone();
-        let summary = tokio::task::spawn_blocking(move || engine.project_summary(project)).await?;
-        match summary {
-            Ok(summary) => Ok(status::summarize(
+        let (summary, projects, more) = tokio::task::spawn_blocking(move || -> Result<_> {
+            let (projects, more) = status::projects(&engine)?;
+            Ok((engine.project_summary(project), projects, more))
+        })
+        .await??;
+        let mut reply = match summary {
+            Ok(summary) => status::summarize(
                 summary,
                 &self.network,
                 self.lock()?.messages.get(&project).cloned(),
-            )),
-            Err(_) => Ok(status::unavailable(
-                project,
-                "Link this project UUID to a local folder in TRACKMESH desktop.",
-            )),
-        }
+            ),
+            Err(_) => status::unavailable(project, "Link this project's folder in TrackMesh first"),
+        };
+        reply.projects = projects;
+        reply.projects_more = more;
+        reply.desktop_available = self.desktop_available;
+        reply.get_enabled &= self.desktop_available;
+        Ok(reply)
     }
 }
 
@@ -73,6 +85,26 @@ impl PluginRuntime {
         allow_http: bool,
         suffix: &str,
     ) -> Result<Self> {
+        Self::start_impl(engine, network, allow_http, suffix, false)
+    }
+    pub fn start_with_desktop(
+        engine: Arc<Engine>,
+        network: Network,
+        allow_http: bool,
+        suffix: &str,
+    ) -> Result<Self> {
+        Self::start_impl(engine, network, allow_http, suffix, true)
+    }
+    pub fn take_desktop_request(&self) -> Option<PluginDesktopRequest> {
+        self.shared.lock().ok()?.desktop_request.take()
+    }
+    fn start_impl(
+        engine: Arc<Engine>,
+        network: Network,
+        allow_http: bool,
+        suffix: &str,
+        desktop_available: bool,
+    ) -> Result<Self> {
         let name = plugin_pipe_name(suffix)?;
         let pipe = security::create_pipe(&name, true)
             .context("Cannot own the per-user plugin pipe; another bridge may be active")?;
@@ -83,6 +115,7 @@ impl PluginRuntime {
             allow_http,
             closing: AtomicBool::new(false),
             state: Mutex::new(State::default()),
+            desktop_available,
         });
         let task = tokio::spawn(serve(pipe, name, shared.clone(), receiver));
         Ok(Self { stop, task, shared })
@@ -95,15 +128,20 @@ impl PluginRuntime {
     }
     pub fn idle_epoch(&self) -> Option<u64> {
         let state = self.shared.lock().ok()?;
-        (state.sessions.is_empty() && state.jobs.values().all(|job| job.task.is_finished()))
-            .then_some(state.epoch)
+        (state.sessions.is_empty()
+            && state.desktop_request.is_none()
+            && state.jobs.values().all(|job| job.task.is_finished()))
+        .then_some(state.epoch)
     }
     /// Claim idle shutdown under the same gate used to accept connections/jobs.
     pub fn close_if_idle(&self) -> bool {
         let Ok(state) = self.shared.lock() else {
             return false;
         };
-        if !state.sessions.is_empty() || state.jobs.values().any(|job| !job.task.is_finished()) {
+        if !state.sessions.is_empty()
+            || state.desktop_request.is_some()
+            || state.jobs.values().any(|job| !job.task.is_finished())
+        {
             return false;
         }
         self.begin_close();
@@ -237,41 +275,38 @@ async fn connection(
         }
         let mut reply = shared.status(project).await?;
         match event {
-            PluginEvent::SendSnapshot { .. } if !reply.project_name.is_empty() => {
+            PluginEvent::SendSnapshot { .. } if reply.share_enabled => {
                 match shared.schedule(project, false) {
-                    Ok(()) => reply.message = "Snapshot queued in the agent.".into(),
+                    Ok(()) => {
+                        reply.message =
+                            "Share current version queued; waiting for project files to settle."
+                                .into()
+                    }
                     Err(_) => {
                         reply.ok = false;
                         reply.message = "Agent busy or closing; retry later.".into();
                     }
                 }
             }
+            PluginEvent::SendSnapshot { .. } => {
+                reply.ok = false;
+                reply.message = "Share current version is unavailable. Open TrackMesh to finish setup or recovery first.".into();
+            }
             PluginEvent::ReceiveSnapshot { .. } => {
-                if reply.remote_snapshot.is_none() {
+                if !shared.desktop_available {
                     reply.ok = false;
-                    reply.message =
-                        "No remote history is known. Refresh metadata in TRACKMESH desktop.".into();
-                } else if reply.state == "DIVERGED" {
-                    reply.ok = false;
-                    reply.message =
-                        "Histories diverged. Receive is blocked; inspect both histories in desktop."
-                            .into();
-                } else if reply.state == storage::TransferState::RecoveryRequired.as_str() {
-                    reply.ok = false;
-                    reply.message =
-                        "Interrupted installation requires recovery in TRACKMESH desktop.".into();
-                } else if matches!(reply.state.as_str(), "RECEIVING" | "APPLYING") {
-                    reply.ok = false;
-                    reply.message =
-                        "A receive operation is already active. Track it in TRACKMESH desktop."
-                            .into();
-                } else if !reply.peer_online {
-                    reply.ok = false;
-                    reply.message = "Source is offline. Project files become available when that collaborator returns online.".into();
+                    reply.message = "Open TrackMesh to get your collaborator's version.".into();
                 } else {
-                    reply.message =
-                        "Close this DAW project, then use Receive in TRACKMESH desktop.".into();
                     let mut state = shared.lock()?;
+                    ensure!(
+                        !shared.closing.load(Ordering::Acquire),
+                        "Plugin bridge is closing"
+                    );
+                    state.desktop_request = Some(PluginDesktopRequest {
+                        project_id: (!reply.project_name.is_empty()).then_some(project),
+                    });
+                    state.epoch = state.epoch.wrapping_add(1);
+                    reply.message = status::GET_GUIDANCE.into();
                     if state.messages.contains_key(&project) || state.messages.len() < 64 {
                         state.messages.insert(project, status::Notice::Receive);
                     }
@@ -285,7 +320,8 @@ async fn connection(
                     Err(_) => {
                         reply.ok = false;
                         reply.message =
-                            "Save not queued; agent busy or closing. Retry Send Snapshot.".into();
+                            "Save not queued; agent busy or closing. Retry Share current version."
+                                .into();
                     }
                 }
             }

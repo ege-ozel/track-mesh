@@ -98,8 +98,19 @@ tresult PLUGIN_API Plugin::process(ProcessData& data) {
     return kResultOk;
 }
 IPlugView* PLUGIN_API Plugin::createView(FIDString name) {
-    if (name && std::strcmp(name, ViewType::kEditor) == 0) return new View(bridge);
+    if (name && std::strcmp(name, ViewType::kEditor) == 0) return new View(bridge, this);
     return nullptr;
+}
+bool Plugin::selectProject(const ProjectId& project) {
+    if (!validProjectId(project) || !componentHandler2) return false;
+    const auto previous = bridge->project();
+    bridge->setProject(project);
+    // UI thread only: the SDK marks non-parameter component state as dirty.
+    if (setDirty(true) != kResultOk) {
+        bridge->setProject(previous);
+        return false;
+    }
+    return true;
 }
 }
 
