@@ -22,6 +22,7 @@ private:
     std::wstring selectionError;
     HWND window {nullptr}, sendButton {nullptr}, receiveButton {nullptr};
     HWND picker {nullptr}, chooseButton {nullptr}, changeButton {nullptr}, openButton {nullptr};
+    HWND autoShareCheckbox {nullptr};
     HFONT font {nullptr}, titleFont {nullptr}, smallFont {nullptr};
     HBRUSH backgroundBrush {nullptr};
     HMODULE viewModule {nullptr};

@@ -61,6 +61,7 @@ export interface NetworkObservation {
   mappings: { method: 'UPNP_IGD' | 'PCP'; transport: 'TCP' | 'UDP'; state: 'NOT_ATTEMPTED' }[];
 }
 export interface DesktopStatus {
+  daw_plugin_settings: { project_id: string; name: string; auto_share: boolean }[];
   plugin_handoff: { revision: number; project_id: string | null; offset: number } | null;
   pairing: { project_id: string | null; remaining_seconds: number; requests: { request_id: string; device_id: string; name: string; peer_id: string }[] };
   listen_port: number; configured_external_addresses: string[];
@@ -85,6 +86,7 @@ export interface DesktopStatus {
   manual_public_endpoint: { public_ipv4: string; external_port: number } | null;
 }
 export type Action =
+  | { kind: 'set_auto_share'; project_id: string; enabled: boolean }
   | { kind: 'delete_backups'; selected: { transfer_id: string; path: string; bytes: number }[] }
   | { kind: 'link'; project_id: string; name: string; folder: string; mailbox_url: string | null; relay_address: string | null }
   | { kind: 'change_project_root'; project_id: string; folder: string }

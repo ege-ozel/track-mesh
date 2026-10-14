@@ -7,7 +7,7 @@
 using namespace Steinberg;
 namespace TrackMesh {
 namespace {
-constexpr int width = 580, height = 400;
+constexpr int width = 580, height = 440;
 const ViewRect rectangle(0, 0, width, height);
 constexpr COLORREF background = RGB(21, 25, 32), foreground = RGB(235, 239, 246), muted = RGB(155, 170, 192);
 std::mutex classMutex;
@@ -60,8 +60,9 @@ tresult PLUGIN_API View::attached(void* parent, FIDString type) {
     openButton = make(L"BUTTON", L"Open TrackMesh", WS_TABSTOP, 24, 170, 200, 32, 13);
     sendButton = make(L"BUTTON", L"Share current version", WS_TABSTOP | BS_OWNERDRAW, 24, 282, 254, 38, 1);
     receiveButton = make(L"BUTTON", L"Get collaborator's version", WS_TABSTOP | BS_OWNERDRAW, 302, 282, 254, 38, 2);
+    autoShareCheckbox = make(L"BUTTON", L"Share automatically when the DAW project is saved", WS_TABSTOP | BS_AUTOCHECKBOX, 24, 328, 532, 26, 14);
     refresh();
-    SetTimer(window, 1, 500, nullptr);
+    SetTimer(window, 1, 250, nullptr);
     CPluginView::attached(parent, type);
     return kResultOk;
 }
@@ -73,6 +74,7 @@ tresult PLUGIN_API View::removed() {
         registeredClass = false;
     }
     sendButton = receiveButton = picker = chooseButton = changeButton = openButton = nullptr;
+    autoShareCheckbox = nullptr;
     return CPluginView::removed();
 }
 void View::paint(HWND handle) {
@@ -102,7 +104,7 @@ void View::paint(HWND handle) {
         label(dc, font, text, {24, 139, 556, 166}, muted);
         if (status.projectsMore) label(dc, font, L"Showing the first 64 projects linked in TrackMesh.", {24, 214, 556, 238}, muted);
     }
-    label(dc, font, selectionError.empty() ? status.message : selectionError, {24, 335, 556, 390}, muted, DT_LEFT | DT_WORDBREAK);
+    label(dc, font, selectionError.empty() ? status.message : selectionError, {24, 366, 556, 430}, muted, DT_LEFT | DT_WORDBREAK);
     EndPaint(handle, &paint);
 }
 void View::refresh() {
@@ -131,6 +133,9 @@ void View::refresh() {
     ShowWindow(openButton, selecting ? SW_SHOW : SW_HIDE);
     ShowWindow(sendButton, selecting ? SW_HIDE : SW_SHOW);
     ShowWindow(receiveButton, selecting ? SW_HIDE : SW_SHOW);
+    ShowWindow(autoShareCheckbox, !selecting && status.autoShareSupported ? SW_SHOW : SW_HIDE);
+    SendMessageW(autoShareCheckbox, BM_SETCHECK, status.autoShare ? BST_CHECKED : BST_UNCHECKED, 0);
+    EnableWindow(autoShareCheckbox, status.connected && status.autoShareSupported);
     EnableWindow(sendButton, status.connected && status.shareEnabled);
     EnableWindow(receiveButton, status.connected && status.getEnabled);
     EnableWindow(openButton, status.connected && status.desktopAvailable);
@@ -155,6 +160,8 @@ LRESULT CALLBACK View::procedure(HWND handle, UINT message, WPARAM wparam, LPARA
             if (HIWORD(wparam) == BN_CLICKED && LOWORD(wparam) == 1) self->bridge->send();
             if (HIWORD(wparam) == BN_CLICKED && LOWORD(wparam) == 2) self->bridge->receive();
             if (HIWORD(wparam) == BN_CLICKED && LOWORD(wparam) == 13) self->bridge->receive();
+            if (HIWORD(wparam) == BN_CLICKED && LOWORD(wparam) == 14)
+                self->bridge->setAutoShare(SendMessageW(self->autoShareCheckbox, BM_GETCHECK, 0, 0) == BST_CHECKED);
             if (HIWORD(wparam) == BN_CLICKED && LOWORD(wparam) == 12) { self->changing = !self->changing; self->selectionError.clear(); self->refresh(); }
             if (HIWORD(wparam) == CBN_SELCHANGE && LOWORD(wparam) == 10) self->refresh();
             if (HIWORD(wparam) == BN_CLICKED && LOWORD(wparam) == 11) {

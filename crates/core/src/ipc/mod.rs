@@ -30,6 +30,7 @@ struct State {
     sessions: HashMap<Uuid, Uuid>,
     messages: HashMap<Uuid, status::Notice>,
     jobs: HashMap<Uuid, jobs::Job>,
+    setting_tasks: Vec<JoinHandle<()>>,
     desktop_request: Option<PluginDesktopRequest>,
 }
 #[derive(Clone, Copy)]
@@ -52,11 +53,17 @@ impl Shared {
     }
     async fn status(&self, project: Uuid) -> Result<PluginStatus> {
         let engine = self.engine.clone();
-        let (summary, projects, more) = tokio::task::spawn_blocking(move || -> Result<_> {
-            let (projects, more) = status::projects(&engine)?;
-            Ok((engine.project_summary(project), projects, more))
-        })
-        .await??;
+        let (summary, projects, more, auto_share) =
+            tokio::task::spawn_blocking(move || -> Result<_> {
+                let (projects, more) = status::projects(&engine)?;
+                Ok((
+                    engine.project_summary(project),
+                    projects,
+                    more,
+                    engine.auto_share_enabled(project)?,
+                ))
+            })
+            .await??;
         let mut reply = match summary {
             Ok(summary) => status::summarize(
                 summary,
@@ -69,6 +76,7 @@ impl Shared {
         reply.projects_more = more;
         reply.desktop_available = self.desktop_available;
         reply.get_enabled &= self.desktop_available;
+        reply.auto_share = auto_share && reply.auto_share_supported;
         Ok(reply)
     }
 }
@@ -130,6 +138,7 @@ impl PluginRuntime {
         let state = self.shared.lock().ok()?;
         (state.sessions.is_empty()
             && state.desktop_request.is_none()
+            && state.setting_tasks.iter().all(|task| task.is_finished())
             && state.jobs.values().all(|job| job.task.is_finished()))
         .then_some(state.epoch)
     }
@@ -140,6 +149,7 @@ impl PluginRuntime {
         };
         if !state.sessions.is_empty()
             || state.desktop_request.is_some()
+            || state.setting_tasks.iter().any(|task| !task.is_finished())
             || state.jobs.values().any(|job| !job.task.is_finished())
         {
             return false;
@@ -155,8 +165,19 @@ impl PluginRuntime {
     pub async fn stop(self) -> Result<()> {
         self.begin_close();
         let server = self.task.await;
-        let tasks = std::mem::take(&mut self.shared.lock()?.jobs);
+        let (tasks, setting_tasks) = {
+            let mut state = self.shared.lock()?;
+            (
+                std::mem::take(&mut state.jobs),
+                std::mem::take(&mut state.setting_tasks),
+            )
+        };
         let mut errors = Vec::new();
+        for task in setting_tasks {
+            if let Err(error) = task.await {
+                errors.push(error.to_string());
+            }
+        }
         for job in tasks.into_values() {
             if let Err(e) = job.task.await {
                 errors.push(e.to_string());
@@ -275,6 +296,32 @@ async fn connection(
         }
         let mut reply = shared.status(project).await?;
         match event {
+            PluginEvent::SetAutoShare { enabled, .. } => {
+                ensure!(
+                    !shared.closing.load(Ordering::Acquire),
+                    "Plugin bridge is closing"
+                );
+                let changed = match shared.schedule_setting(project, enabled) {
+                    Ok(receiver) => receiver.await?,
+                    Err(error) => Err(error),
+                };
+                match changed {
+                    Ok(()) => {
+                        shared.lock()?.messages.remove(&project);
+                        reply = shared.status(project).await?;
+                        reply.message = if enabled {
+                            "Automatic sharing is on."
+                        } else {
+                            "Automatic sharing is off. Use Share current version."
+                        }
+                        .into();
+                    }
+                    Err(_) => {
+                        reply.ok = false;
+                        reply.message = "Could not save the automatic sharing setting. Open TrackMesh and retry.".into();
+                    }
+                }
+            }
             PluginEvent::SendSnapshot { .. } if reply.share_enabled => {
                 match shared.schedule(project, false) {
                     Ok(()) => {
@@ -310,6 +357,16 @@ async fn connection(
                     if state.messages.contains_key(&project) || state.messages.len() < 64 {
                         state.messages.insert(project, status::Notice::Receive);
                     }
+                }
+            }
+            PluginEvent::SaveObserved { .. }
+                if !reply.project_name.is_empty() && !reply.auto_share =>
+            {
+                reply.ok = true;
+                reply.message = "Saved. Press Share current version to send it.".into();
+                let mut state = shared.lock()?;
+                if state.messages.contains_key(&project) || state.messages.len() < 64 {
+                    state.messages.insert(project, status::Notice::Saved);
                 }
             }
             PluginEvent::SaveObserved { .. } if !reply.project_name.is_empty() => {
