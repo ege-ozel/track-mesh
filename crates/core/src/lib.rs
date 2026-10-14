@@ -10,11 +10,13 @@ use std::{
 };
 use storage::Store;
 use uuid::Uuid;
+mod auto_share;
 mod connection;
 mod endpoints;
 mod firewall_observation;
 mod network_observation;
 mod settings;
+pub use auto_share::DawPluginSetting;
 mod supabase;
 pub use firewall_observation::{observe_firewall, FirewallObservation};
 pub use network_observation::{observe_network, NetworkObservation};
@@ -74,7 +76,13 @@ impl Engine {
         let identity = Arc::new(Identity::load_or_create(&directory.join("secrets"), name)?);
         let store = Arc::new(Store::open(&directory.join("trackmesh.db"))?);
         let chunks = ChunkStore::new(directory.join("chunks"))?;
-        let settings = settings::SettingsState::load(&directory);
+        let mut settings = settings::SettingsState::load(&directory);
+        let linked = store
+            .projects()?
+            .into_iter()
+            .map(|project| project.project_id)
+            .collect();
+        settings.retain_auto_share_projects(&directory, &linked)?;
         if let Some(device_name) = &settings.value.device_name {
             identity.set_name(device_name)?;
         }

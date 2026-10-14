@@ -363,13 +363,39 @@ pub struct MailboxAck {
     deny_unknown_fields
 )]
 pub enum PluginEvent {
-    PluginConnected { session_id: Uuid, project_id: Uuid },
-    ProjectId { session_id: Uuid, project_id: Uuid },
-    SaveObserved { session_id: Uuid, project_id: Uuid },
-    SendSnapshot { session_id: Uuid, project_id: Uuid },
-    ReceiveSnapshot { session_id: Uuid, project_id: Uuid },
-    SessionEnding { session_id: Uuid, project_id: Uuid },
-    GetStatus { session_id: Uuid, project_id: Uuid },
+    PluginConnected {
+        session_id: Uuid,
+        project_id: Uuid,
+    },
+    ProjectId {
+        session_id: Uuid,
+        project_id: Uuid,
+    },
+    SaveObserved {
+        session_id: Uuid,
+        project_id: Uuid,
+    },
+    SendSnapshot {
+        session_id: Uuid,
+        project_id: Uuid,
+    },
+    ReceiveSnapshot {
+        session_id: Uuid,
+        project_id: Uuid,
+    },
+    SessionEnding {
+        session_id: Uuid,
+        project_id: Uuid,
+    },
+    GetStatus {
+        session_id: Uuid,
+        project_id: Uuid,
+    },
+    SetAutoShare {
+        session_id: Uuid,
+        project_id: Uuid,
+        enabled: bool,
+    },
 }
 impl PluginEvent {
     pub fn ids(&self) -> (Uuid, Uuid) {
@@ -401,6 +427,11 @@ impl PluginEvent {
             | Self::GetStatus {
                 session_id,
                 project_id,
+            }
+            | Self::SetAutoShare {
+                session_id,
+                project_id,
+                ..
             } => (session_id, project_id),
         }
     }
@@ -442,6 +473,10 @@ pub struct PluginStatus {
     pub get_enabled: bool,
     #[serde(default)]
     pub pending_publications: u64,
+    #[serde(default)]
+    pub auto_share_supported: bool,
+    #[serde(default)]
+    pub auto_share: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

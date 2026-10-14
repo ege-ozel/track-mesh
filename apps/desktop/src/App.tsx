@@ -554,6 +554,13 @@ export default function App() {
       {status?.closing && <div className="notice">Work finished. TRACKMESH is shutting down safely.</div>}
       {screen === 'settings' ? <section className="settings-screen"><div className="section-heading"><div><h2>Settings</h2><span className="muted">Device identity and optional connection services.</span></div></div>
         <StorageSettings busy={busy} act={act} />
+        <section className="settings-block"><h3>DAW plugin</h3>
+          <p className="muted">Off: share only with Share current version. On: every save in the DAW shares a new version, including autosaves in some DAWs.</p>
+          {status?.daw_plugin_settings.map(project => <div key={project.project_id}><p><strong>{project.name}</strong></p>
+            <label><input type="checkbox" checked={project.auto_share} disabled={busy || !status.ready} onChange={event => void act({ kind: 'set_auto_share', project_id: project.project_id, enabled: event.currentTarget.checked })} /> Share automatically when the DAW project is saved</label>
+          </div>)}
+          {status?.ready && !status.daw_plugin_settings.length && <p className="muted">Link a project's folder in TrackMesh first.</p>}
+        </section>
         <section className="settings-block"><h3>Connection</h3><label><input type="checkbox" checked={status?.network?.port_mapping.consent_enabled ?? false} disabled={busy} onChange={event => { void setUpnpMapping(event.currentTarget.checked).then(poll).catch(err => setError(String(err))); }} /> Set up router automatically (UPnP)</label><p className="muted">Opens one time-limited router port for TrackMesh. Only paired devices can use it.</p></section>
         <details className="setup"><summary>Advanced</summary>
           <DeviceNameSettings name={status?.device?.name ?? ''} busy={busy} act={act} />

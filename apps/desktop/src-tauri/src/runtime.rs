@@ -68,6 +68,10 @@ pub struct Options {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Action {
+    SetAutoShare {
+        project_id: Uuid,
+        enabled: bool,
+    },
     DeleteBackups {
         selected: Vec<trackmesh_core::BackupSelection>,
     },
@@ -177,6 +181,7 @@ impl Action {
     fn project(&self) -> Option<Uuid> {
         match self {
             Self::Join { .. }
+            | Self::SetAutoShare { .. }
             | Self::DeleteBackups { .. }
             | Self::CompleteInviteLink { .. }
             | Self::SetDefaultSupabase { .. }
@@ -213,6 +218,7 @@ impl Action {
             Self::SetProjectBackend { .. } => "Save project backend",
             Self::SetDefaultSupabase { .. } => "Save default Supabase settings",
             Self::SetDeviceName { .. } => "Save device name",
+            Self::SetAutoShare { .. } => "Save DAW auto-share setting",
             Self::SetProjectsLocation { .. } => "Save Projects location",
             Self::SetManualPublicEndpoint { .. } => "Save manual port forwarding",
             Self::Join { .. } => "Accept invitation and request pairing",
@@ -251,6 +257,7 @@ impl Action {
         matches!(
             self,
             Self::SetDefaultSupabase { .. }
+                | Self::SetAutoShare { .. }
                 | Self::SetDeviceName { .. }
                 | Self::SetProjectsLocation { .. }
                 | Self::SetManualPublicEndpoint { .. }
@@ -327,6 +334,7 @@ pub struct PluginHandoff {
 
 #[derive(Serialize)]
 pub struct DesktopStatus {
+    pub daw_plugin_settings: Vec<trackmesh_core::DawPluginSetting>,
     pub plugin_handoff: Option<PluginHandoff>,
     pub pairing: PairingStatus,
     pub listen_port: u16,
@@ -654,7 +662,8 @@ impl Desktop {
         } else {
             tauri::async_runtime::spawn_blocking(documents::default_projects_location).await??
         };
-        let (page, pairing, project_backends, default_supabase) = match engine {
+        let (page, pairing, project_backends, default_supabase, daw_plugin_settings) = match engine
+        {
             Some(engine) => {
                 tauri::async_runtime::spawn_blocking(move || -> Result<_> {
                     let page = engine.summary_page(offset)?;
@@ -674,11 +683,18 @@ impl Desktop {
                         engine.pairing_status()?,
                         project_backends,
                         default_supabase,
+                        engine.daw_plugin_settings()?,
                     ))
                 })
                 .await??
             }
-            None => (None, PairingStatus::default(), HashMap::new(), None),
+            None => (
+                None,
+                PairingStatus::default(),
+                HashMap::new(),
+                None,
+                Vec::new(),
+            ),
         };
         let state_engine = { self.lock()?.engine.clone() };
         let supabase_states = match state_engine.clone() {
@@ -829,6 +845,7 @@ impl Desktop {
             })
             .collect();
         Ok(DesktopStatus {
+            daw_plugin_settings,
             plugin_handoff: state.plugin_handoff.clone(),
             pairing,
             listen_port: self.options.port,
@@ -1731,6 +1748,10 @@ impl Desktop {
                         Action::SetDeviceName { name } => {
                             disk.set_device_name(&name)?;
                             Ok(json!({"message": "Device name saved"}))
+                        }
+                        Action::SetAutoShare { project_id, enabled } => {
+                            disk.set_auto_share(project_id, enabled)?;
+                            Ok(json!({"message": if enabled { "Automatic sharing is on" } else { "Automatic sharing is off" }}))
                         }
                         Action::SetProjectsLocation { location } => {
                             disk.set_projects_location(&location)?;

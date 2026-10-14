@@ -15,6 +15,7 @@ pub(super) enum Notice {
     Committed,
     Failed,
     Receive,
+    Saved,
 }
 impl Notice {
     fn message(&self) -> (bool, String) {
@@ -24,6 +25,7 @@ impl Notice {
             Self::Committed => (true, "Current version shared. Your collaborator can get it while TrackMesh is running.".into()),
             Self::Failed => (false, "Sharing failed or files did not settle. Check locks/recovery in TrackMesh, then retry Share current version.".into()),
             Self::Receive => (true, GET_GUIDANCE.into()),
+            Self::Saved => (true, "Saved. Press Share current version to send it.".into()),
         }
     }
 }
@@ -78,6 +80,8 @@ pub fn unavailable(project_id: Uuid, message: &str) -> PluginStatus {
         share_enabled: false,
         get_enabled: false,
         pending_publications: 0,
+        auto_share_supported: false,
+        auto_share: false,
     }
 }
 pub fn summarize(
@@ -208,6 +212,8 @@ pub fn summarize(
         } else {
             0
         },
+        auto_share_supported: true,
+        auto_share: false,
     }
 }
 pub fn bounded(text: &str) -> String {

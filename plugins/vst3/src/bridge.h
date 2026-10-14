@@ -22,12 +22,15 @@ struct ViewStatus {
     std::vector<ProjectChoice> projects;
     bool pickerSupported {false}, projectsMore {false}, desktopAvailable {false};
     bool shareEnabled {false}, getEnabled {false};
+    bool autoShareSupported {false}, autoShare {false};
 };
 struct BridgeState {
     std::mutex mutex;
     ProjectId project {};
     ViewStatus view;
     std::atomic<uint64_t> generation {0}, save {0}, send {0}, receive {0};
+    std::atomic<uint64_t> autoShareChange {0};
+    std::atomic<bool> autoShareValue {false};
     std::atomic<bool> ending {false};
     HANDLE wake {nullptr};
     BridgeState();
@@ -44,6 +47,7 @@ public:
     void saveObserved() noexcept;
     void send() noexcept;
     void receive() noexcept;
+    void setAutoShare(bool enabled);
     ViewStatus status() const;
 private:
     std::shared_ptr<BridgeState> state;

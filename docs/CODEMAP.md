@@ -21,6 +21,7 @@ Paths are relative to repository root. A crate's `src/lib.rs` lists its public A
 | Manual snapshot commit followed by publication | `crates/core/src/sending.rs` | Snapshot workflow and durable mailbox ACK |
 | Windows plugin pipe, picker, binding, status, Share queue and Desktop handoff | `crates/core/src/ipc/mod.rs`, `ipc/security.rs`, `ipc/status.rs` | Existing plugin events with defaulted status fields; shared Engine/network; bounded Desktop request |
 | Project save debounce, coalescing and accepted-work drain | `crates/core/src/ipc/jobs.rs` | Engine settled send; bounded per-project revisions |
+| Default-off per-project DAW auto-share preference | `crates/core/src/auto_share.rs`, `settings.rs`, `ipc/mod.rs`, `ipc/jobs.rs` | Versioned atomic settings; Desktop/plugin share one preference; capability-gated local pipe setter |
 | Work-based owner retention and 60-second idle grace | `crates/core/src/lifetime.rs` | Plugin/peer activity epochs; narrow authored-pending query |
 | VST3 factory, audio pass-through, UUID state/signals | `plugins/vst3/src/plugin.cpp`, `plugin.h` | Official Steinberg SDK; Rust owns decisions |
 | Native VST3 view, IPC worker and bundled-owner launch | `plugins/vst3/src/view.cpp`, `bridge.cpp` | No audio-thread IPC or file/network work |

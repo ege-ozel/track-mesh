@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <stdexcept>
 #include <vector>
+#include <optional>
 
 namespace TrackMesh {
 namespace {
@@ -158,9 +159,13 @@ bool jsonBool(json_object_s* object, const char* key) {
     throw std::runtime_error("Invalid IPC status boolean");
 }
 bool request(HANDLE pipe, const char* event, const std::string& session, const ProjectId& project,
-             const std::shared_ptr<BridgeState>& state) {
+             const std::shared_ptr<BridgeState>& state, std::optional<bool> autoShare = std::nullopt) {
     const auto id = projectText(project);
     auto payload = std::string("{\"event\":\"") + event + "\",\"session_id\":\"" + session + "\",\"project_id\":\"" + id + "\"}";
+    if (autoShare.has_value()) {
+        payload.pop_back();
+        payload += autoShare.value() ? ",\"enabled\":true}" : ",\"enabled\":false}";
+    }
     auto length = static_cast<DWORD>(payload.size());
     if (!transfer(pipe, &length, sizeof(length), true) || !transfer(pipe, payload.data(), length, true)) return false;
     if (!transfer(pipe, &length, sizeof(length), false) || !length || length > maxFrame) return false;
@@ -181,6 +186,8 @@ bool request(HANDLE pipe, const char* event, const std::string& session, const P
     view.state = wide(jsonString(object, "state"));
     view.message = wide(jsonString(object, "message"));
     view.pickerSupported = optionalBool(object, "picker_supported");
+    view.autoShareSupported = optionalBool(object, "auto_share_supported");
+    view.autoShare = optionalBool(object, "auto_share");
     if (view.pickerSupported) {
         view.projects = projectChoices(object);
         view.projectsMore = optionalBool(object, "projects_more");
@@ -251,10 +258,17 @@ void run(Work& work) {
                 if (!healthy) break;
             }
             const char* event = "GET_STATUS";
+            std::optional<bool> autoShare;
             std::atomic<uint64_t>* signal = nullptr;
             // Each coalesced signal belongs to the UUID generation at enqueue.
             // A host state restore must never send an old button action to a new project.
-            if (state->save.exchange(0) == binding.second) { event = "SAVE_OBSERVED"; signal = &state->save; }
+            const auto autoShareChange = state->autoShareChange.exchange(0);
+            bool supportsAutoShare = false;
+            { std::lock_guard<std::mutex> lock(state->mutex); supportsAutoShare = state->view.autoShareSupported; }
+            if (autoShareChange == binding.second && supportsAutoShare) {
+                event = "SET_AUTO_SHARE"; signal = &state->autoShareChange; autoShare = state->autoShareValue.load();
+            }
+            else if (state->save.exchange(0) == binding.second) { event = "SAVE_OBSERVED"; signal = &state->save; }
             else if (state->send.exchange(0) == binding.second) { event = "SEND_SNAPSHOT"; signal = &state->send; }
             else if (state->ending.load()) {
                 // Acquire the ending signal before the final drain: a save may
@@ -268,12 +282,12 @@ void run(Work& work) {
                 }
             }
             else if (state->receive.exchange(0) == binding.second) { event = "RECEIVE_SNAPSHOT"; signal = &state->receive; }
-            healthy = request(pipe.value, event, session, project, state);
+            healthy = request(pipe.value, event, session, project, state, autoShare);
             if (!healthy && signal) {
                 uint64_t empty = 0;
                 signal->compare_exchange_strong(empty, binding.second);
             }
-            if (healthy && !state->ending.load()) WaitForSingleObject(state->wake, 1000);
+            if (healthy && !state->ending.load()) WaitForSingleObject(state->wake, 500);
         }
         if (!healthy) {
             offline(state, L"Agent connection interrupted. Check desktop before retrying an action.");
@@ -326,6 +340,13 @@ ProjectId Bridge::project() const { return projectOf(state); }
 void Bridge::saveObserved() noexcept { state->save.store(state->generation.load()); SetEvent(state->wake); }
 void Bridge::send() noexcept { state->send.store(state->generation.load()); SetEvent(state->wake); }
 void Bridge::receive() noexcept { state->receive.store(state->generation.load()); SetEvent(state->wake); }
+void Bridge::setAutoShare(bool enabled) {
+    std::lock_guard<std::mutex> lock(state->mutex);
+    if (!state->view.connected || !state->view.linked || !state->view.autoShareSupported) return;
+    state->autoShareValue.store(enabled);
+    state->autoShareChange.store(state->generation.load());
+    SetEvent(state->wake);
+}
 ViewStatus Bridge::status() const { std::lock_guard<std::mutex> lock(state->mutex); return state->view; }
 ProjectId newProjectId() {
     GUID guid {};

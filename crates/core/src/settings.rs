@@ -117,6 +117,8 @@ pub(super) struct Settings {
     pub manual_public_endpoint: Option<ManualPublicEndpoint>,
     #[serde(default)]
     pub tray_notice_shown: bool,
+    #[serde(default)]
+    pub auto_share_projects: std::collections::BTreeSet<Uuid>,
 }
 
 impl Default for Settings {
@@ -135,6 +137,7 @@ impl Default for Settings {
             projects_location: None,
             manual_public_endpoint: None,
             tray_notice_shown: false,
+            auto_share_projects: std::collections::BTreeSet::new(),
         }
     }
 }
@@ -159,6 +162,39 @@ pub(super) struct SettingsState {
 }
 
 impl SettingsState {
+    pub fn retain_auto_share_projects(
+        &mut self,
+        directory: &Path,
+        linked: &std::collections::BTreeSet<Uuid>,
+    ) -> Result<()> {
+        if self.value.auto_share_projects.is_subset(linked) {
+            return Ok(());
+        }
+        let mut candidate = self.value.clone();
+        candidate
+            .auto_share_projects
+            .retain(|id| linked.contains(id));
+        self.commit(directory, candidate)
+    }
+    pub fn set_auto_share(
+        &mut self,
+        directory: &Path,
+        project: Uuid,
+        enabled: bool,
+        linked: &std::collections::BTreeSet<Uuid>,
+    ) -> Result<()> {
+        ensure!(linked.contains(&project), "project is no longer linked");
+        let mut candidate = self.value.clone();
+        candidate
+            .auto_share_projects
+            .retain(|id| linked.contains(id));
+        if enabled {
+            candidate.auto_share_projects.insert(project);
+        } else {
+            candidate.auto_share_projects.remove(&project);
+        }
+        self.commit(directory, candidate)
+    }
     pub fn mark_tray_notice_shown(&mut self, directory: &Path) -> Result<()> {
         let mut candidate = self.value.clone();
         candidate.tray_notice_shown = true;

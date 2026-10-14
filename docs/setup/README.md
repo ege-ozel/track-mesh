@@ -35,6 +35,8 @@ Get'in indireceği yeni veri 1 GB'ı (1.000.000.000 byte) aşarsa indirme başla
 
 TRACKMESH VST3'ü DAW'da herhangi bir track'e ekleyip TrackMesh'te bağlanmış projeyi listeden seçin; davetle gelen proje de aynı listede görünür. Seçimi DAW projesine kaydedin. Daha önce kaydedilmiş UUID zaten bağlıysa plugin doğrudan açılır; yanlış seçimi **Change project** ile değiştirin. DAW standart state-dirty bildirimini desteklemiyorsa seçim değiştirilmez ve açıklama gösterilir. **Share current version** kaydın oturmasını bekleyip Desktop ile aynı paylaşım akışını kullanır. **Get collaborator's version** yalnız TrackMesh'i açıp ilgili kartı gösterir: DAW projesini kaydedip kapatın, ardından TrackMesh'te Get seçin. Plugin otomatik indirme veya açık DAW projesine kurulum yapmaz.
 
+Plugin'de **Share automatically when the DAW project is saved** proje bazında varsayılan olarak kapalıdır; mevcut projelerde de DAW kaydı kendiliğinden sürüm paylaşmaz. Kapalıyken kaydettikten sonra **Share current version** seçin. Aynı ayar plugin checkbox'ından veya **Settings → DAW plugin** bölümünden değiştirilebilir. Açıkken her gözlenen DAW kaydı dosyaların oturması beklendikten sonra paylaşılır; bazı DAW'ların autosave işlemleri de buna dahildir. Eski agent bu ayarı desteklemiyorsa plugin checkbox'ı göstermez.
+
 ## Davet servisi ve erişim sınırları
 
 Supabase yalnız küçük şifreli invite drop, endpoint kaydı ve head hint'i tutar. Dosyalar ve sample'lar servise yüklenmez. Proje anahtarı yalnız şifreli davetin içindedir; açık anahtar ve çözülmüş davet servise gönderilmez. Servis kaydı tek başına NAT engelini aşmaz ve offline kaynağın dosyalarını indirmez.

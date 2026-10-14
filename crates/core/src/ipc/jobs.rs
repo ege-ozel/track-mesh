@@ -17,6 +17,34 @@ pub(super) struct Job {
 }
 
 impl Shared {
+    /// Accepted settings writes also outlive disconnect and drain before owner exit.
+    pub(super) fn schedule_setting(
+        &self,
+        project: Uuid,
+        enabled: bool,
+    ) -> Result<tokio::sync::oneshot::Receiver<Result<()>>> {
+        let mut state = self.lock()?;
+        ensure!(
+            !self.closing.load(Ordering::Acquire),
+            "Plugin bridge is closing"
+        );
+        state.setting_tasks.retain(|task| !task.is_finished());
+        ensure!(
+            state.setting_tasks.len() < 16,
+            "Plugin settings are busy; retry later"
+        );
+        let engine = self.engine.clone();
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+        state.setting_tasks.push(tokio::spawn(async move {
+            let result =
+                tokio::task::spawn_blocking(move || engine.set_auto_share(project, enabled))
+                    .await
+                    .map_err(anyhow::Error::from)
+                    .and_then(|result| result);
+            let _ = sender.send(result);
+        }));
+        Ok(receiver)
+    }
     pub(super) fn schedule(self: &Arc<Self>, project: Uuid, observed: bool) -> Result<()> {
         let mut state = self.lock()?;
         ensure!(
@@ -77,16 +105,19 @@ async fn run(shared: Arc<Shared>, project: Uuid, mut observed: bool, revision: A
         };
         let handled = baseline.as_ref().ok().copied();
         let result = match baseline {
-            Ok(_) => {
-                shared
-                    .engine
-                    .send_saved_snapshot(&shared.network, project, shared.allow_http)
-                    .await
+            Ok(_) if observed && !shared.engine.auto_share_enabled(project).unwrap_or(false) => {
+                Ok(None)
             }
+            Ok(_) => shared
+                .engine
+                .send_saved_snapshot(&shared.network, project, shared.allow_http)
+                .await
+                .map(Some),
             Err(error) => Err(error),
         };
         let notice = match result {
-            Ok(_) => Notice::Committed,
+            Ok(Some(_)) => Notice::Committed,
+            Ok(None) => Notice::Saved,
             Err(_) => Notice::Failed,
         };
         // Scheduling and removal share this lock: an observation cannot fall
