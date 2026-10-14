@@ -23,6 +23,7 @@ pub struct StorageSummary {
 #[serde(deny_unknown_fields)]
 pub struct BackupSelection {
     pub transfer_id: Uuid,
+    pub path: String,
     pub bytes: u64,
 }
 
@@ -107,7 +108,7 @@ impl Engine {
                 .find(|b| b.transfer_id == item.transfer_id)
                 .ok_or_else(|| anyhow::anyhow!("backup is no longer available; refresh Storage"))?;
             anyhow::ensure!(
-                !backup.protected && backup.bytes == item.bytes,
+                !backup.protected && backup.path == item.path && backup.bytes == item.bytes,
                 "backup changed or is protected; refresh Storage before deletion"
             );
             let session = sessions

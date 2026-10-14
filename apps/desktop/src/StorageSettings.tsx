@@ -33,7 +33,7 @@ export function StorageSettings({ busy, act }: { busy: boolean; act: (action: Ac
           {backup.project_name} · {size(backup.bytes)} · {backup.protected ? 'Kept' : 'Old backup'}</label>
         <p className="muted"><code>{backup.path.replace(/^\\\\\?\\/, '')}</code></p>
       </li>)}</ul>
-      <button className="danger" disabled={busy || loading || !chosen.length || chosen.length > 1024} onClick={() => void act({ kind: 'delete_backups', selected: chosen.map(({ transfer_id, bytes }) => ({ transfer_id, bytes })) })}>Delete selected backups · {size(total)}</button>
+      <button className="danger" disabled={busy || loading || !chosen.length || chosen.length > 1024} onClick={() => void act({ kind: 'delete_backups', selected: chosen.map(({ transfer_id, path, bytes }) => ({ transfer_id, path, bytes })) })}>Delete selected backups · {size(total)}</button>
     </>}
     <p className="muted">Get asks before downloading more than 1 GB of new data. Verified local chunks do not count toward that download.</p>
   </section>;
