@@ -405,6 +405,7 @@ export default function App() {
   const [projectsLocation, setProjectsLocation] = useState('');
   const [jobStartedAt, setJobStartedAt] = useState<Record<string, number>>({});
   const [focusProjectId, setFocusProjectId] = useState<string | null>(null);
+  const [scrolledFocusId, setScrolledFocusId] = useState<string | null>(null);
   const pluginHandoffRevision = useRef(0);
   useEffect(() => {
     const handoff = status?.plugin_handoff;
@@ -414,6 +415,7 @@ export default function App() {
     setScreen('projects');
     setSetup(null);
     setOffset(handoff.offset);
+    setScrolledFocusId(null);
     setFocusProjectId(handoff.project_id);
   }, [status?.plugin_handoff]);
   const [upnpConsentPrompt, setUpnpConsentPrompt] = useState(false);
@@ -459,20 +461,26 @@ export default function App() {
     const added = status.page.projects.find(item => !focusBaseline.current?.has(item.project.project_id));
     if (added) {
       focusBaseline.current = null;
+      setScrolledFocusId(null);
       setFocusProjectId(added.project.project_id);
     }
   }, [status?.page]);
+  // Scroll once per focus request; status polling must not re-scroll or restart the highlight timer.
   useEffect(() => {
-    if (!focusProjectId) return;
-    let timeout: number | undefined;
+    if (!focusProjectId || scrolledFocusId === focusProjectId) return;
     const frame = window.requestAnimationFrame(() => {
       const card = document.getElementById(`project-${focusProjectId}`);
       if (!card) return;
       card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      timeout = window.setTimeout(() => setFocusProjectId(null), 2500);
+      setScrolledFocusId(focusProjectId);
     });
-    return () => { window.cancelAnimationFrame(frame); if (timeout !== undefined) window.clearTimeout(timeout); };
-  }, [focusProjectId, status?.page]);
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusProjectId, scrolledFocusId, status?.page]);
+  useEffect(() => {
+    if (!scrolledFocusId) return;
+    const timeout = window.setTimeout(() => { setFocusProjectId(null); setScrolledFocusId(null); }, 2500);
+    return () => window.clearTimeout(timeout);
+  }, [scrolledFocusId]);
   const executeAction = async (action: Action): Promise<boolean> => {
     if (submitted.current) return false;
     submitted.current = true;
