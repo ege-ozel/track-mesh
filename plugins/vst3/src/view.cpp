@@ -137,7 +137,11 @@ void View::paint(HWND handle) {
         label(dc, font, text, {24, 139, 556, 166}, muted);
         if (status.projectsMore) label(dc, font, pick(status, L"Showing the first 64 TrackMesh projects.", L"TrackMesh'teki ilk 64 proje gösteriliyor."), {24, 214, 556, 238}, muted);
     }
-    label(dc, font, selectionError.empty() ? status.message : selectionError, {24, 366, 556, 430}, muted, DT_LEFT | DT_WORDBREAK);
+    // Red for a refusal, amber when the agent is away, gray otherwise; never the status line twice.
+    const auto message = selectionError.empty() ? status.message : selectionError;
+    const bool repeated = !selecting && (message == status.line || message == status.presenceWarning);
+    const auto tone = !selectionError.empty() || status.state == L"ACTION REFUSED" ? danger : status.state == L"AGENT UNAVAILABLE" ? warn : muted;
+    if (!repeated) label(dc, font, message, {24, 366, 556, 430}, tone, DT_LEFT | DT_WORDBREAK);
     EndPaint(handle, &paint);
 }
 void View::refresh() {
@@ -176,7 +180,7 @@ void View::refresh() {
     EnableWindow(openButton, status.connected && status.desktopAvailable);
     EnableWindow(chooseButton, status.connected && SendMessageW(picker, CB_GETCURSEL, 0, 0) != CB_ERR);
     // Owner-drawn buttons repaint only when asked; ask when their words change.
-    const auto labels = status.language + L"|" + status.getLabel + (status.autoShare ? L"|on" : L"|off");
+    const auto labels = status.language + L"|" + status.getLabel + L"|" + status.state + (status.autoShare ? L"|on" : L"|off");
     if (labels != drawnLabels) {
         drawnLabels = labels;
         InvalidateRect(sendButton, nullptr, FALSE);
@@ -244,11 +248,13 @@ LRESULT CALLBACK View::procedure(HWND handle, UINT message, WPARAM wparam, LPARA
                 return TRUE;
             }
             if (item->CtlID < 1 || (item->CtlID > 2 && (item->CtlID < 11 || item->CtlID > 13))) break;
-            // Every plugin button is drawn dark; Change project is the only secondary one.
-            const auto brush = CreateSolidBrush(disabled ? disabledFill : item->CtlID == 12 ? secondaryFill : primaryFill);
+            // One primary button: Get when the collaborator has a newer version, otherwise Share.
+            const auto status = self->bridge->status();
+            const bool getFirst = status.state == L"REMOTE_AHEAD";
+            const bool secondary = item->CtlID == 12 || (item->CtlID == 1 && getFirst) || (item->CtlID == 2 && !getFirst);
+            const auto brush = CreateSolidBrush(disabled ? disabledFill : secondary ? secondaryFill : primaryFill);
             FillRect(item->hDC, &item->rcItem, brush); DeleteObject(brush);
             SetBkMode(item->hDC, TRANSPARENT);
-            const auto status = self->bridge->status();
             std::wstring text;
             if (item->CtlID == 1) text = pick(status, L"Share current version", L"Güncel sürümü paylaş");
             // Get opens TrackMesh on this project, hence the ellipsis.
