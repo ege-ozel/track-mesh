@@ -55,7 +55,7 @@ Servis problemi ve eksik fonksiyon adları proje kartındaki **Advanced → (pro
 
 `Collaborator` yerelde bilinen cihazı gösterir. Bu kayıt, bağlantı veya dosya teslimi değildir. **Waiting for … to approve this device…** onay beklenmesini gösterir. Seçili cihazın bağlantısı ve güncel **Advanced → Connection → Check connection** sonucu ayrı bilgilerdir. Offline head hint'i son bilinen sürümü gösterir; dosyalar için yetkili kaynak online olmalıdır.
 
-Uygulamayı açmak davet almayan birine bildirim veya public kişi listesi oluşturmaz. Public rehber, browser deployment, offline pairing kuyruğu, kalıcı Windows arka plan servisi ve sürekli senkronizasyon yoktur. `services/relay` kodu vardır; desteklenen kurulumda relay fallback yoktur ve post-1.0'a ertelenmiştir. Legacy relay alanını bağlantı çözümü olarak doldurmayın.
+Uygulamayı açmak davet almayan birine bildirim veya public kişi listesi oluşturmaz. Public rehber, browser deployment, offline pairing kuyruğu, kalıcı Windows arka plan servisi ve sürekli senkronizasyon yoktur. Relay sunucu kodu `future/relay-service` altında, derlenmeden durur; desteklenen kurulumda relay fallback yoktur ve post-1.0'a ertelenmiştir. Legacy relay alanını bağlantı çözümü olarak doldurmayın.
 
 UPnP ve imzalı endpoint yayını, değişen erişilebilir adresleri güncellemeye çalışır. Gerçek WAN/ağ geçişi davranışı doğrulanmış sayılmaz. Elle yönlendirme kullanılıyorsa yeni public IPv4/dış portu Settings'te güncelleyin. Yeni ağ erişilemiyorsa önce aşağıdaki sırayı izleyin. Profil, proje UUID'si ve anahtarları sıfırlamayın. Dosya davetinin adresleri gerçekten eskidiyse güncel dosyayı aynı profil/proje/hedefe native import edin; sıradan timeout için yeniden import yapmayın.
 

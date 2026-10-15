@@ -14,4 +14,4 @@ Paired peers and pinned infrastructure may connect; `src/gate.rs` adds a bounded
 
 The actor must not hash/scan large files or perform blocking disk work. Responders in `core/src/peer.rs` delegate those operations to blocking workers. Fatal actor exits resolve pending requests and report offline/error status.
 
-Keep codec tags, size bounds, protocol strings, and signed types stable when moving code. The separate Phase 3 service exists in `services/relay`; real two-PC NAT/relay/DCUtR validation and public infrastructure deployment remain pending. No automated tests/benchmarks.
+Keep codec tags, size bounds, protocol strings, and signed types stable when moving code. The separate Phase 3 relay service is kept, unbuilt, in `future/relay-service`; real two-PC NAT/relay/DCUtR validation and public infrastructure deployment remain pending. No automated tests/benchmarks.

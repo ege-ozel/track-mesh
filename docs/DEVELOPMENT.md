@@ -16,11 +16,9 @@ Run from repository root:
 cargo fmt --all -- --check
 cargo check --workspace --locked --offline
 cargo clippy --workspace --lib --bins --locked --offline -- -D warnings
-cargo build -p trackmesh-core -p trackmesh-mailbox-service -p trackmesh-relay-service --locked --offline
+cargo build -p trackmesh-core --locked --offline
 cargo build -p trackmesh-desktop --locked --offline
 target\debug\trackmesh-agent.exe --help
-target\debug\trackmesh-mailbox-server.exe --help
-target\debug\trackmesh-relay-server.exe --help
 target\debug\trackmesh-desktop.exe --help
 ```
 

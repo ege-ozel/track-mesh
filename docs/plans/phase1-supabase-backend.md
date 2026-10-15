@@ -2,7 +2,7 @@
 
 **Durum (2026-10-13):** M5d sunucu/istemci, M6 davet drop'u, M7 head kayıtları ve #42 üyelik düzeltmeleri uygulandı. Depoda m5d, m6 ve m7 migration'ları ile dokuz Edge Function bulunur. [IMPLEMENTATION.md](../IMPLEMENTATION.md), canlı Supabase ve Windows Sandbox üzerinde davet tüketimi, açık onay ve host → alıcı aktarımını kaydeder. Ayrı fiziksel ağlarda aktarım, canlı revoke/üç cihaz sınırı ve güvenlik yarışları doğrulanmadı. m7 migration'ının Dashboard sonucu ve `head-publish`/`head-list` deployment'ı **unconfirmed**. Kontrol kanıtlarının tek kaynağı IMPLEMENTATION.md'dir.
 
-Bu ek, Aşama 1 M0–M10 doğrudan-P2P planındaki Supabase arka ucunu açıklar. Kullanıcının kendi Supabase projesi yalnız küçük şifreli davet, endpoint ve head kayıtlarını taşır; proje dosyaları doğrudan cihazlar arasında aktarılır. Desktop'ın ana akışı v2 davet bağlantısıdır. Yerel davet dosyası ve isteğe bağlı kendi mailbox servisi Advanced/legacy yollar olarak korunur. `services/relay` kodu vardır; relay desteklenen kuruluma dâhil değildir ve post-1.0'a ertelenmiştir.
+Bu ek, Aşama 1 M0–M10 doğrudan-P2P planındaki Supabase arka ucunu açıklar. Kullanıcının kendi Supabase projesi yalnız küçük şifreli davet, endpoint ve head kayıtlarını taşır; proje dosyaları doğrudan cihazlar arasında aktarılır. Desktop'ın ana akışı v2 davet bağlantısıdır. Yerel davet dosyası Advanced yolu olarak korunur; kendi mailbox servisi `future/` altına taşındı. Relay sunucu kodu `future/relay-service` altında, derlenmeden durur; relay desteklenen kuruluma dâhil değildir ve post-1.0'a ertelenmiştir.
 
 ## 1. Veri modeli ve gizlilik sınırı
 

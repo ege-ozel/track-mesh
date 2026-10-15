@@ -15,7 +15,7 @@ No current trial package contains this complete link flow. Build a new private t
 Build on Windows in an x64 Visual Studio developer shell. The workspace declares Rust 1.88; Desktop declares 1.90; the recorded successful toolchain is Rust 1.98.1. Use Node 22.12 or newer for Vite 8. Recent checks on Node 22.11.0 completed with a version warning and do not establish support for that version. See [Development](docs/DEVELOPMENT.md) for prerequisites and release-build cleanup.
 
 ```powershell
-cargo build -p trackmesh-core -p trackmesh-mailbox-service -p trackmesh-relay-service --locked
+cargo build -p trackmesh-core --locked
 target\debug\trackmesh-agent.exe --help
 
 Set-Location apps\desktop

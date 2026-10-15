@@ -21,8 +21,8 @@ Use [docs/CODEMAP.md](docs/CODEMAP.md) to select files. Read the local `AGENTS.m
 | Shared application workflow or CLI | `crates/core/AGENTS.md` |
 | Desktop window, native documents, controls/status | `apps/desktop/AGENTS.md` |
 | Native Windows VST3, UUID state, plugin IPC | `plugins/vst3/AGENTS.md`, `crates/core/AGENTS.md` |
-| Mailbox HTTP transport or infrastructure | `crates/mailbox/AGENTS.md`, `services/mailbox/AGENTS.md` |
-| Separate private relay/rendezvous service | `services/relay/AGENTS.md` |
+| Mailbox HTTP transport | `crates/mailbox/AGENTS.md` |
+| Post-1.0 mailbox/relay services (not built) | `future/README.md` |
 | Identity/signatures/encryption | `crates/crypto/src/lib.rs` and `shared/protocol/src/lib.rs` |
 | Scan/hash/path safety/local chunks | `crates/snapshot/src/lib.rs` |
 | Next MVP phase or scope question | [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md), then the relevant section of [docs/MVP.md](docs/MVP.md) |

@@ -1,5 +1,7 @@
 # Phase 3: encrypted mailbox and private infrastructure
 
+> Historical. The mailbox and relay services moved to `future/` and are no longer built, so the commands below no longer work as written. The per-user Supabase service replaced the mailbox for version notices.
+
 The agent publishes encrypted signed announcements to an Axum/SQLite mailbox. A separate libp2p process supplies allow-listed rendezvous and circuit relay. Neither service receives a project key. Project manifests and chunks remain on authorized collaborator PCs and travel through the existing peer transfer protocol.
 
 Current default pairing is the native invitation → automatic device request → explicit sender approval workflow in [setup/README.md](setup/README.md). Direct operation does not require this infrastructure. The Desktop UI is a local Windows application; deploying it as a browser site is not part of this service setup. Supabase is not integrated. Local client SQLite and the mailbox's separate SQLite serve different purposes; neither makes a private/CGNAT address reachable by itself.
@@ -46,7 +48,7 @@ target\debug\trackmesh-mailbox-server.exe --database D:\TrackMeshInfrastructure\
 target\debug\trackmesh-relay-server.exe --data-dir D:\TrackMeshInfrastructure\relay --allow-file D:\TrackMeshInfrastructure\relay-allow.json --port 4001 --external-address /dns4/relay.example.com/udp/4001/quic-v1 --external-address /dns4/relay.example.com/tcp/4001
 ```
 
-The mailbox backend binds literal loopback only (default `127.0.0.1:8787`). Expose it through an HTTPS reverse proxy with a valid certificate. [The sample Caddyfile](../services/mailbox/Caddyfile.example) uses documented [reverse proxy](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy) and [body-size](https://caddyserver.com/docs/caddyfile/directives/request_body) directives. Replace its hostname with a domain you control, validate the configuration, and configure DNS/firewall/certificate issuance before deployment. Caddy deployment and public certificate issuance are not performed by the repository build.
+The mailbox backend binds literal loopback only (default `127.0.0.1:8787`). Expose it through an HTTPS reverse proxy with a valid certificate. [The sample Caddyfile](../future/mailbox-service/Caddyfile.example) uses documented [reverse proxy](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy) and [body-size](https://caddyserver.com/docs/caddyfile/directives/request_body) directives. Replace its hostname with a domain you control, validate the configuration, and configure DNS/firewall/certificate issuance before deployment. Caddy deployment and public certificate issuance are not performed by the repository build.
 
 Allow inbound UDP and TCP on the relay's configured port. Pin the **printed relay PeerId**, obtained through a trusted operator channel, in the agent's complete relay address, for example `/dns4/relay.example.com/udp/4001/quic-v1/p2p/REPLACE-WITH-RELAY-PEER-ID`. Advertise addresses that clients can actually reach. The relay PeerId persists across restarts because its protected identity is retained.
 

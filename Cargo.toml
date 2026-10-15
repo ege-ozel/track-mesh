@@ -1,6 +1,8 @@
 [workspace]
 resolver = "2"
-members = ["shared/protocol", "crates/crypto", "crates/storage", "crates/snapshot", "crates/core", "crates/network", "crates/transfer", "crates/mailbox", "services/mailbox", "services/relay", "apps/desktop/src-tauri"]
+members = ["shared/protocol", "crates/crypto", "crates/storage", "crates/snapshot", "crates/core", "crates/network", "crates/transfer", "crates/mailbox", "apps/desktop/src-tauri"]
+# Post-1.0 notes: kept on GitHub, not built.
+exclude = ["future"]
 
 [workspace.package]
 version = "0.1.0"
