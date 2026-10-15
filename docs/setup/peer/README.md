@@ -4,13 +4,13 @@ Peer ilk sürümü alan cihazdır. Ortak akış ve ağ sorunları [kurulum giri�
 
 ## Davet bağlantısını kabul et
 
-1. A'nın özel kanaldan gönderdiği bağlantıyı Windows'ta açın veya uygulamada **Open an invite link** kullanın. Bağlantıyı ajan sohbetine yapıştırmayın.
-2. **Open invite link** penceresinde proje adına göre oluşturulacak alt klasörün üst dizinini kontrol edin. **Choose another folder** üst dizini değiştirir; **Accept** burada boş proje klasörünü oluşturur. Yeni v2 bağlantı servis bilgisini taşır; URL/key girmeniz gerekmez. 15 dakika geçerlidir ve bir kez tüketilir.
+1. A'nın özel kanaldan gönderdiği bağlantıyı Windows'ta açın veya uygulamada **Paste invite link** kullanın. Bağlantıyı ajan sohbetine yapıştırmayın.
+2. **Invite link** penceresinde proje adına göre oluşturulacak alt klasörün üst dizinini kontrol edin. **Choose another folder** üst dizini değiştirir; **Accept** burada boş proje klasörünü oluşturur. Yeni v2 bağlantı servis bilgisini taşır; URL/key girmeniz gerekmez. 15 dakika geçerlidir ve bir kez tüketilir.
 3. İlk Accept işlemi **Router setup** onayını sorar. **Allow (recommended)** süreli UPnP eşlemesine izin verir; **Not now** izin vermez. Bu tercih Settings'te değiştirilebilir.
 4. İmzalı cihaz isteğiniz A'ya otomatik gider. A ile Device/Identity değerlerini karşılaştırın; A **Approve** seçsin. Kart dosyası geri göndermeniz gerekmez.
 5. Klasör boşsa ve daha önce sürüm almamışsa onaydan sonra ilk sürüm otomatik indirilip kurulur. İki uygulama açık kalsın; tamamlanmadan DAW'da hedefi açmayın.
 
-Onay bekleniyorsa A **Reopen approval window**, siz **Try again** kullanın. Klasörü yeniden link etmeyin veya yeni UUID oluşturmayın. Onaylı cihaz her yeni bağlantıda tekrar onay istemez.
+Onay bekleniyorsa A **Open approval window**, siz **Ask for approval** kullanın. Klasörü yeniden link etmeyin veya yeni UUID oluşturmayın. Onaylı cihaz her yeni bağlantıda tekrar onay istemez.
 
 `Collaborator` listesinde A'yı görmek yerel kimlik kaydıdır. Online bağlantı, hazır sürüm ve tamamlanan dosya kurulumu ayrı durumlardır. Offline hint dosyaları indirmek için yeterli değildir; A online ve erişilebilir olmalıdır.
 

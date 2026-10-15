@@ -4,7 +4,7 @@ Host ilk aktarımın kaynağıdır. Ortak sıra ve bağlantı sorunları [kurulu
 
 ## Klasörü bağla ve bağlantıyı paylaş
 
-1. Başlat menüsünden TRACKMESH'i açın. Küçük proje kopyasını **Share a project folder** ile seçip **Add project** yapın. Yerel veri profili ve DAW klasörü ayrı olsun.
+1. Başlat menüsünden TRACKMESH'i açın. Küçük proje kopyasını **Add project** ile seçip ekleyin. Yerel veri profili ve DAW klasörü ayrı olsun.
 2. Kendi Supabase projenizin URL ve publishable key'ini **Advanced → This PC → Default invite service** içinde ayarlayın. Secret key veya DB parolası girilmez. Gerekirse **Advanced → (proje) → Invite service** ayarlarını kontrol edin.
 3. Proje kartında **Invite collaborator** seçin. İlk kullanımda **Router setup** sorusu gelir; **Allow (recommended)** süreli UPnP eşlemesine izin verir, **Not now** izin vermez.
 4. Oluşan v2 bağlantıyı B'ye özel kanaldan gönderin. 15 dakika geçerlidir ve bir kez tüketilir. B yeni bağlantı için URL/key yazmaz. Bağlantıyı, fragment anahtarını veya davet içeriğini ajan/log bağlamına vermeyin.
@@ -12,7 +12,7 @@ Host ilk aktarımın kaynağıdır. Ortak sıra ve bağlantı sorunları [kurulu
 
 Onay yerel erişimi verir ve Supabase üyelik grant'ini kuyruğa alır. Klasörde dosyalar ve henüz snapshot yoksa ilk sürüm oluşturulur. Boş, daha önce sürüm almamış B klasörüne ilk sürüm otomatik gider. Kaynak açık ve erişilebilir kalsın; onay tek başına dosya teslimi değildir.
 
-Onay gecikirse **Reopen approval window** kullanın ve B'den **Try again** isteyin. Aynı projenin penceresini yeniden açmak bekleyen istekleri korur; farklı projeninki önceki onaysız istekleri temizler. Onaylı cihaz yeniden pencere istemez.
+Onay gecikirse **Open approval window** kullanın ve B'den **Ask for approval** isteyin. Aynı projenin penceresini yeniden açmak bekleyen istekleri korur; farklı projeninki önceki onaysız istekleri temizler. Onaylı cihaz yeniden pencere istemez.
 
 ## Sonraki sürümler ve revoke
 

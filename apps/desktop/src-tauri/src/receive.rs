@@ -23,7 +23,7 @@ impl Desktop {
         stop: &transfer::Stop,
     ) -> Result<Uuid> {
         let mut target = target;
-        let mut limit = 1_000_000_000;
+        let mut limit = 1 << 30;
         loop {
             let result = if replace {
                 engine
@@ -55,7 +55,7 @@ impl Desktop {
                     limit = approval.new_bytes;
                     let app = app.clone();
                     let accepted = tauri::async_runtime::spawn_blocking(move || {
-                        let size = limit as f64 / 1_000_000_000.0;
+                        let size = limit as f64 / f64::from(1u32 << 30);
                         let message = if is_turkish() {
                             format!("Bu sürüm yaklaşık {size:.2} GB yeni veri gerektiriyor.\n\nTrackMesh değiştirdiği dosyaların yedeğini de tutar.\n\nİndirilsin mi?")
                         } else {

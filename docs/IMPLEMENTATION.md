@@ -844,3 +844,11 @@ Checks actually run: `cargo fmt --all -- --check`; locked/offline check and stri
   - The network pairing gate now stays open for the full 15-minute approval window; it closed after 10 minutes while the app said 15.
   - Missing Turkish: plugin "Update TrackMesh to choose a linked project.", the cancelled large download.
   - Checks run: `tsc --noEmit`, `rustfmt --check` on `gate.rs`, `cargo check -p trackmesh-network`. Not yet run: the VST3 build, the window, the plugin in a DAW, pairing after minute 10.
+- Second UI review (follow-up on the same branch):
+  - One name per action: "Add project" adds a folder (Share is only for versions); "Paste invite link"; the receiver's "Ask for approval" and the sender's "Open approval window". The Send/Get pane headings are gone; the buttons say it.
+  - Advanced: Save buttons are secondary; the second "Save invitation file" form and the port forwarding shortcut are gone (a saved manual port forwarding address already goes into the invitation file); technical details use plain words; the self-hosted mailbox option, the Mailbox/Relay rows, the mailbox note and the version's mailbox state are gone from the window. The connection summary no longer says direct/relayed.
+  - One date format and 1024-based sizes everywhere, including Storage, the 1 GB download question and the delete-backups question. Storage text is plainer and reads sizes without a refresh button.
+  - "The approval window closed · Open approval window" shows only after the 15 minutes run out. The approval box no longer repeats the confirmation dialog's warning.
+  - Font sizes (6), weights (3) and corner radii (3 plus pill) are tokens at the top of `styles.css`. The card's folder path is a link. The plugin keeps its colors in one palette and draws the project list (dark theme) and the share-on-save box dark.
+  - The mailbox and relay services moved to `future/` and are no longer built; the client-side mailbox/relay code is unchanged.
+  - Checks run: `tsc --noEmit`, `cargo check --workspace --offline` (clean). Not yet run: the VST3 build (it now links `uxtheme`), the window, the plugin in a DAW.

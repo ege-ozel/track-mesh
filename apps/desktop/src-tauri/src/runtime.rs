@@ -1858,7 +1858,7 @@ impl Desktop {
                     match action {
                         Action::DeleteBackups { selected } => {
                             let total = selected.iter().try_fold(0u64, |sum, item| sum.checked_add(item.bytes)).context("backup size overflow")?;
-                            let size = total as f64 / 1_000_000_000.0;
+                            let size = total as f64 / f64::from(1u32 << 30);
                             let message = if is_turkish() {
                                 format!("{} eski yedek silinsin mi ({size:.2} GB)?\n\nHer projenin en yeni yedeği tutulur.", selected.len())
                             } else {
@@ -1930,7 +1930,7 @@ impl Desktop {
                             let message = if let Some(other) = replaced {
                                 format!("Pending approvals for {} were cleared; only one project can accept new devices at a time.", disk.store.project(other)?.name)
                             } else {
-                                "Approval window open for 15 minutes. Ask your collaborator to press Try again, then verify the arriving device before approving.".to_owned()
+                                "Approval window open for 15 minutes. Ask your collaborator to press Ask for approval, then verify the arriving device before approving.".to_owned()
                             };
                             Ok(json!({"message": message}))
                         }
@@ -2029,7 +2029,7 @@ impl Desktop {
                     "The inviter approved this device for the project.",
                 )
             },
-            _ => ("retry", PairingApprovalState::NotReachable, "Automatic pairing could not complete. Your project remains imported. Ask the inviter to open a pairing window and keep TrackMesh online, then use Try again. Do not reimport or create a new UUID. Both devices need a build supporting automatic pairing."),
+            _ => ("retry", PairingApprovalState::NotReachable, "Automatic pairing could not complete. Your project remains imported. Ask the inviter to open the approval window and keep TrackMesh open, then press Ask for approval. Do not reimport or create a new UUID. Both devices need a build supporting automatic pairing."),
         };
         self.set_pairing_approval(project, device, approval);
         json!({"project_id": project, "invitation_imported": imported, "pairing_state": state, "message": message})

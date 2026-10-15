@@ -72,7 +72,7 @@ impl Shared {
                 &self.network,
                 self.lock()?.messages.get(&project).cloned(),
             ),
-            Err(_) => status::unavailable(project, tr("Add this project's folder in TrackMesh first (Share a project folder).", "Önce bu projenin klasörünü TrackMesh'e ekle (Proje klasörü paylaş).")),
+            Err(_) => status::unavailable(project, tr("Add this project's folder in TrackMesh first (Add project).", "Önce bu projenin klasörünü TrackMesh'e ekle (Proje ekle).")),
         };
         reply.projects = projects;
         reply.projects_more = more;

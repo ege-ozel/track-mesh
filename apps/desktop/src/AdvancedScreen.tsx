@@ -62,42 +62,48 @@ function comparison(value: string, collab: string | undefined) {
   }
 }
 
-function Snapshot({ value, empty, mailboxEnabled }: { value: SnapshotInfo | null; empty: string; mailboxEnabled: boolean }) {
-  return value ? <><div className="snapshot-id">{short(value.snapshot_id)} {mailboxEnabled && <span>{value.metadata_status}</span>}</div>
+function Snapshot({ value, empty }: { value: SnapshotInfo | null; empty: string }) {
+  return value ? <><div className="snapshot-id">{short(value.snapshot_id)}</div>
     <p>{value.author_name} · {time(value.created_at)}</p>
     <p>{value.file_count} {t('files', 'dosya')} · {bytes(value.total_size)} · {bytes(value.changed_bytes)} {t('changed', 'değişti')}</p></>
     : <p className="muted">{empty}</p>;
 }
 
-function RawConnectionDetails({ status, projectId, busy, act }: { status: DesktopStatus; projectId: string; busy: boolean; act: Act }) {
-  const [ip, setIp] = useState('');
-  const [port, setPort] = useState(String(status.listen_port));
-  const publicIp = ip.trim();
-  const validPort = /^\d{1,5}$/.test(port) && Number(port) > 0 && Number(port) <= 65535;
-  const valid = publicIpv4(publicIp) && validPort;
+const known = (value: string | null | undefined) => !value || value === 'UNKNOWN' ? t('unknown', 'bilinmiyor') : value;
+
+function mappingWords(value: string | undefined) {
+  switch (value) {
+    case 'MAPPED': return t('port opened', 'port açıldı');
+    case 'FAILED': return t('router refused', 'modem reddetti');
+    case 'PENDING': case 'DISCOVERING': return t('trying', 'deneniyor');
+    case 'DENIED': return t('router refused', 'modem reddetti');
+    case 'EXPIRED': return t('expired', 'süresi doldu');
+    case 'REMOVING': return t('closing', 'kapatılıyor');
+    case 'NOT_ATTEMPTED': case undefined: return t('not tried', 'denenmedi');
+    default: return known(value);
+  }
+}
+
+function presence(value: string) {
+  return value === 'PRESENT' ? t('yes', 'var') : value === 'ABSENT' ? t('no', 'yok') : t('unknown', 'bilinmiyor');
+}
+
+function RawConnectionDetails({ status }: { status: DesktopStatus }) {
   const observation = status.network_observation;
   const firewall = status.firewall_observation;
   const mapping = status.network?.port_mapping;
   const reach = status.network?.reachability;
   return <details><summary>{t('Technical details', 'Teknik ayrıntılar')}</summary>
     <div className="raw-grid">
-      <p><strong>{t('Local interfaces', 'Yerel arayüzler')}</strong> {observation.interfaces.length ? observation.interfaces.map(iface => `${iface.name || `Interface ${iface.interface_index}`} [${iface.ipv4.join(', ') || 'UNKNOWN'}]`).join('; ') : 'UNKNOWN'}</p>
-      <p><strong>{t('Default gateway', 'Varsayılan ağ geçidi')}</strong> {observation.default_gateways.length ? observation.default_gateways.map(gateway => `${gateway.address} (interface ${gateway.interface_index}; ${gateway.source})`).join('; ') : 'UNKNOWN'}</p>
-      <p><strong>{t('Listen port', 'Dinleme portu')}</strong> {status.listen_port} {t('(default 43101). Changing it needs a restart with that startup port.', '(varsayılan 43101). Değiştirmek için o başlangıç portuyla yeniden başlatmak gerekir.')}</p>
-      <p><strong>UPnP</strong> {mapping?.state ?? 'NOT_ATTEMPTED'} · TCP {mapping?.tcp ?? 'NOT_ATTEMPTED'} · UDP {mapping?.udp ?? 'NOT_ATTEMPTED'} · router external IPv4 {mapping?.external_ip_state ?? 'UNKNOWN'}{mapping?.detail ? ` · ${mapping.detail}` : ''}</p>
-      <p><strong>{t('Reachability', 'Erişilebilirlik')}</strong> {reach?.state ?? 'UNVERIFIED'}{reach?.peer ? ` · peer ${reach.peer}` : ''}{reach?.transport ? ` · ${reach.transport}` : ''}{reach?.at_unix_seconds ? ` · ${new Date(reach.at_unix_seconds * 1000).toLocaleString()}` : ''}. {t('Same-network connections do not prove internet reachability.', 'Aynı ağdaki bağlantı, internetten erişilebildiğini kanıtlamaz.')}</p>
-      <p><strong>Windows Firewall</strong> {firewall.state}. {firewall.profiles.map(profile => `${profile.name}: ${profile.enabled === null ? 'UNKNOWN' : profile.enabled ? 'on' : 'off'}, block all inbound ${profile.block_all_inbound ?? 'UNKNOWN'}, default inbound ${profile.default_inbound ?? 'UNKNOWN'}`).join('; ')}. Rules for port {status.listen_port}: TCP allow {firewall.tcp_rules.allow}, block {firewall.tcp_rules.block}; UDP allow {firewall.udp_rules.allow}, block {firewall.udp_rules.block}. Third-party firewall: {firewall.third_party_products}.</p>
-      <p><strong>{t('Port status', 'Port durumu')}</strong> {status.port_status === 'UNVERIFIED' ? 'Port PORT_UNVERIFIED' : 'Port UNKNOWN'}</p>
+      <p><strong>{t('Local interfaces', 'Yerel arayüzler')}</strong> {observation.interfaces.length ? observation.interfaces.map(iface => `${iface.name || `${t('Interface', 'Arayüz')} ${iface.interface_index}`} [${iface.ipv4.join(', ') || t('no address', 'adres yok')}]`).join('; ') : t('unknown', 'bilinmiyor')}</p>
+      <p><strong>{t('Default gateway', 'Varsayılan ağ geçidi')}</strong> {observation.default_gateways.length ? observation.default_gateways.map(gateway => gateway.address).join('; ') : t('unknown', 'bilinmiyor')}</p>
+      <p><strong>{t('Listen port', 'Dinleme portu')}</strong> {status.listen_port} {t('(default 43101)', '(varsayılan 43101)')}</p>
+      <p><strong>{t('Router setup (UPnP)', 'Modem ayarı (UPnP)')}</strong> {mappingWords(mapping?.state)} · TCP {mappingWords(mapping?.tcp)} · UDP {mappingWords(mapping?.udp)}{mapping?.detail ? ` · ${mapping.detail}` : ''}</p>
+      <p><strong>{t('Connection from the internet', 'İnternetten gelen bağlantı')}</strong> {reach?.at_unix_seconds ? `${t('last seen', 'son görülme')} ${time(new Date(reach.at_unix_seconds * 1000).toISOString())}` : t('none seen yet', 'henüz görülmedi')}. {t('A connection on the same network does not prove this.', 'Aynı ağdaki bir bağlantı bunu kanıtlamaz.')}</p>
+      <p><strong>Windows Firewall</strong> {firewall.profiles.map(profile => `${profile.name}: ${profile.enabled === null ? t('unknown', 'bilinmiyor') : profile.enabled ? t('on', 'açık') : t('off', 'kapalı')}`).join(' · ')}. {t(`TrackMesh rule for port ${status.listen_port}`, `${status.listen_port} portu için TrackMesh kuralı`)}: TCP {presence(firewall.tcp_rules.allow)}, UDP {presence(firewall.udp_rules.allow)}.</p>
     </div>
     <details><summary>{t('Advertised and listen addresses', 'Duyurulan ve dinlenen adresler')}</summary>{(status.network?.addresses ?? []).map(address => <code className="connection-address" key={address}>{address}</code>)}
       {status.configured_external_addresses.map(address => <code className="connection-address" key={`external-${address}`}>{address} ({t('startup external address', 'başlangıç dış adresi')})</code>)}</details>
-    <details><summary>{t('Invitation file with public addresses', 'Genel adresli davet dosyası')}</summary>
-      <p className="muted">{t('For a one-off invitation when you forwarded a router port by hand. The addresses go into this file only.', 'Modemde portu elle yönlendirdiysen tek seferlik bir davet için. Adresler yalnızca bu dosyaya yazılır.')}</p>
-      <div className="connection-inputs"><label className="field">{t('Public IPv4', 'Genel IPv4')}<input value={ip} maxLength={15} disabled={busy} onChange={e => setIp(e.target.value)} placeholder="203.0.113.1" /></label>
-        <label className="field">{t('External router port', 'Modemin dış portu')}<input type="number" min={1} max={65535} value={port} disabled={busy} onChange={e => setPort(e.target.value)} /></label></div>
-      {publicIp && !valid && <p className="error">{t('Enter a public IPv4 and a port from 1 to 65535. 10.x, 172.16–31.x, 192.168.x and 100.64–127.x are not public.', "Genel bir IPv4 ve 1–65535 arası bir port gir. 10.x, 172.16–31.x, 192.168.x ve 100.64–127.x genel adres değildir.")}</p>}
-      <div className="actions"><button disabled={busy || !valid} onClick={() => act({ kind: 'export_invite', project_id: projectId, public_ip: publicIp, external_port: Number(port) })}>{t('Save invitation file', 'Davet dosyasını kaydet')}</button></div>
-    </details>
   </details>;
 }
 
@@ -122,15 +128,13 @@ function ProjectBackendSettings({ projectId, config, defaultSupabase, revokeProb
     <label className="field">{t('Service', 'Servis')}<select value={backend} disabled={busy} onChange={event => setBackend(event.target.value as ProjectBackend)}>
       <option value="SUPABASE">{t('Supabase (recommended)', 'Supabase (önerilen)')}</option>
       <option value="NONE">{t('None · direct connections only', 'Yok · yalnızca doğrudan bağlantı')}</option>
-      <option value="SELF_HOSTED_MAILBOX">{t("Self-hosted mailbox · this project's mailbox URL", 'Kendi sunucundaki mailbox · bu projenin mailbox adresi')}</option>
     </select></label>
-    {backend === 'SELF_HOSTED_MAILBOX' && <p className="muted">{t("Uses this project's existing mailbox URL without changing its behavior.", 'Bu projenin mevcut mailbox adresini, davranışını değiştirmeden kullanır.')}</p>}
     {backend === 'SUPABASE' && <div className="backend-fields">
       <label className="field">Supabase Project URL<input autoComplete="off" spellCheck={false} value={url} disabled={busy} placeholder="https://your-project.supabase.co" onChange={event => setUrl(event.target.value)} /></label>
       <label className="field">Publishable key<input type="password" autoComplete="new-password" spellCheck={false} value={anonKey} disabled={busy} onChange={event => setAnonKey(event.target.value)} /></label>
       <p className="muted">{t('HTTPS', 'Yalnızca HTTPS')} <code>*.supabase.co</code> {t('addresses only. Never enter a service role or secret key.', 'adresleri. Asla service role ya da secret key girme.')}</p>
     </div>}
-    <div className="actions"><button className="primary" disabled={busy || (backend === 'SUPABASE' && (!url.trim() || !anonKey.trim()))} onClick={() => void act({ kind: 'set_project_backend', project_id: projectId, backend,
+    <div className="actions"><button disabled={busy || (backend === 'SUPABASE' && (!url.trim() || !anonKey.trim()))} onClick={() => void act({ kind: 'set_project_backend', project_id: projectId, backend,
       supabase_url: backend === 'SUPABASE' ? url.trim() : null,
       supabase_anon_key: backend === 'SUPABASE' ? anonKey.trim() : null })}>{t('Save', 'Kaydet')}</button></div>
     {unreachable && <p className="error">{t("The invite service can't be reached. Check the address above and this PC's internet connection.", 'Davet servisine ulaşılamıyor. Yukarıdaki adresi ve bu bilgisayarın internet bağlantısını kontrol et.')}</p>}
@@ -150,7 +154,7 @@ function DefaultSupabaseSettings({ config, busy, act }: { config: SupabaseDefaul
     <p className="muted">{t("Used for new projects and prefilled in each project's Invite service. Saved in this app's settings, outside your projects. The publishable key is public configuration; never enter a secret key.", 'Yeni projelerde kullanılır ve her projenin davet servisine önceden doldurulur. Projelerinin dışında, bu uygulamanın ayarlarında saklanır. Publishable key genel bir ayardır; asla secret key girme.')}</p>
     <label className="field">Supabase Project URL<input autoComplete="off" spellCheck={false} value={url} disabled={busy} placeholder="https://your-project.supabase.co" onChange={event => setUrl(event.target.value)} /></label>
     <label className="field">Publishable key<input type="password" autoComplete="new-password" spellCheck={false} value={publishableKey} disabled={busy} onChange={event => setPublishableKey(event.target.value)} /></label>
-    <div className="actions"><button className="primary" disabled={busy || !url.trim() || !publishableKey.trim()} onClick={() => void act({ kind: 'set_default_supabase', url: url.trim(), publishable_key: publishableKey.trim() })}>{t('Save', 'Kaydet')}</button>
+    <div className="actions"><button disabled={busy || !url.trim() || !publishableKey.trim()} onClick={() => void act({ kind: 'set_default_supabase', url: url.trim(), publishable_key: publishableKey.trim() })}>{t('Save', 'Kaydet')}</button>
       <button disabled={busy || !config} onClick={() => void act({ kind: 'set_default_supabase', url: null, publishable_key: null })}>{t('Clear', 'Temizle')}</button></div>
   </div>;
 }
@@ -174,7 +178,7 @@ function ManualPortForwardingSettings({ endpoint, listenPort, localIps, busy, ac
     <div className="connection-inputs"><label className="field">{t('Public IPv4', 'Genel IPv4')}<input value={ip} maxLength={15} disabled={busy} onChange={event => setIp(event.target.value)} placeholder="203.0.113.1" /></label>
       <label className="field">{t('External port', 'Dış port')}<input type="number" min={1} max={65535} value={port} disabled={busy} onChange={event => setPort(event.target.value)} /></label></div>
     {ip.trim() && !valid && <p className="error">{t("Enter a public IPv4 and a port from 1 to 65535. If your router's WAN address starts with 100.64–127, your internet provider shares it (CGNAT) and port forwarding can't work.", "Genel bir IPv4 ve 1–65535 arası bir port gir. Modeminin WAN adresi 100.64–127 ile başlıyorsa internet sağlayıcın onu paylaştırıyordur (CGNAT) ve port yönlendirme çalışmaz.")}</p>}
-    <div className="actions"><button className="primary" disabled={busy || !valid} onClick={() => void act({ kind: 'set_manual_public_endpoint', public_ipv4: ip.trim(), external_port: Number(port) })}>{t('Save', 'Kaydet')}</button>
+    <div className="actions"><button disabled={busy || !valid} onClick={() => void act({ kind: 'set_manual_public_endpoint', public_ipv4: ip.trim(), external_port: Number(port) })}>{t('Save', 'Kaydet')}</button>
       <button disabled={busy || !endpoint} onClick={() => void act({ kind: 'set_manual_public_endpoint', public_ipv4: null, external_port: null })}>{t('Clear', 'Temizle')}</button></div>
   </div>;
 }
@@ -216,7 +220,7 @@ export function AdvancedScreen({ status, projectId, section, jobStartedAt, act, 
       <code>{status.data_directory ?? t('Opening protected local storage…', 'Korumalı yerel depolama açılıyor…')}</code>
     </Section>
   </>;
-  if (!card) return <section className="advanced-screen"><p className="muted">{t('Share a project folder first. Project connection details appear here.', 'Önce bir proje klasörü paylaş. Projenin bağlantı ayrıntıları burada görünür.')}</p>{thisPc}</section>;
+  if (!card) return <section className="advanced-screen"><p className="muted">{t('Add a project first. Project connection details appear here.', 'Önce bir proje ekle. Projenin bağlantı ayrıntıları burada görünür.')}</p>{thisPc}</section>;
 
   const project = card.project;
   const id = project.project_id;
@@ -231,8 +235,7 @@ export function AdvancedScreen({ status, projectId, section, jobStartedAt, act, 
   const inviteState = status.supabase_states[id] ?? 'NOT_CONFIGURED';
   const backend = status.project_backends[id];
   const serviceConnected = backend?.backend === 'SUPABASE' && inviteState !== 'UNREACHABLE' && ['CLAIMED', 'MEMBER'].includes(inviteState);
-  const serviceSummary = backend?.backend === 'SELF_HOSTED_MAILBOX' ? t('Self-hosted mailbox', 'Kendi sunucundaki mailbox')
-    : backend?.backend !== 'SUPABASE' ? t('Not set up', 'Kurulmadı')
+  const serviceSummary = backend?.backend !== 'SUPABASE' ? t('Not set up', 'Kurulmadı')
     : inviteState === 'UNREACHABLE' ? t("Can't reach the service", 'Servise ulaşılamıyor')
     : serviceConnected ? t('Connected', 'Bağlı') : t('Connecting…', 'Bağlanıyor…');
   const firewallAllowed = status.firewall_observation.tcp_rules.allow === 'PRESENT' && status.firewall_observation.udp_rules.allow === 'PRESENT';
@@ -247,7 +250,7 @@ export function AdvancedScreen({ status, projectId, section, jobStartedAt, act, 
     <ProjectTabs projects={projects} status={status} selectedId={id} pick={pickProject} />
     {card.peers.length > 1 && <label className="peer-picker">{t('Collaborator', 'İş arkadaşı')} <select value={peer?.device.device_id ?? ''} onChange={e => setSelectedPeer(e.target.value)}>{card.peers.map(p => <option key={p.device.device_id} value={p.device.device_id}>{p.device.name}</option>)}</select></label>}
 
-    <Section id="connection" title={t('Connection', 'Bağlantı')} summary={runtimeError ? t('Network error', 'Ağ hatası') : !peer ? t('No collaborator yet', 'Henüz iş arkadaşı yok') : online ? `${t('Connected', 'Bağlı')} · ${connection?.route === 'RELAYED' ? t('relayed', 'aktarmalı') : t('direct', 'doğrudan')}` : t(`Can't reach ${name}`, `${named(collab, 'dat')} ulaşılamıyor`)} tone={online ? 'ok' : peer ? 'bad' : undefined}
+    <Section id="connection" title={t('Connection', 'Bağlantı')} summary={runtimeError ? t('Network error', 'Ağ hatası') : !peer ? t('No collaborator yet', 'Henüz iş arkadaşı yok') : online ? t('Connected', 'Bağlı') : t(`Can't reach ${name}`, `${named(collab, 'dat')} ulaşılamıyor`)} tone={online ? 'ok' : peer ? 'bad' : undefined}
       open={!!open.connection} highlight={section === 'connection'} onToggle={toggle('connection')}>
       <div className="status-rows">
         <div><span>{t('This PC', 'Bu bilgisayar')}</span><span className={runtimeError ? 'bad' : 'ok'}>{runtimeError ? runtimeError : status.ready ? t('Running', 'Çalışıyor') : t('Starting', 'Başlatılıyor')}</span></div>
@@ -260,10 +263,9 @@ export function AdvancedScreen({ status, projectId, section, jobStartedAt, act, 
       {checkJob && <JobNotice job={checkJob} startedAt={jobStartedAt[checkJob.job_id]} collaboratorName={collab} onStop={() => void stopOperation(id).catch(err => onError(String(err)))} />}
       <div className="actions">
         {peer && <button className="primary" disabled={busy} onClick={() => act({ kind: 'check', project_id: id, device_id: peer.device.device_id })}>{t('Check connection', 'Bağlantıyı kontrol et')}</button>}
-        <button onClick={() => { setOpen(current => ({ ...current, 'port-forwarding': true })); window.requestAnimationFrame(() => document.getElementById('advanced-port-forwarding')?.scrollIntoView({ behavior: 'smooth', block: 'start' })); }}>{t('Manual port forwarding…', 'Elle port yönlendirme…')}</button>
       </div>
       <p className="muted">{t("A failed check can't tell which of these blocked the connection: the other PC being closed, a firewall, guest Wi-Fi isolation or a router.", 'Başarısız bir kontrol, bağlantıyı neyin engellediğini ayırt edemez: diğer bilgisayarın kapalı olması, güvenlik duvarı, misafir Wi-Fi yalıtımı ya da modem.')}</p>
-      <RawConnectionDetails status={status} projectId={id} busy={busy} act={act} />
+      <RawConnectionDetails status={status} />
     </Section>
 
     <Section id="service" title={t('Invite service', 'Davet servisi')} summary={serviceSummary} tone={serviceConnected ? 'ok' : inviteState === 'UNREACHABLE' || card.missing_functions.length ? 'bad' : undefined}
@@ -274,7 +276,7 @@ export function AdvancedScreen({ status, projectId, section, jobStartedAt, act, 
 
     <Section id="manual" title={t('Invite without the service', 'Servis olmadan davet')} summary={t('Invitation file', 'Davet dosyası')} open={!!open.manual} highlight={section === 'manual'} onToggle={toggle('manual')}>
       <ol className="steps-list">
-        <li><strong>{t('Save an invitation file', 'Davet dosyasını kaydet')}</strong> {t('and send it privately. Saving opens a temporary approval window.', 've özel olarak gönder. Kaydetmek geçici bir onay penceresi açar.')}</li>
+        <li><strong>{t('Save an invitation file', 'Davet dosyasını kaydet')}</strong> {t('and send it privately. Saving opens the 15-minute approval window. If you set up manual port forwarding below, its address goes into the file.', 've özel olarak gönder. Kaydetmek 15 dakikalık onay penceresini açar. Aşağıda elle port yönlendirme ayarladıysan adresi dosyaya girer.')}</li>
         <li><strong>{t('Your collaborator opens it', 'İş arkadaşın dosyayı açar:')}</strong> {t('in Advanced → Open an invitation file. Their device request arrives here automatically.', 'Gelişmiş → Davet dosyası aç. Cihaz isteği buraya kendiliğinden gelir.')}</li>
         <li><strong>{t('Approve them', 'Onayla')}</strong> {t('on the project card.', '(proje kartında).')}</li>
       </ol>
@@ -282,7 +284,7 @@ export function AdvancedScreen({ status, projectId, section, jobStartedAt, act, 
         {status.pairing.project_id === id
           ? <button disabled={busy} onClick={() => act({ kind: 'close_pairing', project_id: id })}>{t('Close approval window', 'Onay penceresini kapat')}</button>
           : <button disabled={busy} onClick={() => act({ kind: 'open_pairing', project_id: id })}>{t('Open approval window', 'Onay penceresini aç')}</button>}
-        {peer && <button disabled={busy} onClick={() => act({ kind: 'request_pairing', project_id: id, device_id: peer.device.device_id })}>{t('Retry automatic pairing', 'Onay isteğini tekrar gönder')}</button>}</div>
+        {peer && <button disabled={busy} onClick={() => act({ kind: 'request_pairing', project_id: id, device_id: peer.device.device_id })}>{t('Ask for approval', 'Onay iste')}</button>}</div>
       <p className="muted">{t('Only one project accepts new devices at a time; closing, expiry or restart removes unapproved requests. Encryption protects contents, not IP addresses or traffic timing.', 'Aynı anda yalnızca bir proje yeni cihaz kabul eder; kapatmak, sürenin dolması ya da yeniden başlatmak onaylanmamış istekleri siler. Şifreleme içeriği korur; IP adreslerini ya da trafik zamanlamasını değil.')}</p>
       <details><summary>{t('Legacy file pairing', 'Eski usul dosyayla eşleşme')}</summary><p className="muted">{t('For an older build: exchange signed device cards by hand. Access is granted only after the inviter opens the card for this project.', 'Eski bir sürüm için: imzalı cihaz kartlarını elle değiştirin. Erişim, davet eden kartı bu proje için açınca verilir.')}</p>
         <div className="actions"><button disabled={busy} onClick={() => act({ kind: 'pair', project_id: id })}>{t('Open pairing reply', 'Eşleşme yanıtını aç')}</button>
@@ -291,8 +293,8 @@ export function AdvancedScreen({ status, projectId, section, jobStartedAt, act, 
 
     <Section id="history" title={t('Version history', 'Sürüm geçmişi')} summary={peer && peer.history.length ? t(`${peer.history.length} recent from ${name}`, `${named(collab, 'abl')} son ${peer.history.length} sürüm`) : card.local_snapshot ? t('Local version only', 'Yalnızca yerel sürüm') : t('No versions yet', 'Henüz sürüm yok')}
       open={!!open.history} highlight={section === 'history'} onToggle={toggle('history')}>
-      <div className="snapshots"><section><h3>{t('This PC', 'Bu bilgisayar')}</h3><Snapshot value={card.local_snapshot} empty={t('No version yet.', 'Henüz sürüm yok.')} mailboxEnabled={card.mailbox_enabled} /></section>
-        <section><h3>{peer ? name : t('Collaborator', 'İş arkadaşı')}</h3><Snapshot value={peer?.announcement ?? null} empty={t('No version seen yet.', 'Henüz sürüm görülmedi.')} mailboxEnabled={card.mailbox_enabled} /></section></div>
+      <div className="snapshots"><section><h3>{t('This PC', 'Bu bilgisayar')}</h3><Snapshot value={card.local_snapshot} empty={t('No version yet.', 'Henüz sürüm yok.')} /></section>
+        <section><h3>{peer ? name : t('Collaborator', 'İş arkadaşı')}</h3><Snapshot value={peer?.announcement ?? null} empty={t('No version seen yet.', 'Henüz sürüm görülmedi.')} /></section></div>
       <p className="muted">{check?.fresh ? `${t('Last comparison:', 'Son karşılaştırma:')} ${comparison(check.result.snapshot_status, collab)}` :t('No live comparison. Check connection compares both versions.', 'Canlı karşılaştırma yok. Bağlantıyı kontrol et iki sürümü de karşılaştırır.')}</p>
       {peer && peer.history.length > 1 && <ol className="history-list">{peer.history.map(snapshot => <li key={snapshot.snapshot_id}><code>{short(snapshot.snapshot_id)}</code> · {snapshot.author_name} · {time(snapshot.created_at)} · {snapshot.file_count} {t('files', 'dosya')}</li>)}</ol>}
     </Section>
@@ -302,8 +304,6 @@ export function AdvancedScreen({ status, projectId, section, jobStartedAt, act, 
       <div className="status-rows">
         <div><span>{t('Folder', 'Klasör')}</span><code>{displayPath(project.root)}</code></div>
         <div><span>{t('Project ID', 'Proje kimliği')}</span><code>{project.project_id}</code></div>
-        <div><span>Mailbox</span><code>{project.mailbox_url ?? t('Not configured', 'Ayarlanmadı')}</code></div>
-        <div><span>{t('Relay (legacy)', 'Relay (eski)')}</span><code>{project.relay_address ?? t('Not configured', 'Ayarlanmadı')}</code></div>
       </div>
       <div className="actions"><button disabled={busy} onClick={() => void chooseProjectRoot()}>{card.root_available ? t('Change folder…', 'Klasörü değiştir…') : t('Locate folder…', 'Klasörü bul…')}</button></div>
       {card.peers.map(item => <div className="access-row" key={item.device.device_id}>
@@ -312,7 +312,6 @@ export function AdvancedScreen({ status, projectId, section, jobStartedAt, act, 
           t(`${item.device.name} will no longer get versions of ${project.name}.\n\nThey keep the files they already received.`, `${item.device.name} artık ${project.name} sürümlerini alamayacak.\n\nDaha önce aldığı dosyalar onda kalır.`),
           t('Remove access', 'Erişimi kaldır'), t('Cancel', 'Vazgeç')).catch(() => false) && act({ kind: 'revoke', project_id: id, device_id: item.device.device_id })}>{t('Remove access', 'Erişimi kaldır')}</button>
       </div>)}
-      <p className="muted">{card.mailbox_enabled ? t('The mailbox stores encrypted metadata and version notices only.', 'Mailbox yalnızca şifreli bilgileri ve sürüm bildirimlerini tutar.') : t('Version notices use the invite service; the legacy mailbox is off for this project.', 'Sürüm bildirimleri davet servisini kullanır; bu projede eski mailbox kapalı.')}</p>
     </Section>
     {thisPc}
   </section>;

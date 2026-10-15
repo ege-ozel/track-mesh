@@ -39,7 +39,7 @@ export function SettingsScreen({ status, busy, act, poll, onError, zoom, setZoom
         <div><strong>{project.name}</strong></div>
         <label className="switch"><input type="checkbox" checked={project.auto_share} disabled={busy || !status.ready} onChange={event => void act({ kind: 'set_auto_share', project_id: project.project_id, enabled: event.currentTarget.checked })} /> {t('Share on save', 'Kaydedince paylaş')}</label>
       </div>)}
-      {status?.ready && !status.daw_plugin_settings.length && <p className="muted">{t('Share a project folder first.', 'Önce bir proje klasörü paylaş.')}</p>}
+      {status?.ready && !status.daw_plugin_settings.length && <p className="muted">{t('Add a project first.', 'Önce bir proje ekle.')}</p>}
     </section>
 
     <section className="settings-block"><h3>{t('Connection', 'Bağlantı')}</h3>

@@ -205,7 +205,6 @@ export function Card({ card, status, jobStartedAt, focusProjectId, act, openAdva
 
     {candidates.length > 0 && <section className="approval-box"><h3>{t('Someone opened your invite link', 'Biri davet bağlantını açtı')}</h3>{candidates.map(candidate => <div key={candidate.request_id}>
       <p><strong>{candidate.name}</strong> · {t('device', 'cihaz')} {short(candidate.device_id)}</p>
-      <p className="muted">{t('Approve only if this is the person you invited. Approval gives them this project.', 'Yalnızca davet ettiğin kişiyse onayla. Onay, bu projeyi ona verir.')}</p>
       <div className="actions"><button className={primary === 'approve' ? 'primary' : ''} disabled={busy} onClick={async () => await ask(t('Approve this device?', 'Bu cihaz onaylansın mı?'),
           t(`${candidate.name} (device ${short(candidate.device_id)}) will get ${project.name}.\n\nApprove only if this is the person you invited.`, `${candidate.name} (cihaz ${short(candidate.device_id)}) ${project.name} projesini alacak.\n\nYalnızca davet ettiğin kişiyse onayla.`),
           t('Approve', 'Onayla'), t('Cancel', 'Vazgeç')).catch(() => false) && act({ kind: 'approve_pairing', project_id: projectId, request_id: candidate.request_id })}>{t('Approve', 'Onayla')}</button>
@@ -216,7 +215,8 @@ export function Card({ card, status, jobStartedAt, focusProjectId, act, openAdva
       <button className={primary === 'invite' ? 'primary' : ''} disabled={busy || !inviteReady} onClick={() => act({ kind: 'copy_invite_link', project_id: projectId })}>{t('Invite collaborator', 'Davet et')}</button></section>}
     {pairingOpen && !candidates.length && <Waiting action={<button disabled={busy} onClick={() => act({ kind: 'close_pairing', project_id: projectId })}>{t('Stop waiting', 'Beklemeyi bırak')}</button>}>
       {t('Waiting for your collaborator to open the link', 'İş arkadaşının bağlantıyı açması bekleniyor')}{status.pairing.remaining_seconds > 0 ? ` · ${Math.ceil(status.pairing.remaining_seconds / 60)} ${t('min left', 'dk kaldı')}` : ''}. {t('Keep TrackMesh open.', "TrackMesh'i açık tut.")}</Waiting>}
-    {!pairingOpen && !candidates.length && !!inviteJob && !inviteJob.running && <p className="muted">{t('Collaborator opened the link but nothing appeared?', 'İş arkadaşın bağlantıyı açtı ama burada bir şey çıkmadı mı?')} <button className="text-button" disabled={busy} onClick={() => act({ kind: 'open_pairing', project_id: projectId })}>{t('Reopen approval window', 'Onay penceresini yeniden aç')}</button></p>}
+    {/* Only once the 15-minute window has run out; before that the waiting line covers it. */}
+    {!pairingOpen && !candidates.length && !!inviteJob && !inviteJob.running && nowSeconds - (inviteJob.completed_at ?? nowSeconds) >= 900 && <p className="muted">{t('The approval window closed.', 'Onay penceresi kapandı.')} <button className="text-button" disabled={busy} onClick={() => act({ kind: 'open_pairing', project_id: projectId })}>{t('Open approval window', 'Onay penceresini aç')}</button></p>}
     {card.grant_problem === 'REJECTED' && peer && <p className="muted">{t(`The invite service didn't accept ${peerName} (the project may already have 3 devices, or too many requests). Direct sharing still works.`, `Davet servisi ${named(collab, 'acc')} kabul etmedi (projede zaten 3 cihaz olabilir ya da çok fazla istek gelmiş olabilir). Doğrudan paylaşım çalışmaya devam eder.`)}</p>}
 
     {remoteAhead && peer?.announcement && <div className="new-version-notice" role="status">{t(`New version from ${peerName}`, `${named(collab, 'abl')} yeni sürüm`)} · {time(peer.announcement.created_at)}</div>}
@@ -237,22 +237,22 @@ export function Card({ card, status, jobStartedAt, focusProjectId, act, openAdva
       {card.peers.length > 1 && <label className="peer-picker">{t('Collaborator', 'İş arkadaşı')} <select value={peerId ?? ''} disabled={busy} onChange={e => setSelected(e.target.value)}>
         {card.peers.map(p => <option key={p.device.device_id} value={p.device.device_id}>{p.device.name}</option>)}</select></label>}
       <section className="share-flow">
-        <div className="pane"><h3>{t('Send my changes', 'Değişikliklerimi gönder')}</h3>
+        <div className="pane">
           <p className="muted">{t(`Saves this folder as a new version ${peerName} can get.`, `Bu klasörü ${peerName} için yeni bir sürüm olarak kaydeder.`)}</p>
           {firstShareBlocked
             ? <p className="muted">{card.root_empty && !peerHasVersion ? t('Add your project files to this folder first.', 'Önce proje dosyalarını bu klasöre ekle.') : t(`Get ${peerName}'s version first.`, `Önce ${named(collab, 'gen')} sürümünü al.`)}</p>
             : <button className={primary === 'share' && !resolveDivergence && !resolveLocalChanges ? 'primary' : ''} disabled={busy || rootMissing || project.recovery_required} onClick={() => void share()}>{t('Share current version', 'Güncel sürümü paylaş')}</button>}
         </div>
-        <div className="pane"><h3>{t(`Get ${peerName}'s changes`, `${named(collab, 'gen')} değişikliklerini al`)}</h3>
+        <div className="pane">
           {status.presence[projectId]?.filter(warning => warning.device_id === peer.device.device_id).map(warning => <p key={warning.device_id} className="muted" role="status">{warning.get_line}</p>)}
           {upToDate && <p className="muted">{t(`You have ${peerName}'s latest version`, `${named(collab, 'gen')} son sürümü sende`)}</p>}
           <button className={primary === 'get' ? 'primary' : ''} disabled={disabledReceive} onClick={() => void receive()}>{resumable ? t('Resume getting', 'Almaya devam et') : t(`Get ${peerName}'s version`, `${named(collab, 'gen')} sürümünü al`)}</button>
         </div>
       </section></>}
 
-    {!receiving && pairingApproval === 'NOT_REACHABLE' && peer && <section className="notice" role="status"><p>{t(`${peerName} hasn't approved this device yet. Ask them to open TrackMesh; if approval timed out, they can press ‘Reopen approval window’. Then press Try again.`,
-      `${peerName} bu cihazı henüz onaylamadı. TrackMesh'i açmasını söyle; onay süresi dolduysa “Onay penceresini yeniden aç” düğmesine basabilir. Sonra Tekrar dene'ye bas.`)}</p>
-      <div className="actions"><button disabled={busy} onClick={() => act({ kind: 'request_pairing', project_id: projectId, device_id: peer.device.device_id })}>{t('Try again', 'Tekrar dene')}</button></div></section>}
+    {!receiving && pairingApproval === 'NOT_REACHABLE' && peer && <section className="notice" role="status"><p>{t(`${peerName} hasn't approved this device yet. Ask them to open TrackMesh; if approval timed out, they can press ‘Open approval window’. Then press Ask for approval.`,
+      `${peerName} bu cihazı henüz onaylamadı. TrackMesh'i açmasını söyle; onay süresi dolduysa “Onay penceresini aç” düğmesine basabilir. Sonra Onay iste'ye bas.`)}</p>
+      <div className="actions"><button disabled={busy} onClick={() => act({ kind: 'request_pairing', project_id: projectId, device_id: peer.device.device_id })}>{t('Ask for approval', 'Onay iste')}</button></div></section>}
     {statusLine}
 
     <footer className="card-footer">

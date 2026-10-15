@@ -69,6 +69,20 @@
   --status-idle:#7c8a9c;
   --overlay:#080e17ef;
   --shadow:#000b;
+  /* Type and shape: every rule uses these, so one change here changes the app. */
+  --fs-xs:12px;
+  --fs-sm:13px;
+  --fs-md:14px;
+  --fs-lg:16px;
+  --fs-xl:20px;
+  --fs-2xl:26px;
+  --fw-normal:400;
+  --fw-semi:600;
+  --fw-bold:700;
+  --r-sm:6px;
+  --r-md:8px;
+  --r-lg:12px;
+  --r-pill:999px;
   --s1:4px;
   --s2:8px;
   --s3:12px;
@@ -85,7 +99,7 @@
   color:var(--text);
   background:var(--bg);
   font-synthesis:none;
-  font-weight:400;
+  font-weight:var(--fw-normal);
   line-height:1.5
 }
 /* base */
@@ -101,14 +115,14 @@ button,input,select {
 /* Type scale: page title 26 · card title 20 · section 15 · body 14 · meta 12–13 */
 button {
   border:1px solid var(--button-border);
-  border-radius:7px;
+  border-radius:var(--r-sm);
   padding:var(--s2) var(--s4);
   min-height:36px;
   background:var(--button-bg);
   color:var(--text);
   cursor:pointer;
-  font-size:14px;
-  font-weight:600;
+  font-size:var(--fs-md);
+  font-weight:var(--fw-semi);
   transition:background .15s
 }
 button:hover:enabled {
@@ -144,12 +158,12 @@ input,select {
   background:var(--input-bg);
   color:var(--input-text);
   border:1px solid var(--input-border);
-  border-radius:6px;
+  border-radius:var(--r-sm);
   padding:var(--s2);
   min-height:36px;
   min-width:0;
   width:100%;
-  font-size:14px
+  font-size:var(--fs-md)
 }
 input:focus,select:focus,button:focus-visible,summary:focus-visible {
   outline:2px solid var(--accent);
@@ -168,25 +182,25 @@ input[type=checkbox] {
 code {
   font-family:Consolas,monospace;
   overflow-wrap:anywhere;
-  font-size:13px
+  font-size:var(--fs-sm)
 }
 h1,h2,h3,p {
   margin:0
 }
 p {
-  font-size:14px
+  font-size:var(--fs-md)
 }
 h1 {
-  font-size:26px;
-  font-weight:650
+  font-size:var(--fs-2xl);
+  font-weight:var(--fw-semi)
 }
 h2 {
-  font-size:20px;
-  font-weight:600
+  font-size:var(--fs-xl);
+  font-weight:var(--fw-semi)
 }
 h3 {
-  font-size:15px;
-  font-weight:600;
+  font-size:var(--fs-md);
+  font-weight:var(--fw-semi);
   color:var(--share-heading)
 }
 .muted {
@@ -225,9 +239,9 @@ h3 {
   align-items:center;
   gap:var(--s3);
   padding:0 var(--s2) var(--s5);
-  font-weight:750;
+  font-weight:var(--fw-bold);
   letter-spacing:2px;
-  font-size:13px
+  font-size:var(--fs-sm)
 }
 .brand-mark {
   height:34px;
@@ -237,9 +251,9 @@ h3 {
   color:var(--accent-ink);
   display:grid;
   place-items:center;
-  border-radius:9px;
-  font-size:14px;
-  font-weight:800;
+  border-radius:var(--r-md);
+  font-size:var(--fs-md);
+  font-weight:var(--fw-bold);
   letter-spacing:0
 }
 .rail-nav {
@@ -247,9 +261,9 @@ h3 {
   text-align:left;
   background:transparent;
   border:0;
-  border-radius:8px;
+  border-radius:var(--r-md);
   color:var(--muted-label);
-  font-size:15px;
+  font-size:var(--fs-md);
   padding:var(--s3);
   min-height:44px
 }
@@ -275,10 +289,10 @@ h3 {
   grid-template-columns:auto 1fr;
   align-items:center;
   column-gap:var(--s2);
-  font-size:13px;
+  font-size:var(--fs-sm);
   padding:var(--s2) var(--s3);
   border:1px solid var(--device-border);
-  border-radius:8px;
+  border-radius:var(--r-md);
   overflow-wrap:anywhere
 }
 .status-dot {
@@ -316,9 +330,9 @@ main {
 .notice,.job {
   background:var(--notice-bg);
   border:1px solid var(--notice-border);
-  border-radius:8px;
+  border-radius:var(--r-md);
   padding:var(--s3) var(--s4);
-  font-size:14px;
+  font-size:var(--fs-md);
   overflow-wrap:anywhere;
   display:grid;
   gap:var(--s2)
@@ -334,12 +348,12 @@ main {
 .error-details summary {
   cursor:pointer;
   color:var(--muted);
-  font-size:13px
+  font-size:var(--fs-sm)
 }
 .error-details code {
   display:block;
   margin-top:var(--s1);
-  font-size:12px;
+  font-size:var(--fs-xs);
   overflow-wrap:anywhere
 }
 /* A transfer with no file data has nothing to fill; it shows as done instead of an empty bar. */
@@ -352,7 +366,7 @@ main {
   justify-content:space-between;
   align-items:center;
   gap:var(--s3);
-  border-radius:9px;
+  border-radius:var(--r-md);
   padding:var(--s3) var(--s4);
   background:var(--warn-bg);
   border:1px solid var(--warn-border)
@@ -360,7 +374,7 @@ main {
 .problem strong {
   display:block;
   color:var(--warn-heading);
-  font-size:15px
+  font-size:var(--fs-md)
 }
 .problem p {
   color:var(--dialog-text)
@@ -382,7 +396,7 @@ main {
   border-left:3px solid var(--notice-border);
   padding:var(--s2) var(--s3);
   color:var(--dialog-text);
-  font-size:14px
+  font-size:var(--fs-md)
 }
 /* This PC is working: a thin indeterminate line under the text. */
 .in-progress {
@@ -393,11 +407,11 @@ main {
   align-items:center;
   justify-content:space-between;
   gap:var(--s3);
-  border-radius:8px;
+  border-radius:var(--r-md);
   padding:var(--s3) var(--s4);
   background:var(--notice-bg);
   border:1px solid var(--notice-border);
-  font-size:14px
+  font-size:var(--fs-md)
 }
 .in-progress::after {
   content:"";
@@ -418,19 +432,19 @@ main {
   border:1px solid var(--info-border);
   background:var(--info-bg);
   color:var(--link);
-  border-radius:8px;
+  border-radius:var(--r-md);
   padding:var(--s3) var(--s4);
-  font-weight:650
+  font-weight:var(--fw-semi)
 }
 .delivery-receipt,.saved-note {
   color:var(--accent);
-  font-weight:650
+  font-weight:var(--fw-semi)
 }
 .approval-box {
   padding:var(--s4);
   background:var(--warn-bg);
   border:1px solid var(--warn-border);
-  border-radius:9px;
+  border-radius:var(--r-md);
   display:grid;
   gap:var(--s3)
 }
@@ -441,7 +455,7 @@ main {
 .project-card {
   background:var(--surface);
   border:1px solid var(--border);
-  border-radius:12px;
+  border-radius:var(--r-lg);
   padding:var(--s5);
   display:grid;
   gap:var(--s4)
@@ -465,14 +479,17 @@ main {
 .path-link {
   border:0;
   background:transparent;
-  color:var(--muted);
+  color:var(--link);
+  text-decoration:underline;
+  text-underline-offset:2px;
+  cursor:pointer;
   padding:0;
   min-height:0;
   text-align:left;
   overflow-wrap:anywhere;
   font-family:Consolas,monospace;
-  font-size:13px;
-  font-weight:400
+  font-size:var(--fs-sm);
+  font-weight:var(--fw-normal)
 }
 .path-link:hover:enabled {
   background:transparent;
@@ -481,11 +498,11 @@ main {
 }
 .badge {
   flex:none;
-  font-size:12px;
-  font-weight:650;
+  font-size:var(--fs-xs);
+  font-weight:var(--fw-semi);
   padding:var(--s1) var(--s3);
   border:1px solid var(--badge-border);
-  border-radius:999px;
+  border-radius:var(--r-pill);
   color:var(--badge-text)
 }
 .badge.online {
@@ -504,7 +521,7 @@ main {
   gap:var(--s2)
 }
 .invite-flow .primary {
-  font-size:15px;
+  font-size:var(--fs-md);
   padding:var(--s3) var(--s5);
   margin-top:var(--s1)
 }
@@ -512,7 +529,7 @@ main {
   display:flex;
   align-items:center;
   gap:var(--s3);
-  font-size:14px;
+  font-size:var(--fs-md);
   color:var(--muted-label)
 }
 .peer-picker select {
@@ -526,7 +543,7 @@ main {
 .pane {
   border:1px solid var(--border-subtle);
   background:var(--surface-3);
-  border-radius:10px;
+  border-radius:var(--r-md);
   padding:var(--s4);
   display:grid;
   align-content:start;
@@ -537,13 +554,13 @@ main {
   display:flex;
   gap:var(--s2);
   align-items:center;
-  font-size:14px;
+  font-size:var(--fs-md);
   color:var(--muted-confirm)
 }
 .transfer {
   display:grid;
   gap:var(--s2);
-  font-size:13px
+  font-size:var(--fs-sm)
 }
 .transfer>div {
   display:flex;
@@ -567,7 +584,7 @@ progress {
   justify-content:flex-end;
   align-items:center;
   gap:var(--s3);
-  font-size:13px
+  font-size:var(--fs-sm)
 }
 /* first run */
 .first-run {
@@ -590,7 +607,7 @@ progress {
   column-gap:var(--s3);
   background:var(--surface);
   border:1px solid var(--border);
-  border-radius:10px;
+  border-radius:var(--r-md);
   padding:var(--s4)
 }
 .first-steps li::before {
@@ -603,11 +620,11 @@ progress {
   place-items:center;
   background:var(--chip-bg);
   color:var(--accent);
-  font-weight:700
+  font-weight:var(--fw-bold)
 }
 .first-steps span {
   color:var(--muted);
-  font-size:13px
+  font-size:var(--fs-sm)
 }
 .choices {
   display:grid;
@@ -617,7 +634,7 @@ progress {
 .choice {
   background:var(--surface);
   border:1px solid var(--border);
-  border-radius:12px;
+  border-radius:var(--r-lg);
   padding:var(--s5);
   display:grid;
   align-content:start;
@@ -625,8 +642,8 @@ progress {
   gap:var(--s3)
 }
 .choice .who {
-  font-size:12px;
-  font-weight:700;
+  font-size:var(--fs-xs);
+  font-weight:var(--fw-bold);
   letter-spacing:1px;
   text-transform:uppercase;
   color:var(--accent)
@@ -638,7 +655,7 @@ progress {
 .field {
   display:grid;
   gap:var(--field-gap);
-  font-size:14px;
+  font-size:var(--fs-md);
   color:var(--muted-field)
 }
 .field-stack {
@@ -656,7 +673,7 @@ progress {
 .setup-panel {
   background:var(--surface-2);
   border:1px solid var(--form-border);
-  border-radius:10px;
+  border-radius:var(--r-md);
   padding:var(--s5);
   display:grid;
   gap:var(--s4)
@@ -682,7 +699,7 @@ progress {
   margin-bottom:var(--s2)
 }
 .chip {
-  border-radius:999px;
+  border-radius:var(--r-pill);
   padding:var(--s2) var(--s4)
 }
 .chip.on,.chip.on:hover:enabled {
@@ -708,12 +725,12 @@ progress {
 .tab-dot.new { background:var(--link) }
 .tab-dot.attention { background:var(--danger); box-shadow:0 0 0 3px var(--danger-bg) }
 .group-title {
-  font-size:17px;
+  font-size:var(--fs-lg);
   margin-top:var(--s5)
 }
 .adv-section {
   border:1px solid var(--border);
-  border-radius:10px;
+  border-radius:var(--r-md);
   background:var(--surface);
   scroll-margin-top:var(--s4)
 }
@@ -725,7 +742,7 @@ progress {
   min-height:52px;
   cursor:pointer;
   list-style:none;
-  border-radius:10px
+  border-radius:var(--r-md)
 }
 .adv-section > summary::-webkit-details-marker {
   display:none
@@ -742,12 +759,12 @@ progress {
   background:var(--surface-2)
 }
 .adv-title {
-  font-size:16px;
-  font-weight:600
+  font-size:var(--fs-lg);
+  font-weight:var(--fw-semi)
 }
 .adv-summary {
   margin-left:auto;
-  font-size:13px;
+  font-size:var(--fs-sm);
   color:var(--muted);
   text-align:right
 }
@@ -764,7 +781,7 @@ progress {
 }
 .status-rows {
   display:grid;
-  font-size:14px
+  font-size:var(--fs-md)
 }
 .status-rows > div {
   display:flex;
@@ -781,12 +798,12 @@ progress {
   display:grid;
   gap:var(--s1);
   padding:var(--s3) var(--s4);
-  border-radius:8px;
+  border-radius:var(--r-md);
   background:var(--surface-3);
   color:var(--diagnostic-next)
 }
 .next-step strong {
-  font-size:12px;
+  font-size:var(--fs-xs);
   color:var(--diagnostic-text)
 }
 .raw-grid {
@@ -794,7 +811,7 @@ progress {
   gap:var(--s2)
 }
 .raw-grid p {
-  font-size:13px;
+  font-size:var(--fs-sm);
   color:var(--muted-setup);
   overflow-wrap:anywhere
 }
@@ -803,12 +820,12 @@ progress {
   padding-left:var(--s5);
   display:grid;
   gap:var(--s2);
-  font-size:14px
+  font-size:var(--fs-md)
 }
 .history-list {
   margin:0;
   padding-left:var(--s5);
-  font-size:13px;
+  font-size:var(--fs-sm);
   color:var(--muted-detail)
 }
 .access-row {
@@ -834,21 +851,21 @@ progress {
 }
 .snapshot-id {
   font-family:Consolas,monospace;
-  font-size:16px;
+  font-size:var(--fs-lg);
   margin-bottom:var(--field-gap)
 }
 .snapshot-id span {
-  font-size:10px;
+  font-size:var(--fs-xs);
   background:var(--chip-bg);
   color:var(--chip-text);
-  border-radius:4px;
+  border-radius:var(--r-sm);
   padding:var(--s1) var(--field-gap);
   vertical-align:middle;
   margin-left:var(--s2)
 }
 .snapshots p {
   color:var(--muted-snapshot);
-  font-size:13px;
+  font-size:var(--fs-sm);
   margin-top:var(--s1)
 }
 .backend-settings,.backend-fields {
@@ -865,8 +882,8 @@ progress {
 }
 .adv-body details > summary,.setup-panel details > summary {
   cursor:pointer;
-  font-size:14px;
-  font-weight:600;
+  font-size:var(--fs-md);
+  font-weight:var(--fw-semi);
   color:var(--muted-summary);
   padding:var(--s1) 0
 }
@@ -884,7 +901,7 @@ progress {
 .settings-block {
   background:var(--surface);
   border:1px solid var(--border);
-  border-radius:12px;
+  border-radius:var(--r-lg);
   padding:var(--s4) var(--s5);
   display:grid;
   gap:var(--s3)
@@ -902,7 +919,7 @@ progress {
   display:flex;
   align-items:center;
   gap:var(--s2);
-  font-size:14px
+  font-size:var(--fs-md)
 }
 .switch-row {
   display:flex;
@@ -921,21 +938,21 @@ progress {
 }
 .toggle-row strong {
   display:block;
-  font-size:15px
+  font-size:var(--fs-md)
 }
 .toggle-row .muted {
-  font-size:13px
+  font-size:var(--fs-sm)
 }
 .switch {
   display:flex;
   align-items:center;
   gap:var(--s2);
-  font-size:14px
+  font-size:var(--fs-md)
 }
 .segmented {
   display:inline-flex;
   border:1px solid var(--button-border);
-  border-radius:8px;
+  border-radius:var(--r-md);
   overflow:hidden;
   justify-self:start
 }
@@ -965,14 +982,14 @@ progress {
   width:min(620px,100%);
   background:var(--dialog-bg);
   border:1px solid var(--accent);
-  border-radius:14px;
+  border-radius:var(--r-lg);
   padding:var(--s6);
   box-shadow:0 20px 80px var(--shadow);
   display:grid;
   gap:var(--s4)
 }
 .invite-dialog h2 {
-  font-size:24px
+  font-size:var(--fs-xl)
 }
 .invite-dialog p,.invite-dialog label {
   color:var(--dialog-text)
@@ -985,9 +1002,9 @@ progress {
 @media(max-width:760px) {
   :root { --rail-width:var(--rail-width-small) }
   .brand span:not(.brand-mark),.device { display:none }
-  .rail-bottom button { font-size:11px; padding:var(--s1) }
+  .rail-bottom button { font-size:var(--fs-xs); padding:var(--s1) }
   .rail { padding:var(--s4) var(--s2) }
-  .rail-nav { font-size:11px; padding:var(--s2) var(--s1); text-align:center }
+  .rail-nav { font-size:var(--fs-xs); padding:var(--s2) var(--s1); text-align:center }
   .share-flow,.snapshots,.connection-inputs { grid-template-columns:1fr }
   .snapshots section+section { border-left:0; border-top:1px solid var(--border); padding:var(--s4) 0 0 }
   .project-card { padding:var(--s4) }

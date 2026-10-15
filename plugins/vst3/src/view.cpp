@@ -5,13 +5,17 @@
 #include <cstring>
 #include <ctime>
 #include <utility>
+#include <uxtheme.h>
 
 using namespace Steinberg;
 namespace TrackMesh {
 namespace {
 constexpr int width = 580, height = 440;
 const ViewRect rectangle(0, 0, width, height);
+// One palette for the whole view, matching the TrackMesh window.
 constexpr COLORREF background = RGB(21, 25, 32), foreground = RGB(235, 239, 246), muted = RGB(155, 170, 192);
+constexpr COLORREF primaryFill = RGB(51, 94, 89), secondaryFill = RGB(47, 58, 73), disabledFill = RGB(39, 46, 57), accent = RGB(111, 218, 193),
+    warn = RGB(244, 195, 96), danger = RGB(255, 112, 112);
 std::mutex classMutex;
 size_t classViews = 0;
 void label(HDC dc, HFONT font, const std::wstring& value, RECT area, COLORREF color, UINT flags = DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS) {
@@ -78,12 +82,13 @@ tresult PLUGIN_API View::attached(void* parent, FIDString type) {
         return control;
     };
     picker = make(L"COMBOBOX", L"", WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL, 24, 105, 410, 210, 10);
+    SetWindowTheme(picker, L"DarkMode_CFD", nullptr); // dark closed field on Windows 10 1809 and later
     chooseButton = make(L"BUTTON", L"Use project", WS_TABSTOP | BS_OWNERDRAW, 450, 105, 106, 28, 11);
     changeButton = make(L"BUTTON", L"Change project", WS_TABSTOP | BS_OWNERDRAW, 420, 63, 136, 28, 12);
     openButton = make(L"BUTTON", L"Open TrackMesh", WS_TABSTOP | BS_OWNERDRAW, 24, 170, 200, 32, 13);
     sendButton = make(L"BUTTON", L"Share current version", WS_TABSTOP | BS_OWNERDRAW, 24, 282, 254, 38, 1);
     receiveButton = make(L"BUTTON", L"Get collaborator's version", WS_TABSTOP | BS_OWNERDRAW, 302, 282, 254, 38, 2);
-    autoShareCheckbox = make(L"BUTTON", L"Share automatically when the DAW project is saved", WS_TABSTOP | BS_AUTOCHECKBOX, 24, 328, 532, 26, 14);
+    autoShareCheckbox = make(L"BUTTON", L"Share automatically when the DAW project is saved", WS_TABSTOP | BS_OWNERDRAW, 24, 328, 532, 26, 14);
     refresh();
     SetTimer(window, 1, 250, nullptr);
     CPluginView::attached(parent, type);
@@ -116,18 +121,18 @@ void View::paint(HWND handle) {
         : selecting ? std::wstring()
         : status.peerOnline ? pick(status, L"Connected", L"Bağlı") + (status.author.empty() ? L"" : L" · " + status.author)
         : status.author.empty() ? pick(status, L"No collaborator yet", L"Henüz iş arkadaşı yok") : pick(status, L"Not connected", L"Bağlı değil");
-    label(dc, font, connection, {300, 28, 556, 52}, status.peerOnline ? RGB(111, 218, 193) : muted, DT_RIGHT | DT_SINGLELINE | DT_END_ELLIPSIS);
+    label(dc, font, connection, {300, 28, 556, 52}, status.peerOnline ? accent : muted, DT_RIGHT | DT_SINGLELINE | DT_END_ELLIPSIS);
     label(dc, font, selecting ? pick(status, L"Which TrackMesh project is this?", L"Bu hangi TrackMesh projesi?") : status.name, {24, 63, 410, 90}, foreground);
     if (!selecting) {
         label(dc, font, status.presenceWarning.empty() ? status.line : status.presenceWarning, {24, 105, 556, 163},
-            status.presenceWarning.empty() ? foreground : status.presenceDanger ? RGB(255, 112, 112) : RGB(244, 195, 96), DT_LEFT | DT_WORDBREAK);
+            status.presenceWarning.empty() ? foreground : status.presenceDanger ? danger : warn, DT_LEFT | DT_WORDBREAK);
         // The collaborator's latest version, in local time.
         const auto when = localTime(status.createdAt);
         if (!status.author.empty() && !when.empty())
             label(dc, font, pick(status, L"Latest version from ", L"Son sürüm: ") + status.author + L" · " + when, {24, 173, 556, 195}, muted);
     } else {
         const auto text = !status.pickerSupported ? (status.connected ? status.line : status.message)
-            : choices.empty() ? pick(status, L"Add this project's folder in TrackMesh first (Share a project folder).", L"Önce bu projenin klasörünü TrackMesh'e ekle (Proje klasörü paylaş).")
+            : choices.empty() ? pick(status, L"Add this project's folder in TrackMesh first (Add project).", L"Önce bu projenin klasörünü TrackMesh'e ekle (Proje ekle).")
             : pick(status, L"Choose the TrackMesh project whose folder holds this DAW project.", L"Bu DAW projesinin klasörünü içeren TrackMesh projesini seç.");
         label(dc, font, text, {24, 139, 556, 166}, muted);
         if (status.projectsMore) label(dc, font, pick(status, L"Showing the first 64 TrackMesh projects.", L"TrackMesh'teki ilk 64 proje gösteriliyor."), {24, 214, 556, 238}, muted);
@@ -165,18 +170,18 @@ void View::refresh() {
     ShowWindow(sendButton, selecting ? SW_HIDE : SW_SHOW);
     ShowWindow(receiveButton, selecting ? SW_HIDE : SW_SHOW);
     ShowWindow(autoShareCheckbox, !selecting && status.autoShareSupported ? SW_SHOW : SW_HIDE);
-    SendMessageW(autoShareCheckbox, BM_SETCHECK, status.autoShare ? BST_CHECKED : BST_UNCHECKED, 0);
     EnableWindow(autoShareCheckbox, status.connected && status.autoShareSupported);
     EnableWindow(sendButton, status.connected && status.shareEnabled);
     EnableWindow(receiveButton, status.connected && status.getEnabled);
     EnableWindow(openButton, status.connected && status.desktopAvailable);
     EnableWindow(chooseButton, status.connected && SendMessageW(picker, CB_GETCURSEL, 0, 0) != CB_ERR);
     // Owner-drawn buttons repaint only when asked; ask when their words change.
-    const auto labels = status.language + L"|" + status.getLabel;
+    const auto labels = status.language + L"|" + status.getLabel + (status.autoShare ? L"|on" : L"|off");
     if (labels != drawnLabels) {
         drawnLabels = labels;
         InvalidateRect(sendButton, nullptr, FALSE);
         InvalidateRect(receiveButton, nullptr, FALSE);
+        InvalidateRect(autoShareCheckbox, nullptr, FALSE);
     }
     InvalidateRect(window, nullptr, FALSE);
 }
@@ -204,7 +209,7 @@ LRESULT CALLBACK View::procedure(HWND handle, UINT message, WPARAM wparam, LPARA
             if (HIWORD(wparam) == BN_CLICKED && LOWORD(wparam) == 2) self->bridge->receive();
             if (HIWORD(wparam) == BN_CLICKED && LOWORD(wparam) == 13) self->bridge->receive();
             if (HIWORD(wparam) == BN_CLICKED && LOWORD(wparam) == 14)
-                self->bridge->setAutoShare(SendMessageW(self->autoShareCheckbox, BM_GETCHECK, 0, 0) == BST_CHECKED);
+                self->bridge->setAutoShare(!self->bridge->status().autoShare);
             if (HIWORD(wparam) == BN_CLICKED && LOWORD(wparam) == 12) { self->changing = !self->changing; self->selectionError.clear(); self->refresh(); }
             if (HIWORD(wparam) == CBN_SELCHANGE && LOWORD(wparam) == 10) self->refresh();
             if (HIWORD(wparam) == BN_CLICKED && LOWORD(wparam) == 11) {
@@ -219,10 +224,28 @@ LRESULT CALLBACK View::procedure(HWND handle, UINT message, WPARAM wparam, LPARA
             return 0;
         case WM_DRAWITEM: {
             const auto item = reinterpret_cast<DRAWITEMSTRUCT*>(lparam);
+            const bool disabled = (item->itemState & ODS_DISABLED) != 0;
+            if (item->CtlID == 14) {
+                // Share on save: a dark box, filled with the accent and a tick when on.
+                const auto status = self->bridge->status();
+                const auto fill = CreateSolidBrush(background);
+                FillRect(item->hDC, &item->rcItem, fill); DeleteObject(fill);
+                RECT box {item->rcItem.left, item->rcItem.top + 4, item->rcItem.left + 18, item->rcItem.top + 22};
+                const auto boxBrush = CreateSolidBrush(status.autoShare && !disabled ? accent : disabledFill);
+                FillRect(item->hDC, &box, boxBrush); DeleteObject(boxBrush);
+                const auto edge = CreateSolidBrush(disabled ? disabledFill : muted);
+                FrameRect(item->hDC, &box, edge); DeleteObject(edge);
+                SetBkMode(item->hDC, TRANSPARENT);
+                if (status.autoShare) label(item->hDC, self->font, L"✓", box, background, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                wchar_t current[128] {};
+                GetWindowTextW(item->hwndItem, current, 128);
+                label(item->hDC, self->font, current, {box.right + 10, item->rcItem.top, item->rcItem.right, item->rcItem.bottom}, disabled ? muted : foreground, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+                if ((item->itemState & ODS_FOCUS) && !(item->itemState & ODS_NOFOCUSRECT)) DrawFocusRect(item->hDC, &item->rcItem);
+                return TRUE;
+            }
             if (item->CtlID < 1 || (item->CtlID > 2 && (item->CtlID < 11 || item->CtlID > 13))) break;
             // Every plugin button is drawn dark; Change project is the only secondary one.
-            const bool disabled = (item->itemState & ODS_DISABLED) != 0;
-            const auto brush = CreateSolidBrush(disabled ? RGB(39, 46, 57) : item->CtlID == 12 ? RGB(47, 58, 73) : RGB(51, 94, 89));
+            const auto brush = CreateSolidBrush(disabled ? disabledFill : item->CtlID == 12 ? secondaryFill : primaryFill);
             FillRect(item->hDC, &item->rcItem, brush); DeleteObject(brush);
             SetBkMode(item->hDC, TRANSPARENT);
             const auto status = self->bridge->status();
@@ -241,6 +264,7 @@ LRESULT CALLBACK View::procedure(HWND handle, UINT message, WPARAM wparam, LPARA
             return TRUE;
         }
         case WM_CTLCOLOREDIT:
+        case WM_CTLCOLORLISTBOX:
         case WM_CTLCOLORSTATIC: {
             SetTextColor(reinterpret_cast<HDC>(wparam), foreground);
             SetBkColor(reinterpret_cast<HDC>(wparam), background);

@@ -30,7 +30,8 @@ export function jobLabel(label: string, collaboratorName?: string) {
     case 'Close pairing window': return t('Close approval window', 'Onay penceresini kapat');
     case 'Approve pairing': return t('Approve', 'Onayla');
     case 'Reject pairing': return t('Reject', 'Reddet');
-    case 'Request automatic pairing': return t('Ask for approval again', 'Onayı tekrar iste');
+    case 'Request automatic pairing': return t('Ask for approval', 'Onay iste');
+    case 'Open invite link': return t('Invite link', 'Davet bağlantısı');
     case 'Share current version': return t('Share current version', 'Güncel sürümü paylaş');
     case 'Publish metadata': return t('Post version notice', 'Sürüm bildirimini gönder');
     case 'Refresh metadata': return t('Refresh version notices', 'Sürüm bildirimlerini yenile');
@@ -63,7 +64,7 @@ const TURKISH_MESSAGES: Record<string, string> = {
   'Automatic sharing is off': 'Kaydedince paylaş kapalı',
   'Projects location saved': 'Proje konumu kaydedildi',
   'Manual port forwarding settings saved': 'Elle port yönlendirme ayarları kaydedildi',
-  'Approval window open for 15 minutes. Ask your collaborator to press Try again, then verify the arriving device before approving.': 'Onay penceresi 15 dakika açık. İş arkadaşından Tekrar dene\'ye basmasını iste; onaylamadan önce gelen cihazı kontrol et.',
+  'Approval window open for 15 minutes. Ask your collaborator to press Ask for approval, then verify the arriving device before approving.': 'Onay penceresi 15 dakika açık. İş arkadaşından Onay iste\'ye basmasını iste; onaylamadan önce gelen cihazı kontrol et.',
   'Pairing window closed; unapproved requests removed': 'Onay penceresi kapandı; onaylanmamış istekler silindi',
   'Pairing request rejected; no project access was granted': 'İstek reddedildi; projeye erişim verilmedi',
   'Pairing reply accepted. This device is authorized for the selected project. Tell your collaborator pairing is complete, create a snapshot, and keep TrackMesh open.': 'Eşleşme yanıtı kabul edildi. Bu cihaz projeye yetkili. İş arkadaşına eşleşmenin bittiğini söyle, bir sürüm paylaş ve TrackMesh\'i açık tut.',
@@ -71,7 +72,7 @@ const TURKISH_MESSAGES: Record<string, string> = {
   'Private invitation saved. Automatic pairing window open for 15 minutes; share the invitation privately, then verify and approve your collaborator here.': 'Özel davet dosyası kaydedildi. Onay penceresi 15 dakika açık; daveti özel olarak gönder, sonra iş arkadaşını burada kontrol edip onayla.',
   'Pairing request sent automatically. The inviter must verify and approve your device. No card file needs to be sent; wait for their confirmation.': 'İstek gönderildi. Davet eden kişi cihazını kontrol edip onaylamalı; dosya göndermene gerek yok, onayı bekle.',
   'The inviter approved this device for the project.': 'Davet eden kişi bu cihazı projeye onayladı.',
-  'Automatic pairing could not complete. Your project remains imported. Ask the inviter to open a pairing window and keep TrackMesh online, then use Try again. Do not reimport or create a new UUID. Both devices need a build supporting automatic pairing.': 'Onay isteği tamamlanamadı. Proje bu bilgisayarda duruyor. Davet edenden onay penceresini açmasını ve TrackMesh\'i açık tutmasını iste, sonra Tekrar dene\'ye bas. Daveti yeniden açma.',
+  'Automatic pairing could not complete. Your project remains imported. Ask the inviter to open the approval window and keep TrackMesh open, then press Ask for approval. Do not reimport or create a new UUID. Both devices need a build supporting automatic pairing.': 'Onay isteği tamamlanamadı. Proje bu bilgisayarda duruyor. Davet edenden onay penceresini açmasını ve TrackMesh\'i açık tutmasını iste, sonra Onay iste\'ye bas. Daveti yeniden açma.',
 };
 
 export function backendMessage(message: string) {
@@ -112,6 +113,12 @@ export function friendlyError(raw: string, collaboratorName?: string): string | 
     return t(`This device isn't approved for this project on ${who}'s PC.`, `Bu cihaz ${named(collaboratorName, 'gen')} bilgisayarında bu proje için onaylı değil.`);
   if (/local head advanced/i.test(raw))
     return t('You shared a newer version while this Get was paused. Press Get again.', 'Alma duraklatılmışken daha yeni bir sürüm paylaştın. Tekrar Al\'a bas.');
+  if (/An invite is being accepted/i.test(raw))
+    return t('An invite is being accepted. Wait for it to finish before opening another link.', 'Bir davet kabul ediliyor. Başka bir bağlantı açmadan önce bitmesini bekle.');
+  if (/This invite link could not be opened/i.test(raw))
+    return t('This invite link could not be opened. Check the link and try again.', 'Bu davet bağlantısı açılamadı. Bağlantıyı kontrol edip tekrar dene.');
+  if (/Backup deletion cancelled/i.test(raw))
+    return t('Nothing was deleted.', 'Hiçbir şey silinmedi.');
   if (/Download cancelled/i.test(raw))
     return t('Download cancelled. What was already downloaded is kept for Resume getting.', 'İndirme iptal edildi. İnen kısım, Almaya devam et için saklandı.');
   if (/exceeds MVP size limit|too many project files/i.test(raw))

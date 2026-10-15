@@ -259,8 +259,8 @@ export default function App() {
         <div><h1>{firstRun && screen === 'projects' ? t('Share a DAW project with one collaborator', 'Bir DAW projesini iş arkadaşınla paylaş') : title}</h1>
           <p className="muted">{firstRun && screen === 'projects' ? t('Files go directly between your PCs. Nothing is uploaded to a cloud drive.', 'Dosyalar doğrudan bilgisayarlarınız arasında gider. Hiçbir şey buluta yüklenmez.') : subtitle}</p></div>
         {screen === 'projects' && !firstRun && <div className="actions">
-          <button disabled={busy} onClick={startLink}>{t('Share a project folder', 'Proje klasörü paylaş')}</button>
-          <button disabled={busy} onClick={() => void pasteInvite()}>{t('Open an invite link', 'Davet bağlantısı aç')}</button></div>}
+          <button disabled={busy} onClick={startLink}>{t('Add project', 'Proje ekle')}</button>
+          <button disabled={busy} onClick={() => void pasteInvite()}>{t('Paste invite link', 'Davet bağlantısını yapıştır')}</button></div>}
         {screen === 'advanced' && <button className="text-button" onClick={() => go('projects')}>{t('← Back to Projects', '← Projelere dön')}</button>}
       </header>
       {runtimeError && <div className="notice danger" role="alert">{runtimeError}</div>}
@@ -268,7 +268,7 @@ export default function App() {
       {/* Projectless results (invite link, name, settings) sit at the top so they are seen on any page. */}
       {projectlessJobs.filter(job => job.label !== 'Accept invite link' || !status?.invite_pending).map(job => <JobNotice key={job.job_id} job={job} startedAt={jobStartedAt[job.job_id]} />)}
 
-      {status?.invite_pending && <div className="invite-overlay"><section className="invite-dialog" role="dialog" aria-modal="true" aria-labelledby="invite-title"><h2 id="invite-title">{t('Open invite link', 'Davet bağlantısını aç')}</h2>
+      {status?.invite_pending && <div className="invite-overlay"><section className="invite-dialog" role="dialog" aria-modal="true" aria-labelledby="invite-title"><h2 id="invite-title">{t('Invite link', 'Davet bağlantısı')}</h2>
         {status.jobs.filter(job => job.label === 'Accept invite link' && job.error).slice(-1).map(job => <div className="notice danger" role="alert" key={job.job_id}><strong>{job.error}</strong><p>{t('The link may have expired or already been used. Ask for a new link, or Cancel.', 'Bağlantının süresi dolmuş ya da kullanılmış olabilir. Yeni bir bağlantı iste ya da Vazgeç.')}</p></div>)}
         <p>{t('The project will be saved in', 'Proje şuraya kaydedilecek:')} <button className="path-link" title={t('Open in Explorer', "Gezgin'de aç")} onClick={() => void openInviteParentFolder().catch(err => setError(String(err)))}>{displayPath(inviteParentFolder ?? status.projects_location)}\[{t('project name', 'proje adı')}]</button>{t('.', '')}</p>
         {status.invite_needs_service_fields && <><label className="field">Supabase Project URL<input autoComplete="off" value={inviteServiceUrl} onChange={event => setInviteServiceUrl(event.target.value)} placeholder="https://your-project.supabase.co" /></label>
@@ -295,7 +295,7 @@ export default function App() {
         pickProject={projectId => { setSelectedProjectId(projectId); setAdvancedSection(null); }}
         openInvitationFile={() => { go('projects'); setSetup('join'); setFolder(''); }} onError={setError} />}
       {screen === 'projects' && <>
-        {setup && <section className="setup-panel"><h2>{setup === 'join' ? t('Open an invitation file', 'Davet dosyası aç') : t('Share a project folder', 'Proje klasörü paylaş')}</h2>
+        {setup && <section className="setup-panel"><h2>{setup === 'join' ? t('Open an invitation file', 'Davet dosyası aç') : t('Add project', 'Proje ekle')}</h2>
           {setup === 'link' && <label className="field">{t('Project name', 'Proje adı')}<input value={name} maxLength={320} onChange={e => { setName(e.target.value); setAutoName(false); }} placeholder="Track 07" /></label>}
           <label className="field">{setup === 'join' ? t('Empty folder for the project', 'Proje için boş klasör') : t('Folder with your Ableton or FL project', 'Ableton ya da FL projenin klasörü')}<div className="input-row"><input value={folder} onChange={e => setFolder(e.target.value)} placeholder="D:\Music\Track 07" /><button onClick={() => void browse()}>{t('Browse…', 'Gözat…')}</button></div></label>
           {setup === 'join' && <p className="muted">{t('Choose the folder, then open the private invitation file. Your device request is sent automatically; the sender keeps TrackMesh open and approves you.', "Klasörü seç, sonra özel davet dosyasını aç. Cihaz isteğin kendiliğinden gider; gönderen TrackMesh'i açık tutar ve seni onaylar.")}</p>}
@@ -310,10 +310,10 @@ export default function App() {
             <li><strong>{t('Share and get versions', 'Sürüm paylaş ve al')}</strong><span>{t('One button each way.', 'Her yön için tek düğme.')}</span></li>
           </ol>
           <div className="choices">
-            <section className="choice"><span className="who">{t('I have the project', 'Proje bende')}</span><h2>{t('Share a project folder', 'Proje klasörü paylaş')}</h2>
+            <section className="choice"><span className="who">{t('I have the project', 'Proje bende')}</span><h2>{t('Add project', 'Proje ekle')}</h2>
               <p>{t('Choose the folder with your DAW project. TrackMesh keeps its versions and lets you invite a collaborator.', 'DAW projenin klasörünü seç. TrackMesh sürümlerini tutar ve iş arkadaşını davet etmeni sağlar.')}</p>
               <button className="primary" disabled={busy} onClick={startLink}>{t('Choose folder…', 'Klasör seç…')}</button></section>
-            <section className="choice"><span className="who">{t('Someone sent me a link', 'Bana bir bağlantı gönderildi')}</span><h2>{t('Open an invite link', 'Davet bağlantısı aç')}</h2>
+            <section className="choice"><span className="who">{t('Someone sent me a link', 'Bana bir bağlantı gönderildi')}</span><h2>{t('Invite link', 'Davet bağlantısı')}</h2>
               <p>{t('Copy the link you received, then press the button. The project downloads after the sender approves you.', 'Gelen bağlantıyı kopyala, sonra düğmeye bas. Gönderen seni onaylayınca proje iner.')}</p>
               <button disabled={busy} onClick={() => void pasteInvite()}>{t('Paste invite link', 'Davet bağlantısını yapıştır')}</button></section>
           </div>
