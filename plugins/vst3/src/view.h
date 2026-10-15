@@ -4,6 +4,7 @@
 
 namespace TrackMesh {
 class Plugin;
+struct Tone;
 class View final : public Steinberg::CPluginView {
 public:
     View(std::shared_ptr<Bridge> bridge, Plugin* plugin);
@@ -15,6 +16,9 @@ private:
     static LRESULT CALLBACK procedure(HWND window, UINT message, WPARAM wparam, LPARAM lparam);
     void paint(HWND window);
     void refresh();
+    void drawItem(const DRAWITEMSTRUCT& item);
+    void notice(HDC dc, RECT area, const Tone& tone, const std::wstring& value, HFONT textFont, COLORREF ink) const;
+    void place(HWND control, RECT area);
     std::shared_ptr<Bridge> bridge;
     Plugin* plugin;
     std::vector<ProjectChoice> choices;
@@ -29,8 +33,8 @@ private:
     HWND window {nullptr}, sendButton {nullptr}, receiveButton {nullptr};
     HWND picker {nullptr}, chooseButton {nullptr}, changeButton {nullptr}, openButton {nullptr};
     HWND autoShareCheckbox {nullptr};
-    HFONT font {nullptr}, titleFont {nullptr}, smallFont {nullptr};
-    HBRUSH backgroundBrush {nullptr};
+    HFONT font {nullptr}, titleFont {nullptr}, smallFont {nullptr}, strongFont {nullptr}, badgeFont {nullptr};
+    HBRUSH inputBrush {nullptr}; // the project picker's field and list
     HMODULE viewModule {nullptr};
     bool registeredClass {false};
 };
