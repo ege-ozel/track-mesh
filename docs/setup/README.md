@@ -45,7 +45,7 @@ Plugin'de **Share when I save in the DAW** proje bazında varsayılan olarak kap
 
 Supabase yalnız küçük şifreli invite drop, endpoint kaydı ve head hint'i tutar. Dosyalar ve sample'lar servise yüklenmez. Proje anahtarı yalnız şifreli davetin içindedir; açık anahtar ve çözülmüş davet servise gönderilmez. Servis kaydı tek başına NAT engelini aşmaz ve offline kaynağın dosyalarını indirmez.
 
-Supabase projeleri eski mailbox'a metadata yayınlamaz ve Advanced'te mailbox PENDING etiketi göstermez. Kendi mailbox sunucusunu kullanan projelerin mevcut yayın/ACK akışı devam eder.
+Kendi mailbox sunucusu desteği kaldırıldı; uygulama metadata yayınlamaz ve yayın bekleyen sürüm göstermez. Eski davetteki mailbox adresi yok sayılır.
 
 **Approve** yerel yetkiyi verir ve üyelik grant'ini otomatik kuyruğa alır. Projeyi oluşturan cihazdaki **Remove access** (Advanced → Folder, ID and access), yerel erişimi kaldırır ve Supabase üyelik revoke'unu kuyruğa alır. İçe aktarılan projede başka cihazı servis üyeliğinden çıkarma isteği gönderilmez. Revoke anahtarı değiştirmez: çıkarılan cihaz daha önce aldığı dosyaları ve anahtarı elinde tutar. Yeni import'lar sahiplenme isteği göndermez; #42 öncesi import'ların kökeni geriye dönük tahmin edilmez.
 
@@ -55,7 +55,7 @@ Servis problemi ve eksik fonksiyon adları proje kartındaki **Advanced → (pro
 
 `Collaborator` yerelde bilinen cihazı gösterir. Bu kayıt, bağlantı veya dosya teslimi değildir. **Waiting for … to approve this device…** onay beklenmesini gösterir. Seçili cihazın bağlantısı ve güncel **Advanced → Connection → Check connection** sonucu ayrı bilgilerdir. Offline head hint'i son bilinen sürümü gösterir; dosyalar için yetkili kaynak online olmalıdır.
 
-Uygulamayı açmak davet almayan birine bildirim veya public kişi listesi oluşturmaz. Public rehber, browser deployment, offline pairing kuyruğu, kalıcı Windows arka plan servisi ve sürekli senkronizasyon yoktur. Relay sunucu kodu `future/relay-service` altında, derlenmeden durur; desteklenen kurulumda relay fallback yoktur ve post-1.0'a ertelenmiştir. Legacy relay alanını bağlantı çözümü olarak doldurmayın.
+Uygulamayı açmak davet almayan birine bildirim veya public kişi listesi oluşturmaz. Public rehber, browser deployment, offline pairing kuyruğu, kalıcı Windows arka plan servisi ve sürekli senkronizasyon yoktur. Relay ve hole punching (DCUtR) yoktur; bağlantı yalnız doğrudan TCP/QUIC ile kurulur. Relay istemci ve sunucu kodu `future/` altında, derlenmeden durur ve post-1.0'a ertelenmiştir. Eski davetteki relay adresi yok sayılır.
 
 UPnP ve imzalı endpoint yayını, değişen erişilebilir adresleri güncellemeye çalışır. Gerçek WAN/ağ geçişi davranışı doğrulanmış sayılmaz. Elle yönlendirme kullanılıyorsa yeni public IPv4/dış portu Settings'te güncelleyin. Yeni ağ erişilemiyorsa önce aşağıdaki sırayı izleyin. Profil, proje UUID'si ve anahtarları sıfırlamayın. Dosya davetinin adresleri gerçekten eskidiyse güncel dosyayı aynı profil/proje/hedefe native import edin; sıradan timeout için yeniden import yapmayın.
 
@@ -72,7 +72,7 @@ Her seferinde tek koşulu değiştirip **Advanced → Connection → Check conne
 5. UPnP uygun değilse router'da elle yönlendirme yapın. A'nın router'a bağlı LAN adresini panelden belirleyin ve DHCP rezervasyonu yapın. TCP `<external-port> → <PC-LAN-IP>:<local-port>` ve UDP için aynı eşlemeyi oluşturun; varsayılan yerel port 43101'dir. **Advanced → This PC → Manual port forwarding** içinde **Public IPv4** ve **External port** değerlerini **Save** ile kaydedin. Bu alanlar router kuralını kendileri oluşturmaz.
 6. TP-Link arayüzünde modeline göre **Advanced → NAT Forwarding → Virtual Servers / Port Forwarding** bölümünü açın. TCP/UDP kurallarını doğru iç IP/portla etkinleştirip kaydedin. Başka kullanıcıya ait kuralı değiştirmeyin. Menü kilitliyse ISP/ağ yöneticisinden erişim isteyin. [Üretici rehberi](https://www.tp-link.com/uk/support/faq/785/) model farklarını açıklamak için kullanılabilir.
 7. Dış port çakışıyorsa boş bir dış port seçin; yerel dinleme portu aynı kalabilir. UI'daki dış port router kuralıyla aynı olsun. Yeni public IP veya portu Advanced → This PC → Manual port forwarding içinde güncelleyin.
-8. Router WAN adresi özel/CGNAT aralığındaysa yerel kural upstream NAT'ı açmaz. ISP'den erişilebilir public IPv4 veya erişilebilir başka ağ isteyin. Supabase ve relay alanı bu engeli çözmez; transfer garantisi yoktur.
+8. Router WAN adresi özel/CGNAT aralığındaysa yerel kural upstream NAT'ı açmaz. ISP'den erişilebilir public IPv4 veya erişilebilir başka ağ isteyin. Supabase bu engeli çözmez; transfer garantisi yoktur.
 
 | Belirti | Sonraki somut adım |
 | --- | --- |
@@ -89,7 +89,7 @@ Her seferinde tek koşulu değiştirip **Advanced → Connection → Check conne
 
 Davet servisi kullanılamıyorsa **Advanced → Manual invitation (without invite service)** içinde **Export invitation with current addresses** kullanılabilir. Public adresli dosya için aynı bölümde **Save invitation file with public addresses** vardır. Bunlar mevcut UI etiketleridir. Dosya daveti ayrı özel kanaldan paylaşılır; native import da otomatik istek ve açık onay gerektirir.
 
-CLI'nin davet bağlantısı tüketme akışı yoktur. Dosya daveti ile `join`, güvenli `status` ve `request-pairing` kullanır; ardından `check`/`receive` yapılır. [Paket ajan şablonu](peer/CLAUDE.md) komutları ve tek-owner kuralını anlatır. Manuel imzalı kart alışverişi **Legacy file pairing** yoludur. Foundation self-hosted mailbox/relay servislerinin public-card ACL hazırlığı ayrı operatör işidir; Supabase otomatik grant'i bu legacy ACL'lerin yerine geçmez.
+CLI'nin davet bağlantısı tüketme akışı yoktur. Dosya daveti ile `join`, güvenli `status` ve `request-pairing` kullanır; ardından `check`/`receive` yapılır. [Paket ajan şablonu](peer/CLAUDE.md) komutları ve tek-owner kuralını anlatır. Manuel imzalı kart alışverişi **Legacy file pairing** yoludur.
 
 ## Denemeyi bitirme ve paket bakımı
 

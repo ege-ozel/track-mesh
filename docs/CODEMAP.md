@@ -18,7 +18,7 @@ Paths are relative to repository root. A crate's `src/lib.rs` lists its public A
 | Manual/settled snapshot creation, unchanged-content reuse and commit | `crates/core/src/snapshots.rs` | Project lock, snapshot scanner and transactional storage |
 | Local status, compare with online peer, receive from peer, recover | `crates/core/src/workflows.rs` | `peer.rs`, transfer API |
 | Bounded project/peer metadata cards, remote history and known lineage | `crates/core/src/status.rs` | Narrow bounded storage queries; existing CLI status unchanged |
-| Manual snapshot commit followed by publication | `crates/core/src/sending.rs` | Snapshot workflow and durable mailbox ACK |
+| Manual snapshot commit | `crates/core/src/sending.rs` | Snapshot workflow |
 | Windows plugin pipe, picker, binding, status, Share queue and Desktop handoff | `crates/core/src/ipc/mod.rs`, `ipc/security.rs`, `ipc/status.rs` | Existing plugin events with defaulted status fields; shared Engine/network; bounded Desktop request |
 | Project save debounce, coalescing and accepted-work drain | `crates/core/src/ipc/jobs.rs` | Engine settled send; bounded per-project revisions |
 | Default-off per-project DAW auto-share preference | `crates/core/src/auto_share.rs`, `settings.rs`, `ipc/mod.rs`, `ipc/jobs.rs` | Versioned atomic settings; Desktop/plugin share one preference; capability-gated local pipe setter |
@@ -35,7 +35,7 @@ Paths are relative to repository root. A crate's `src/lib.rs` lists its public A
 | Automatic chunk retention and Storage backup cleanup | `crates/core/src/retention.rs`, `crates/storage/src/retention.rs`, `crates/snapshot/src/retention.rs`, `crates/transfer/src/backups.rs` | Shared Windows cache lease; immutable signed history; DONE-only deletion with newest backup protected; `apps/desktop/src/StorageSettings.tsx` |
 | Get download consent | `crates/transfer/src/download.rs`, `apps/desktop/src-tauri/src/receive.rs` | Verified distinct missing chunks; native confirmation above 1 GB; retry pins the same signed target |
 | Start/stop peer runtime, answer disk requests, fetch signed ancestry | `crates/core/src/peer.rs` | Network actor and transfer serving |
-| Signed endpoint record acceptance and direct-peer publication | `crates/core/src/endpoints.rs` | Shared direct/mailbox validation, M5b storage, network actor learned candidates |
+| Signed endpoint record acceptance and direct-peer publication | `crates/core/src/endpoints.rs` | Shared direct/Supabase validation, M5b storage, network actor learned candidates |
 | CLI arguments, JSON output, Ctrl+C | `crates/core/src/main.rs` | Core workflows; keep decisions out of this adapter |
 | Receive decisions, local lock, failure state | `crates/transfer/src/receiver.rs` | Verification, download, apply |
 | Chunk reuse, concurrency, retries, durable progress | `crates/transfer/src/download.rs` | Chunk store, network handle, storage transfers |
@@ -58,16 +58,16 @@ Paths are relative to repository root. A crate's `src/lib.rs` lists its public A
 | Supabase one-read invite drop and native invite link | `services/supabase/supabase/migrations/20261012000200_m6_invite_drop.sql`, `supabase/functions/invite-create/`, `invite-consume/`, `crates/crypto/src/invite_drop.rs`, `crates/supabase/src/client.rs`, `apps/desktop/src-tauri/src/clipboard.rs`, `uri.rs` | Signed ProjectInvite payload; native Rust parses/decrypts; invite locator is opaque; Windows per-user URI and clipboard formats; ProjectInvite backend settings remain signed |
 | QUIC/TCP/Noise/Yamux and behavior configuration | `crates/network/src/behaviour.rs` | Config, codec, discovery |
 | Swarm ownership, request authorization, preferred connections | `crates/network/src/actor.rs` | Discovery and status |
-| Private rendezvous, relay reservation, QUIC/TCP/circuit retry | `crates/network/src/discovery.rs` | Pinned infrastructure and trusted cards |
+| Allow-list refresh, QUIC/TCP direct retry, learned addresses | `crates/network/src/discovery.rs` | Trusted cards and endpoint records |
 | Bounded command/RPC interface | `crates/network/src/handle.rs` | Actor |
 | PeerId/card key binding | `crates/network/src/identity.rs` | Crypto signatures |
 | Online/route/transport and authorized inbound event observation | `crates/network/src/status.rs`, `actor.rs` | Actor correlates a direct listener connection with an authorized transfer request; reachability stays `UNVERIFIED` without cross-network provenance; no remote IP is serialized |
 | Binary chunk and bounded JSON frames | `crates/network/src/codec.rs` | Peer message types |
-| Device/project keys, signatures, mailbox encryption, DPAPI | `crates/crypto/src/lib.rs` | Protocol signing bytes/AAD |
+| Device/project keys, signatures, DPAPI | `crates/crypto/src/lib.rs` | Protocol signing bytes/AAD |
 | Scanner, chunk store, safe paths, Windows file/project locks | `crates/snapshot/src/lib.rs` | Manifest model and transfer disk operations |
 | Event-triggered inventory quiet period and writer-lock settlement | `crates/snapshot/src/settlement.rs` | Existing guarded scanner; no watcher |
-| Manifest/path validation, signing serialization, peer/IPC/mailbox types | `shared/protocol/src/lib.rs`, `shared/protocol/src/endpoint.rs` | Endpoint record domain, bounds, time/sequence and IP Multiaddr validation; all crates |
-| Signed HTTP request scope, timestamp, nonce and body binding | `shared/protocol/src/mailbox.rs`, `crates/crypto/src/supabase.rs` | Wire types kept for compatibility; the mailbox client was removed |
+| Manifest/path validation, signing serialization, peer/IPC/invitation types | `shared/protocol/src/lib.rs`, `shared/protocol/src/endpoint.rs` | Endpoint record domain, bounds, time/sequence and IP Multiaddr validation; all crates |
+| Signed HTTP request scope, timestamp, nonce and body binding | `shared/protocol/src/supabase.rs`, `crates/crypto/src/supabase.rs` | Supabase wire types; `*_MAILBOX_*` names and AAD strings are stable wire values |
 
 ## Public call paths
 
@@ -77,7 +77,6 @@ check:    Engine::check_peer → fetch_snapshot_chain → validate_snapshot → 
 receive:  Engine::receive_from_peer → fetch_snapshot_chain → Receiver::receive → download → apply
 recover:  Engine::recover → recover_project → trusted target validation → apply
 serve:    PeerRuntime → transfer::serve → project authorization → head/manifest/indexed chunk lookup
-publish:  Engine::publish_metadata → persist envelope → MailboxClient POST → matching ACK → PUBLISHED
 refresh:  Engine::refresh_metadata → bounded page → trust/signature/AEAD → page + cursor transaction
 desktop:  typed Tauri command → bounded tracked job → Engine workflow → compact status page
 pairing:  native invite import → existing actor reload/connect → Engine request_pairing → proof-verified pending candidate → explicit approve_pairing → existing pair/trust reload
@@ -88,7 +87,7 @@ save:     SAVE_OBSERVED → project debounce → snapshot_after_save → scan_af
 
 `PeerRuntime` owns the network actor/responder lifetime. `Network` is a handle, not another swarm. SQLite ownership remains in `Store`; each domain module adds methods to that same type. Infrastructure services own independent stores/swarms in their separate processes.
 
-`PeerRuntime` holds an exclusive Windows data-directory lease shared with its actor/responder tasks. CLI-only plugin owners use `SessionGrace`: live plugin sessions, accepted local work, active peer responses and eligible authored mailbox publication retain the owner. Brief requests between polls reset grace through activity epochs; advisory presence refreshes do not. Plugin-launched Desktop owners move into the tray after idle grace and reuse the persisted first-tray notice. Desktop window close retains the user session in the native tray; tray/Open and explicit desktop reopen restore the same window/process. Close safely and tray/Quit confirm collaborator availability loss, reject new IPC under the acceptance gate and drain workers before stopping the one peer runtime. Status summaries use bounded storage queries in `projects.rs`, `snapshots.rs`, and `transfers.rs`; `local_status` retains its complete CLI output.
+`PeerRuntime` holds an exclusive Windows data-directory lease shared with its actor/responder tasks. CLI-only plugin owners use `SessionGrace`: live plugin sessions, accepted local work, and active peer responses retain the owner. Brief requests between polls reset grace through activity epochs; advisory presence refreshes do not. Plugin-launched Desktop owners move into the tray after idle grace and reuse the persisted first-tray notice. Desktop window close retains the user session in the native tray; tray/Open and explicit desktop reopen restore the same window/process. Close safely and tray/Quit confirm collaborator availability loss, reject new IPC under the acceptance gate and drain workers before stopping the one peer runtime. Status summaries use bounded storage queries in `projects.rs`, `snapshots.rs`, and `transfers.rs`; `local_status` retains its complete CLI output.
 
 ## Targeted search examples
 
@@ -96,7 +95,7 @@ save:     SAVE_OBSERVED → project debounce → snapshot_after_save → scan_af
 rg -n 'commit_local|begin_apply|finish_apply' crates/storage/src crates/transfer/src
 rg -n 'TransferState|requires_recovery' crates/storage/src crates/transfer/src
 rg -n 'PROTOCOL_VERSION|signing_bytes|aad' shared/protocol/src crates/crypto/src
-rg -n 'send_request|authorized|P2pCircuit' crates/network/src
+rg -n 'send_request|authorized' crates/network/src
 ```
 
 Exclude `target`, ignored scratch/data folders, and `.git` from broad searches. If parent ignore rules hide source, use `rg --no-ignore` against the explicit `crates`, `shared`, or `docs` path rather than the whole drive.

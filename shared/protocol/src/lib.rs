@@ -4,21 +4,20 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 mod endpoint;
-mod mailbox;
 mod pairing;
+mod supabase;
 pub use endpoint::{
     validate_endpoint_address, EndpointRecord, EndpointSequence, ENDPOINT_DOMAIN,
     MAX_ENDPOINT_ADDRESSES, MAX_ENDPOINT_RECORD_BYTES, MAX_ENDPOINT_REQUEST_BYTES,
     MAX_ENDPOINT_TTL, PREFERRED_ENDPOINT_TTL,
 };
-pub use mailbox::{
-    mailbox_scope, EndpointMailboxWrapper, HeadMailboxWrapper, HeadRecord, MailboxAuth,
-    SupabaseAccepted, SupabaseAuth, SupabaseEndpointRow, SupabaseHeadRow, ENDPOINT_MAILBOX_AAD,
-    HEAD_MAILBOX_AAD, MAX_MAILBOX_AUTH_BYTES, MAX_MAILBOX_ENVELOPE_BYTES, MAX_MAILBOX_PAGE_BYTES,
-    MAX_MAILBOX_PAGE_RECORDS, SUPABASE_REQUEST_DOMAIN,
-};
 pub use pairing::{
     pairing_scope, PairingRequest, PairingResponse, MAX_PAIRING_BYTES, PAIRING_PROTOCOL,
+};
+pub use supabase::{
+    EndpointMailboxWrapper, HeadMailboxWrapper, HeadRecord, SupabaseAccepted, SupabaseAuth,
+    SupabaseEndpointRow, SupabaseHeadRow, ENDPOINT_MAILBOX_AAD, HEAD_MAILBOX_AAD,
+    MAX_MAILBOX_AUTH_BYTES, SUPABASE_REQUEST_DOMAIN,
 };
 
 pub const PROTOCOL_VERSION: u32 = 1;
@@ -27,7 +26,6 @@ pub const MAX_CHUNK_SIZE: u32 = 8 * 1024 * 1024;
 pub const MAX_MANIFEST_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_FILES: usize = 100_000;
 pub const MAX_PROJECT_BYTES: u64 = 1024 * 1024 * 1024 * 1024;
-pub const MAX_MAILBOX_PAYLOAD: usize = 64 * 1024;
 pub const MAX_IPC_BYTES: usize = 64 * 1024;
 
 pub fn hash(data: &[u8]) -> String {
@@ -293,67 +291,6 @@ impl ProjectInvite {
             &self.device.signature,
         ))?)
     }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Announcement {
-    pub parent_snapshot_id: Option<Uuid>,
-    pub manifest_hash: String,
-    pub total_size: u64,
-    pub changed_bytes: u64,
-    pub file_count: u32,
-    pub author_name: String,
-    pub description: String,
-}
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Envelope {
-    pub version: u32,
-    pub project_id: Uuid,
-    pub snapshot_id: Uuid,
-    pub author_device_id: Uuid,
-    pub created_at: DateTime<Utc>,
-    pub nonce: String,
-    pub encrypted_payload: String,
-    pub public_key: String,
-    pub signature: String,
-}
-impl Envelope {
-    pub fn aad(&self) -> Result<Vec<u8>> {
-        Ok(serde_json::to_vec(&(
-            "trackmesh-mailbox-v1",
-            self.version,
-            self.project_id,
-            self.snapshot_id,
-            self.author_device_id,
-            self.created_at,
-            &self.public_key,
-        ))?)
-    }
-    pub fn signing_bytes(&self) -> Result<Vec<u8>> {
-        Ok(serde_json::to_vec(&(
-            self.aad()?,
-            &self.nonce,
-            &self.encrypted_payload,
-        ))?)
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct MailboxRecord {
-    pub sequence: i64,
-    pub envelope: Envelope,
-}
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct MailboxPage {
-    pub records: Vec<MailboxRecord>,
-    pub next_cursor: i64,
-}
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct MailboxAck {
-    pub snapshot_id: Uuid,
-    pub sequence: i64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

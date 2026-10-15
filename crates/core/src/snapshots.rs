@@ -60,7 +60,7 @@ impl Engine {
             }
         }
         let signed = self.identity.sign_snapshot(manifest)?;
-        // Always pending until a matching mailbox ACK.
+        // Stored with the legacy PENDING metadata status; nothing publishes it any more.
         self.store.commit_local(
             &signed,
             &self.identity.name(),

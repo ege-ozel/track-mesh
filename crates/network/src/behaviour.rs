@@ -3,8 +3,8 @@ use crate::{codec, discovery::configure, identity::keypair, NetworkConfig};
 use anyhow::Result;
 use crypto::Identity;
 use libp2p::{
-    dcutr, identify, noise, ping, relay, rendezvous, request_response, swarm::NetworkBehaviour,
-    tcp, yamux, StreamProtocol, SwarmBuilder,
+    identify, noise, ping, request_response, swarm::NetworkBehaviour, tcp, yamux, StreamProtocol,
+    SwarmBuilder,
 };
 use std::time::Duration;
 use storage::Store;
@@ -16,9 +16,6 @@ pub(super) struct Behaviour {
     pub(super) limits: libp2p::connection_limits::Behaviour,
     pub(super) identify: identify::Behaviour,
     pub(super) ping: ping::Behaviour,
-    pub(super) relay: relay::client::Behaviour,
-    pub(super) dcutr: dcutr::Behaviour,
-    pub(super) rendezvous: rendezvous::client::Behaviour,
     pub(super) transfer: request_response::Behaviour<codec::TransferCodec>,
     pub(super) pairing: request_response::Behaviour<codec::PairingCodec>,
 }
@@ -28,7 +25,6 @@ pub(super) fn build_swarm(
     config: &NetworkConfig,
 ) -> Result<PeerSwarm> {
     let key = keypair(identity)?;
-    let id = key.public().to_peer_id();
     let mut swarm = SwarmBuilder::with_existing_identity(key)
         .with_tokio()
         .with_tcp(
@@ -43,8 +39,7 @@ pub(super) fn build_swarm(
             c
         })
         .with_dns()?
-        .with_relay_client(noise::Config::new, yamux::Config::default)?
-        .with_behaviour(|key, relay| Behaviour {
+        .with_behaviour(|key| Behaviour {
             allow: Default::default(),
             limits: libp2p::connection_limits::Behaviour::new(
                 libp2p::connection_limits::ConnectionLimits::default()
@@ -63,9 +58,6 @@ pub(super) fn build_swarm(
                     .with_interval(Duration::from_secs(10))
                     .with_timeout(Duration::from_secs(10)),
             ),
-            relay,
-            dcutr: dcutr::Behaviour::new(id),
-            rendezvous: rendezvous::client::Behaviour::new(key.clone()),
             pairing: request_response::Behaviour::with_codec(
                 codec::PairingCodec,
                 [(
@@ -89,7 +81,7 @@ pub(super) fn build_swarm(
         })?
         .with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(120)))
         .build();
-    configure(&mut swarm, store, &config.rendezvous)?;
+    configure(&mut swarm, store)?;
     swarm.listen_on(format!("/ip4/0.0.0.0/udp/{}/quic-v1", config.port).parse()?)?;
     swarm.listen_on(format!("/ip4/0.0.0.0/tcp/{}", config.port).parse()?)?;
     for address in &config.external_addresses {

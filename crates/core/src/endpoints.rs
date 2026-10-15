@@ -23,7 +23,7 @@ impl Engine {
     }
 
     /// Validate and persist an endpoint update from any authenticated delivery source.
-    /// M5d mailbox delivery must call this same function as M5c direct delivery.
+    /// Supabase endpoint delivery (M5d) calls this same function as direct delivery (M5c).
     pub async fn apply_endpoint_record(
         &self,
         network: &Network,

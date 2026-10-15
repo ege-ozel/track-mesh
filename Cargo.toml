@@ -34,7 +34,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 zeroize = { version = "1", features = ["derive"] }
-libp2p = { version = "0.56", default-features = false, features = ["tokio", "tcp", "quic", "noise", "yamux", "dns", "identify", "ping", "relay", "dcutr", "rendezvous", "request-response", "macros", "ed25519"] }
+libp2p = { version = "0.56", default-features = false, features = ["tokio", "tcp", "quic", "noise", "yamux", "dns", "identify", "ping", "request-response", "macros", "ed25519"] }
 network = { package = "trackmesh-network", path = "crates/network" }
 transfer = { package = "trackmesh-transfer", path = "crates/transfer" }
 protocol = { package = "trackmesh-protocol", path = "shared/protocol" }

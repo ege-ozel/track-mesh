@@ -18,7 +18,7 @@ Paket klasöründe PowerShell açın. Claude Code kurulu ve giriş yapılmışsa
 
 Davet import'u yerel proje ve gönderen kimliğini kaydeder. Bu kayıt online bağlantı veya dosya teslimi değildir. Onaylı bir cihaz her bağlantıda yeni pencere istemez. CLI network işi yalnız komut boyunca online kalır; aynı profilde iki owner açılmaz. Kaynak daha sonra alıcı olabilir; kurulu bağlantı iki yönlüdür.
 
-Yerel SQLite trust, history ve transfer durumunu tutar. Public rehber, browser deployment, offline pairing kuyruğu, kalıcı arka plan servisi ve otomatik merge yoktur. Relay alanı legacy'dir ve desteklenen kurulumun dışındadır. Supabase offline kaynağın dosyalarını taşımaz veya NAT engelini kaldırmaz.
+Yerel SQLite trust, history ve transfer durumunu tutar. Public rehber, browser deployment, offline pairing kuyruğu, kalıcı arka plan servisi ve otomatik merge yoktur. Relay yoktur; eski davetteki relay adresi yok sayılır. Supabase offline kaynağın dosyalarını taşımaz veya NAT engelini kaldırmaz.
 
 
 ## Claude için görev ve sınırlar
@@ -103,7 +103,7 @@ Receive bitmeden diğer komutu başlatma. Başarıyı son check'in `verified_equ
 
 Her seferinde tek koşulu düzeltip check yapın. Ayrıntılı IP, TCP/UDP, Windows Firewall ve TP-Link adımları paketteki ortak kurulum README'sinin **Bağlantı kurulamazsa** bölümünde tutulur; bulunmuyorsa gönderenden bu rehberi isteyin. Ajan router/firewall kuralı veya servis kurmaz.
 
-Gerçekten eskimiş dosya daveti için gönderenden güncel adresli dosya isteyip aynı profil/proje/hedefe native join yapabilirsiniz. Sıradan timeout için yeniden import yapmayın. En az bir uç erişilebilir olmalıdır; relay desteklenmez. Gerçek ayrı-ağ aktarımı henüz doğrulanmış sayılmaz.
+Gerçekten eskimiş dosya daveti için gönderenden güncel adresli dosya isteyip aynı profil/proje/hedefe native join yapabilirsiniz. Sıradan timeout için yeniden import yapmayın. En az bir uç erişilebilir olmalıdır; relay yoktur. Gerçek ayrı-ağ aktarımı henüz doğrulanmış sayılmaz.
 
 
 ## Desktop'ı daha sonra açmak

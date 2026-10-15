@@ -79,7 +79,6 @@ pub enum Action {
         project_id: Uuid,
         name: String,
         folder: PathBuf,
-        relay_address: Option<String>,
     },
     ChangeProjectRoot {
         project_id: Uuid,
@@ -608,7 +607,6 @@ impl Desktop {
                         .iter()
                         .map(|v| v.parse())
                         .collect::<std::result::Result<_, _>>()?,
-                    ..Default::default()
                 };
                 Ok::<_, anyhow::Error>((
                     PeerRuntime::start(engine_for_network, config, observation.clone(), true)?,
@@ -951,7 +949,7 @@ impl Desktop {
                     continue;
                 }
                 let Some(snapshot) = peer.announcement.as_ref() else {
-                    // Without a mailbox nothing pushes the collaborator's head; pull it with
+                    // Nothing pushes the collaborator's head; pull it with
                     // the existing Head request, at most every 10 s per project and peer.
                     let key = (item.project.project_id, peer.device.device_id);
                     {
@@ -1388,11 +1386,8 @@ impl Desktop {
                         Ok((project, device))
                     })
                     .await??;
-                let disk = engine.clone();
-                let namespaces =
-                    tauri::async_runtime::spawn_blocking(move || disk.namespaces()).await??;
                 network
-                    .reload(namespaces)
+                    .reload()
                     .await
                     .context("Invitation accepted, but network reload failed; reopen desktop")?;
                 // Import is committed even when the inviter is offline or their window is closed.
@@ -1500,11 +1495,8 @@ impl Desktop {
                 let disk = engine.clone();
                 tauri::async_runtime::spawn_blocking(move || disk.import_invite(invite, &folder))
                     .await??;
-                let disk = engine.clone();
-                let namespaces =
-                    tauri::async_runtime::spawn_blocking(move || disk.namespaces()).await??;
                 network
-                    .reload(namespaces)
+                    .reload()
                     .await
                     .context("Invite accepted, but network reload failed; reopen desktop")?;
                 self.automatic_pairing(&engine, &network, project, device, true)
@@ -1826,11 +1818,10 @@ impl Desktop {
                             let bytes = disk.delete_old_backups(&selected)?;
                             Ok(json!({"message": format!("Deleted {bytes} bytes of old backups")}))
                         }
-                        Action::Link { project_id, name, folder, relay_address } => {
+                        Action::Link { project_id, name, folder } => {
                             ensure!(!project_id.is_nil(), "Project UUID cannot be nil");
-                            if let Some(relay) = &relay_address { let _: network::NetworkConfig = NetworkConfig { rendezvous: vec![(relay.parse()?, String::new())], ..Default::default() }; }
                             let is_existing = disk.store.projects()?.iter().any(|project| project.project_id == project_id);
-                            disk.link(project_id, &name, &folder, relay_address.as_deref())?;
+                            disk.link(project_id, &name, &folder)?;
                             if !is_existing {
                                 if let Some(default) = disk.default_supabase_config()? {
                                     disk.set_project_backend_config(project_id, ProjectBackendConfig {
@@ -1943,11 +1934,8 @@ impl Desktop {
             .pairing_window(Duration::from_secs(pairing.remaining_seconds))
             .await?;
         if reload {
-            let disk = engine;
-            let namespaces =
-                tauri::async_runtime::spawn_blocking(move || disk.namespaces()).await??;
             network
-                .reload(namespaces)
+                .reload()
                 .await
                 .context("Project setup saved, but network reload failed; reopen desktop")?;
         }

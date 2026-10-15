@@ -223,7 +223,7 @@ export default function App() {
       const projectId = crypto.randomUUID();
       setOffset(0);
       focusBaseline.current = null;
-      if (await act({ kind: 'link', project_id: projectId, name: name.trim(), folder, relay_address: null })) {
+      if (await act({ kind: 'link', project_id: projectId, name: name.trim(), folder })) {
         setSetup(null);
         setScrolledFocusId(null);
         setFocusProjectId(projectId);

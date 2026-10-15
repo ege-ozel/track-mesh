@@ -18,7 +18,7 @@ Onay gecikirse **Open approval window** kullanın ve B'den **Ask for approval** 
 
 Projeyi kaydedin, ilk denemede DAW'ı kapatın ve **Share current version** seçin. B DAW projesini kapatıp onay kutusuyla **Get <isim>'s version** kullanır. İşlem tamamlanınca **Advanced → Connection → Check connection** güncel karşılaştırmayı kontrol eder. Snapshot oluşturma, metadata yayını ve B'nin dosyaları alması ayrı sonuçlardır.
 
-B de kaynak olabilir: açık bağlantı iki yönde çalışır. Bağımsız bağlantı kurabilmek ve IP değişimleri için [ortak bağlantı rehberini](../README.md#bağlantı-kurulamazsa) izleyin. Relay desteklenen kurulumun parçası değildir.
+B de kaynak olabilir: açık bağlantı iki yönde çalışır. Bağımsız bağlantı kurabilmek ve IP değişimleri için [ortak bağlantı rehberini](../README.md#bağlantı-kurulamazsa) izleyin. Relay yoktur; en az bir taraf doğrudan erişilebilir olmalıdır.
 
 **Advanced → Folder, ID and access → Remove access** bu PC'deki erişimi kaldırır. Projeyi oluşturan cihaz Supabase üyelik revoke'unu da kuyruğa alır. Anahtar değişmez; B daha önce aldığı dosyaları ve anahtarı elinde tutar. Hata veya eksik servis fonksiyonu proje kartında uyarı olarak çıkar ve **Advanced → (proje) → Invite service** altında görünür.
 

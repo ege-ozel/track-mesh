@@ -8,7 +8,7 @@
 
 İçinde: LAN/doğrudan QUIC+TCP (Noise/Yamux korunur); kullanıcı onaylı UPnP IGD (PCP ertelendi); erişilebilirlik gözleminin eşleme sonucundan ayrı gösterimi; ağ değişiminde yeniden deneme/yenileme; imzalı endpoint güncellemesi; isteğe bağlı Supabase v2 davet bağlantısı ve head hint'i; açılışta peer/snapshot durum yenileme.
 
-Dışında: relay/VPS/DCUtR doğrulaması ve desteklenen transfer relay fallback'i, Windows File Watcher, DAW'dan bağımsız dosya izleme, herkese açık DHT, BitTorrent, bulutta proje depolama, DAW açıkken otomatik Receive. Mevcut relay/DCUtR/rendezvous kodu korunur; relay desteklenen kurulumda yoktur ve [post-1.0'a ertelenmiştir](post-1.0.md#relay).
+Dışında: relay/VPS/DCUtR doğrulaması ve desteklenen transfer relay fallback'i, Windows File Watcher, DAW'dan bağımsız dosya izleme, herkese açık DHT, BitTorrent, bulutta proje depolama, DAW açıkken otomatik Receive. Relay/DCUtR/rendezvous kodu build'den çıkarılıp `future/` altına alındı; relay üründe yoktur ve [post-1.0'a ertelenmiştir](post-1.0.md#relay).
 
 Değişmezler (her kilometre taşında): imzalı kimlik/sabit `PeerId`, proje yetkisi (`store.authorized`), `gate.rs` pairing penceresi, snapshot/transfer kilit ve journal sırası, yerel SQLite, `SAVE_OBSERVED` dışında dosya izleme yok (manual Share ve ilk onay snapshot'ı ayrıca vardır), bulutta yalnızca şifreli metadata, davet/anahtar/sır log'a veya ajan bağlamına girmez, **otomatik test/benchmark eklenmez veya çalıştırılmaz** (yalnızca `cargo fmt/check/clippy`, `npm typecheck/build`, manuel doğrulama).
 

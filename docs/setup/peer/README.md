@@ -30,7 +30,7 @@ CLI bağlantı tüketmez ve Desktop'ın otomatik ilk alma akışını yürütmez
 
 ## Hata ve yetki sınırları
 
-Ağ/IP/firewall ayarları yalnız [ortak bağlantı sorunları bölümünde](../README.md#bağlantı-kurulamazsa) anlatılır. Supabase adres güncellemesi NAT engelini aşmaz; relay fallback desteklenmez.
+Ağ/IP/firewall ayarları yalnız [ortak bağlantı sorunları bölümünde](../README.md#bağlantı-kurulamazsa) anlatılır. Supabase adres güncellemesi NAT engelini aşmaz; relay yoktur.
 
 Davetle alınan proje #42 sonrası köken işareti taşır ve Supabase sahiplenme isteği göndermez. Başka cihazı Revoke yaparsanız mesaj yerel erişimin kaldırıldığını, servis üyeliğini yalnız projeyi oluşturan cihazın kaldırabileceğini söyler. Revoke daha önce alınmış dosyaları veya proje anahtarını silmez.
 

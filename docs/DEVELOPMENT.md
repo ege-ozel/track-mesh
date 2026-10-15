@@ -56,7 +56,7 @@ Foundation phase 5 VST3 builds separately through CMake/Ninja with the pinned of
 - Receive and recover require closing the DAW project. Preserve `.trackmesh-<project>-<transfer>` staging/backup data if recovery is pending.
 - Logs go to stderr; CLI JSON goes to stdout. For transfer details use `$env:RUST_LOG='trackmesh_transfer=info,trackmesh_network=info'`.
 - Follow [current setup](setup/README.md) for the Desktop invite-link/request/Approve flow and [PHASE2.md](PHASE2.md) for Advanced CLI commands and explicitly chosen legacy cards. The CLI has no invite-link flow; `serve` alone cannot open/approve enrollment windows. Safe `status` supplies public project/sender UUIDs; never read invitation payloads into agent context. Do not install a permanent daemon or introduce file watchers while debugging.
-- [PHASE3.md](PHASE3.md) describes foundation mailbox and relay/rendezvous service code. These legacy infrastructure instructions are outside the supported direct setup; relay support is deferred to post-1.0. Keep service and simulated-device data in separate directories.
+- [PHASE3.md](PHASE3.md) describes the foundation mailbox and relay/rendezvous code. Both are now outside the build in `future/` and deferred to post-1.0. Keep service and simulated-device data in separate directories.
 
 ## Local phase branches
 

@@ -112,14 +112,14 @@ impl Engine {
             peer_heads: Mutex::new(std::collections::HashMap::new()),
         })
     }
-    pub fn link(&self, project: Uuid, name: &str, root: &Path, relay: Option<&str>) -> Result<()> {
+    pub fn link(&self, project: Uuid, name: &str, root: &Path) -> Result<()> {
         let root = snapshot::canonical_root(root)?;
         ensure!(
             !self.directory.starts_with(&root) && !root.starts_with(&self.directory),
             "project folder and agent data directory must be separate"
         );
         crypto::project_key(&self.directory.join("secrets/projects"), project, None)?;
-        self.store.link(project, name, &root, relay)
+        self.store.link(project, name, &root)
     }
 
     pub fn project_root_differs(&self, project: Uuid, root: &Path) -> Result<bool> {
@@ -636,22 +636,6 @@ impl Engine {
             Ok(RevokeOutcome::LocalOnly)
         }
     }
-    pub fn namespaces(&self) -> Result<Vec<(libp2p::Multiaddr, String)>> {
-        let mut result = Vec::new();
-        for project in self.store.projects()? {
-            if let Some(relay) = project.relay_address {
-                let key = crypto::project_key(
-                    &self.directory.join("secrets/projects"),
-                    project.project_id,
-                    None,
-                )?;
-                let mut material = b"trackmesh-private-rendezvous-v1".to_vec();
-                material.extend_from_slice(&*key);
-                result.push((relay.parse()?, protocol::hash(&material)));
-            }
-        }
-        Ok(result)
-    }
     pub fn export_invite(
         &self,
         project: Uuid,
@@ -678,9 +662,9 @@ impl Engine {
             project_id: project,
             project_name: p.name,
             project_key: base64::engine::general_purpose::STANDARD.encode(*key),
-            // The mailbox was removed; the field stays in the signed invitation format.
+            // Mailbox and relay were removed; both fields stay empty in the signed format.
             mailbox_url: None,
-            relay_address: p.relay_address,
+            relay_address: None,
             backend,
             device: self.device_card(addresses)?,
             signature: None,
@@ -763,12 +747,8 @@ impl Engine {
         };
         let imported_project = invite.project_id;
         let result = (|| -> Result<()> {
-            self.link(
-                invite.project_id,
-                &invite.project_name,
-                folder,
-                invite.relay_address.as_deref(),
-            )?;
+            // Older invitations may carry mailbox_url/relay_address; they are ignored.
+            self.link(invite.project_id, &invite.project_name, folder)?;
             if let Some(backend) = backend {
                 self.set_project_backend_config(invite.project_id, backend)?;
             }

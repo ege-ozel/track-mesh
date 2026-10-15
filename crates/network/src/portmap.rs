@@ -336,9 +336,6 @@ fn listen_ports(network: &Network, local: Ipv4Addr) -> (Option<u16>, Option<u16>
     let mut tcp = Vec::new();
     let mut udp = Vec::new();
     for value in network.status().addresses {
-        if value.contains("/p2p-circuit") {
-            continue;
-        }
         let pieces = value.split('/').collect::<Vec<_>>();
         let Some(index) = pieces.iter().position(|part| *part == "ip4") else {
             continue;

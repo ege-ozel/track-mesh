@@ -20,7 +20,7 @@ export interface Transfer {
 export interface ProjectCard {
   project: { project_id: string; name: string; root: string; latest_local_snapshot: string | null;
     last_verified_at: string | null; verified_peer_id: string | null; verified_snapshot_id: string | null;
-    recovery_required: boolean; relay_address: string | null; error: string | null };
+    recovery_required: boolean; error: string | null };
   grant_problem: 'REJECTED' | 'UNREACHABLE' | null;
   revoke_problem: boolean;
   missing_functions: string[];
@@ -36,7 +36,7 @@ export interface ProjectBackendConfig {
   supabase_anon_key: string | null;
 }
 export interface SupabaseDefaultConfig { url: string; publishable_key: string }
-export interface Connection { online: boolean; route: 'DIRECT' | 'RELAYED' | 'OFFLINE'; transport: string }
+export interface Connection { online: boolean; route: 'DIRECT' | 'OFFLINE'; transport: string }
 export interface FirewallObservation {
   state: string;
   profiles: { name: string; enabled: boolean | null; block_all_inbound: boolean | null; default_inbound: string | null }[];
@@ -89,7 +89,7 @@ export interface DesktopStatus {
 export type Action =
   | { kind: 'set_auto_share'; project_id: string; enabled: boolean }
   | { kind: 'delete_backups'; selected: { transfer_id: string; path: string; bytes: number }[] }
-  | { kind: 'link'; project_id: string; name: string; folder: string; relay_address: string | null }
+  | { kind: 'link'; project_id: string; name: string; folder: string }
   | { kind: 'change_project_root'; project_id: string; folder: string }
   | { kind: 'set_project_backend'; project_id: string; backend: ProjectBackend; supabase_url: string | null; supabase_anon_key: string | null }
   | { kind: 'set_default_supabase'; url: string | null; publishable_key: string | null }

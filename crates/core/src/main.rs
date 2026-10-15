@@ -24,7 +24,7 @@ struct Cli {
 struct NetworkArgs {
     #[arg(long, default_value_t = 0)]
     port: u16,
-    /// An explicitly reachable libp2p address to advertise to the private rendezvous.
+    /// An explicitly reachable libp2p address to advertise to peers.
     #[arg(long)]
     external_address: Vec<libp2p::Multiaddr>,
 }
@@ -33,7 +33,6 @@ impl NetworkArgs {
         network::NetworkConfig {
             port: self.port,
             external_addresses: self.external_address,
-            ..Default::default()
         }
     }
 }
@@ -46,8 +45,6 @@ enum Command {
         name: String,
         #[arg(long)]
         folder: PathBuf,
-        #[arg(long)]
-        relay_address: Option<String>,
     },
     Snapshot {
         project_id: Uuid,
@@ -174,9 +171,8 @@ async fn main() -> Result<()> {
             project_id,
             name,
             folder,
-            relay_address,
         } => {
-            engine.link(project_id, &name, &folder, relay_address.as_deref())?;
+            engine.link(project_id, &name, &folder)?;
             println!("Linked {project_id}");
         }
         Command::Snapshot { project_id, output } => {

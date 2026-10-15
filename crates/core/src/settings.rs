@@ -17,6 +17,7 @@ const VERSION: u32 = 6;
 pub enum ProjectBackend {
     #[default]
     None,
+    /// Read-only compatibility value from older settings files; behaves like `None`.
     SelfHostedMailbox,
     Supabase,
 }
