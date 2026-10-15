@@ -48,10 +48,14 @@ std::wstring localTime(const std::wstring& value) {
 }
 View::View(std::shared_ptr<Bridge> b, Plugin* p) : CPluginView(&rectangle), bridge(std::move(b)), plugin(p) {
     plugin->addRef();
-    font = CreateFontW(-15, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
-    titleFont = CreateFontW(-24, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
-    smallFont = CreateFontW(-13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
+    makeFonts();
     backgroundBrush = CreateSolidBrush(background);
+}
+void View::makeFonts() {
+    for (auto item : {font, titleFont, smallFont}) if (item) DeleteObject(item);
+    font = CreateFontW(-px(15), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
+    titleFont = CreateFontW(-px(24), 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
+    smallFont = CreateFontW(-px(13), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
 }
 View::~View() { removed(); if (font) DeleteObject(font); if (titleFont) DeleteObject(titleFont); if (smallFont) DeleteObject(smallFont); if (backgroundBrush) DeleteObject(backgroundBrush); plugin->release(); }
 tresult PLUGIN_API View::isPlatformTypeSupported(FIDString type) { return type && std::strcmp(type, kPlatformTypeHWND) == 0 ? kResultTrue : kResultFalse; }
@@ -72,11 +76,14 @@ tresult PLUGIN_API View::attached(void* parent, FIDString type) {
         registeredClass = true;
         viewModule = module;
     }
-    window = CreateWindowExW(0, klass.lpszClassName, L"TRACKMESH", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN,
-        0, 0, width, height, static_cast<HWND>(parent), nullptr, module, this);
+    // A DPI-aware host gets a view scaled to its monitor; an unaware one reports 96 and Windows scales it.
+    const auto hostDpi = static_cast<int>(GetDpiForWindow(static_cast<HWND>(parent)));
+    if (hostDpi > 0 && hostDpi != dpi) { dpi = hostDpi; makeFonts(); }
+    window = CreateWindowExW(0, klass.lpszClassName, L"TrackMesh", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN,
+        0, 0, px(width), px(height), static_cast<HWND>(parent), nullptr, module, this);
     if (!window) { removed(); return kResultFalse; }
     const auto make = [&](const wchar_t* cls, const wchar_t* text, DWORD style, int x, int y, int w, int h, int id) {
-        const auto control = CreateWindowExW(0, cls, text, WS_CHILD | WS_VISIBLE | style, x, y, w, h, window,
+        const auto control = CreateWindowExW(0, cls, text, WS_CHILD | WS_VISIBLE | style, px(x), px(y), px(w), px(h), window,
             reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), module, nullptr);
         SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
         return control;
@@ -92,6 +99,11 @@ tresult PLUGIN_API View::attached(void* parent, FIDString type) {
     refresh();
     SetTimer(window, 1, 250, nullptr);
     CPluginView::attached(parent, type);
+    if (dpi != 96) {
+        ViewRect scaled(0, 0, px(width), px(height));
+        setRect(scaled);
+        if (plugFrame) plugFrame->resizeView(this, &scaled);
+    }
     return kResultOk;
 }
 tresult PLUGIN_API View::removed() {
@@ -114,34 +126,37 @@ void View::paint(HWND handle) {
     FillRect(dc, &client, brush); DeleteObject(brush);
     SetBkMode(dc, TRANSPARENT);
     const auto status = bridge->status();
-    label(dc, titleFont, L"TRACKMESH", {24, 20, 300, 54}, foreground);
+    label(dc, titleFont, L"TrackMesh", box(24, 20, 300, 54), foreground);
     const bool selecting = !status.linked || changing;
     // Same words as the Desktop card badge, never the raw route.
-    const auto connection = !status.connected ? pick(status, L"Connecting…", L"Bağlanıyor…")
+    const bool away = status.state == L"AGENT UNAVAILABLE";
+    const auto connection = !status.connected ? (away ? pick(status, L"TrackMesh not reachable", L"TrackMesh'e ulaşılamıyor") : pick(status, L"Connecting…", L"Bağlanıyor…"))
         : selecting ? std::wstring()
         : status.peerOnline ? pick(status, L"Connected", L"Bağlı") + (status.author.empty() ? L"" : L" · " + status.author)
         : status.author.empty() ? pick(status, L"No collaborator yet", L"Henüz iş arkadaşı yok") : pick(status, L"Not connected", L"Bağlı değil");
-    label(dc, font, connection, {300, 28, 556, 52}, status.peerOnline ? accent : muted, DT_RIGHT | DT_SINGLELINE | DT_END_ELLIPSIS);
-    label(dc, font, selecting ? pick(status, L"Which TrackMesh project is this?", L"Bu hangi TrackMesh projesi?") : status.name, {24, 63, 410, 90}, foreground);
-    if (!selecting) {
-        label(dc, font, status.presenceWarning.empty() ? status.line : status.presenceWarning, {24, 105, 556, 163},
+    label(dc, font, connection, box(300, 28, 556, 52), status.peerOnline ? accent : away ? warn : muted, DT_RIGHT | DT_SINGLELINE | DT_END_ELLIPSIS);
+    label(dc, font, selecting ? pick(status, L"Which TrackMesh project is this?", L"Bu hangi TrackMesh projesi?") : status.name, box(24, 63, 410, 90), foreground);
+    if (!selecting && confirming) {
+        label(dc, font, status.shareConfirmation, box(24, 105, 556, 195), warn, DT_LEFT | DT_WORDBREAK);
+    } else if (!selecting) {
+        label(dc, font, status.presenceWarning.empty() ? status.line : status.presenceWarning, box(24, 105, 556, 163),
             status.presenceWarning.empty() ? foreground : status.presenceDanger ? danger : warn, DT_LEFT | DT_WORDBREAK);
         // The collaborator's latest version, in local time.
         const auto when = localTime(status.createdAt);
         if (!status.author.empty() && !when.empty())
-            label(dc, font, pick(status, L"Latest version from ", L"Son sürüm: ") + status.author + L" · " + when, {24, 173, 556, 195}, muted);
+            label(dc, font, pick(status, L"Latest version from ", L"Son sürüm: ") + status.author + L" · " + when, box(24, 173, 556, 195), muted);
     } else {
         const auto text = !status.pickerSupported ? (status.connected ? status.line : status.message)
             : choices.empty() ? pick(status, L"Add this project's folder in TrackMesh first (Add project).", L"Önce bu projenin klasörünü TrackMesh'e ekle (Proje ekle).")
             : pick(status, L"Choose the TrackMesh project whose folder holds this DAW project.", L"Bu DAW projesinin klasörünü içeren TrackMesh projesini seç.");
-        label(dc, font, text, {24, 139, 556, 166}, muted);
-        if (status.projectsMore) label(dc, font, pick(status, L"Showing the first 64 TrackMesh projects.", L"TrackMesh'teki ilk 64 proje gösteriliyor."), {24, 214, 556, 238}, muted);
+        label(dc, font, text, box(24, 139, 556, 166), muted);
+        if (status.projectsMore) label(dc, font, pick(status, L"Showing the first 64 TrackMesh projects.", L"TrackMesh'teki ilk 64 proje gösteriliyor."), box(24, 214, 556, 238), muted);
     }
     // Red for a refusal, amber when the agent is away, gray otherwise; never the status line twice.
     const auto message = selectionError.empty() ? status.message : selectionError;
     const bool repeated = !selecting && (message == status.line || message == status.presenceWarning);
     const auto tone = !selectionError.empty() || status.state == L"ACTION REFUSED" ? danger : status.state == L"AGENT UNAVAILABLE" ? warn : muted;
-    if (!repeated) label(dc, font, message, {24, 366, 556, 430}, tone, DT_LEFT | DT_WORDBREAK);
+    if (!repeated) label(dc, font, message, box(24, 366, 556, 430), tone, DT_LEFT | DT_WORDBREAK);
     EndPaint(handle, &paint);
 }
 void View::refresh() {
@@ -163,6 +178,7 @@ void View::refresh() {
         }
     }
     const bool selecting = !status.linked || changing;
+    if (selecting || status.shareConfirmation.empty() || !status.shareEnabled) confirming = false;
     ShowWindow(picker, selecting && !choices.empty() ? SW_SHOW : SW_HIDE);
     ShowWindow(chooseButton, selecting && !choices.empty() ? SW_SHOW : SW_HIDE);
     ShowWindow(changeButton, status.linked ? SW_SHOW : SW_HIDE);
@@ -170,22 +186,24 @@ void View::refresh() {
     setText(chooseButton, pick(status, L"Use project", L"Bu projeyi kullan"));
     setText(openButton, pick(status, L"Open TrackMesh", L"TrackMesh'i aç"));
     setText(autoShareCheckbox, pick(status, L"Share when I save in the DAW", L"DAW'da kaydedince paylaş"));
-    ShowWindow(openButton, selecting ? SW_SHOW : SW_HIDE);
+    SetWindowPos(openButton, nullptr, px(24), px(selecting ? 170 : 222), 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
     ShowWindow(sendButton, selecting ? SW_HIDE : SW_SHOW);
     ShowWindow(receiveButton, selecting ? SW_HIDE : SW_SHOW);
     ShowWindow(autoShareCheckbox, !selecting && status.autoShareSupported ? SW_SHOW : SW_HIDE);
     EnableWindow(autoShareCheckbox, status.connected && status.autoShareSupported);
     EnableWindow(sendButton, status.connected && status.shareEnabled);
-    EnableWindow(receiveButton, status.connected && status.getEnabled);
+    EnableWindow(receiveButton, confirming || (status.connected && status.getEnabled));
     EnableWindow(openButton, status.connected && status.desktopAvailable);
     EnableWindow(chooseButton, status.connected && SendMessageW(picker, CB_GETCURSEL, 0, 0) != CB_ERR);
     // Owner-drawn buttons repaint only when asked; ask when their words change.
-    const auto labels = status.language + L"|" + status.getLabel + L"|" + status.state + (status.autoShare ? L"|on" : L"|off");
+    const auto labels = status.language + L"|" + status.getLabel + L"|" + status.state + (status.autoShare ? L"|on" : L"|off")
+        + (confirming ? L"|confirm" : L"") + (selecting ? L"|select" : L"") + (choices.empty() ? L"|none" : L"");
     if (labels != drawnLabels) {
         drawnLabels = labels;
         InvalidateRect(sendButton, nullptr, FALSE);
         InvalidateRect(receiveButton, nullptr, FALSE);
         InvalidateRect(autoShareCheckbox, nullptr, FALSE);
+        InvalidateRect(openButton, nullptr, FALSE);
     }
     InvalidateRect(window, nullptr, FALSE);
 }
@@ -204,13 +222,17 @@ LRESULT CALLBACK View::procedure(HWND handle, UINT message, WPARAM wparam, LPARA
             return 0;
         }
         case WM_COMMAND:
+            // A warned Share takes a second press; the Get button turns into Cancel meanwhile.
             if (HIWORD(wparam) == BN_CLICKED && LOWORD(wparam) == 1) {
-                const auto status = self->bridge->status();
-                if (status.shareConfirmation.empty() || MessageBoxW(handle, status.shareConfirmation.c_str(),
-                        pick(status, L"Share current version?", L"Güncel sürüm paylaşılsın mı?").c_str(), MB_OKCANCEL | MB_ICONWARNING) == IDOK)
-                    self->bridge->send();
+                if (self->confirming || self->bridge->status().shareConfirmation.empty()) { self->confirming = false; self->bridge->send(); }
+                else self->confirming = true;
+                self->refresh();
             }
-            if (HIWORD(wparam) == BN_CLICKED && LOWORD(wparam) == 2) self->bridge->receive();
+            if (HIWORD(wparam) == BN_CLICKED && LOWORD(wparam) == 2) {
+                if (self->confirming) self->confirming = false;
+                else self->bridge->receive();
+                self->refresh();
+            }
             if (HIWORD(wparam) == BN_CLICKED && LOWORD(wparam) == 13) self->bridge->receive();
             if (HIWORD(wparam) == BN_CLICKED && LOWORD(wparam) == 14)
                 self->bridge->setAutoShare(!self->bridge->status().autoShare);
@@ -234,7 +256,7 @@ LRESULT CALLBACK View::procedure(HWND handle, UINT message, WPARAM wparam, LPARA
                 const auto status = self->bridge->status();
                 const auto fill = CreateSolidBrush(background);
                 FillRect(item->hDC, &item->rcItem, fill); DeleteObject(fill);
-                RECT box {item->rcItem.left, item->rcItem.top + 4, item->rcItem.left + 18, item->rcItem.top + 22};
+                RECT box {item->rcItem.left, item->rcItem.top + self->px(4), item->rcItem.left + self->px(18), item->rcItem.top + self->px(22)};
                 const auto boxBrush = CreateSolidBrush(status.autoShare && !disabled ? accent : disabledFill);
                 FillRect(item->hDC, &box, boxBrush); DeleteObject(boxBrush);
                 const auto edge = CreateSolidBrush(disabled ? disabledFill : muted);
@@ -243,20 +265,22 @@ LRESULT CALLBACK View::procedure(HWND handle, UINT message, WPARAM wparam, LPARA
                 if (status.autoShare) label(item->hDC, self->font, L"✓", box, background, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
                 wchar_t current[128] {};
                 GetWindowTextW(item->hwndItem, current, 128);
-                label(item->hDC, self->font, current, {box.right + 10, item->rcItem.top, item->rcItem.right, item->rcItem.bottom}, disabled ? muted : foreground, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+                label(item->hDC, self->font, current, {box.right + self->px(10), item->rcItem.top, item->rcItem.right, item->rcItem.bottom}, disabled ? muted : foreground, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
                 if ((item->itemState & ODS_FOCUS) && !(item->itemState & ODS_NOFOCUSRECT)) DrawFocusRect(item->hDC, &item->rcItem);
                 return TRUE;
             }
             if (item->CtlID < 1 || (item->CtlID > 2 && (item->CtlID < 11 || item->CtlID > 13))) break;
             // One primary button: Get when the collaborator has a newer version, otherwise Share.
             const auto status = self->bridge->status();
-            const bool getFirst = status.state == L"REMOTE_AHEAD";
-            const bool secondary = item->CtlID == 12 || (item->CtlID == 1 && getFirst) || (item->CtlID == 2 && !getFirst);
+            const bool getFirst = status.state == L"REMOTE_AHEAD" && !self->confirming;
+            const bool alone = (!status.linked || self->changing) && self->choices.empty();
+            const bool secondary = item->CtlID == 12 || (item->CtlID == 13 && !alone) || (item->CtlID == 1 && getFirst) || (item->CtlID == 2 && !getFirst);
             const auto brush = CreateSolidBrush(disabled ? disabledFill : secondary ? secondaryFill : primaryFill);
             FillRect(item->hDC, &item->rcItem, brush); DeleteObject(brush);
             SetBkMode(item->hDC, TRANSPARENT);
             std::wstring text;
-            if (item->CtlID == 1) text = pick(status, L"Share current version", L"Güncel sürümü paylaş");
+            if (item->CtlID == 1) text = self->confirming ? pick(status, L"Share anyway", L"Yine de paylaş") : pick(status, L"Share current version", L"Güncel sürümü paylaş");
+            else if (item->CtlID == 2 && self->confirming) text = pick(status, L"Cancel", L"Vazgeç");
             // Get opens TrackMesh on this project, hence the ellipsis.
             else if (item->CtlID == 2) text = (status.getLabel.empty() ? pick(status, L"Get collaborator's version", L"İş arkadaşının sürümünü al") : status.getLabel) + L"…";
             else {

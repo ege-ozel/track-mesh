@@ -19,6 +19,11 @@ private:
     Plugin* plugin;
     std::vector<ProjectChoice> choices;
     bool changing {false};
+    bool confirming {false}; // Share asked for a second press after a warning
+    int dpi {96};
+    int px(int value) const { return MulDiv(value, dpi, 96); }
+    RECT box(int left, int top, int right, int bottom) const { return {px(left), px(top), px(right), px(bottom)}; }
+    void makeFonts();
     std::wstring selectionError;
     std::wstring drawnLabels; // language, Get label and share-on-save state the owner-drawn controls were painted with
     HWND window {nullptr}, sendButton {nullptr}, receiveButton {nullptr};
