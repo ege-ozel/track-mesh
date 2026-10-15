@@ -218,7 +218,7 @@ bool request(HANDLE pipe, const char* event, const std::string& session, const P
         view.getEnabled = optionalBool(object, "get_enabled");
         view.line = wide(jsonString(object, "status_line"));
     } else {
-        view.line = L"Update TrackMesh to choose a linked project.";
+        view.line = view.language == L"tr" ? L"Bağlı bir proje seçmek için TrackMesh'i güncelle." : L"Update TrackMesh to choose a linked project.";
         view.message.clear();
     }
     view.connected = true;

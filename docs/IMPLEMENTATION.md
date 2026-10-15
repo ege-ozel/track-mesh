@@ -834,3 +834,13 @@ Checks actually run: `cargo fmt --all -- --check`; locked/offline check and stri
   - Checks run: `tsc --noEmit`. Not yet run: the window.
   - Checks run: `tsc --noEmit`, `rustfmt --check` on the changed core files, `cargo check --workspace --locked --offline` (clean), the VST3 Release build (`/W4 /WX`, clean) and `npx tauri build` (installer built 2026-10-14, Cargo.toml rewrite restored). Not yet run: the window, dialogs, tray and plugin in a DAW in either language, the tabs with several projects.
 - Checks run: `tsc --noEmit`, `rustfmt --check` on the changed Rust files; later `cargo check --workspace --locked --offline` (clean) and `npx tauri build` (installer built 2026-10-14, Cargo.toml rewrite restored). Not yet run: the redesigned window, Stop on a running check, Stop during Share scan and Get download followed by Resume getting, zoom, narrow-window layout, the reconnect head pull, and the offline Share message and 0-byte transfer on two PCs.
+- Design system rules (follow-up on the same branch, from the reviewed design board):
+  - Success results are a green line (`.delivery-receipt`); boxes stay for warnings and errors. "You have X's latest version" has no ✓. While disconnected, the card no longer repeats "reached X" or "Available when you are connected."
+  - New version notices are blue, like the project tab's dot. Presence warnings are amber, red when both sides work.
+  - One green button per card, by priority: Locate folder / Recover, Approve, the problem's fix, Get, Share, Invite. The header "Share a project folder" is secondary; the two version choices are equal.
+  - One date format in the app and the plugin: `14.10.2026 16:05`. "Never" is translated.
+  - Muted text uses four grays. A mouse or touch press draws no highlight; keyboard focus draws a ring 2 px out that follows the button's corners. In the plugin all buttons are drawn dark and the focus box shows for keyboard focus only.
+  - Advanced → Invite service drops the raw state badge (the section summary says it in words). Settings → Share on save no longer repeats On/Off and no longer claims autosave is included.
+  - The network pairing gate now stays open for the full 15-minute approval window; it closed after 10 minutes while the app said 15.
+  - Missing Turkish: plugin "Update TrackMesh to choose a linked project.", the cancelled large download.
+  - Checks run: `tsc --noEmit`, `rustfmt --check` on `gate.rs`, `cargo check -p trackmesh-network`. Not yet run: the VST3 build, the window, the plugin in a DAW, pairing after minute 10.

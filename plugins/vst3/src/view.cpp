@@ -27,9 +27,9 @@ std::wstring pick(const ViewStatus& status, const wchar_t* english, const wchar_
 void setText(HWND control, const std::wstring& text) {
     wchar_t current[128] {};
     GetWindowTextW(control, current, 128);
-    if (text != current) SetWindowTextW(control, text.c_str());
+    if (text != current) { SetWindowTextW(control, text.c_str()); InvalidateRect(control, nullptr, FALSE); }
 }
-// RFC 3339 UTC from the agent ("2026-10-14T12:34:56+00:00") as local "14.10 15:34"; empty if unreadable.
+// RFC 3339 UTC from the agent ("2026-10-14T12:34:56+00:00") as local "14.10.2026 15:34", as in the app; empty if unreadable.
 std::wstring localTime(const std::wstring& value) {
     tm utc {};
     if (swscanf_s(value.c_str(), L"%4d-%2d-%2dT%2d:%2d", &utc.tm_year, &utc.tm_mon, &utc.tm_mday, &utc.tm_hour, &utc.tm_min) != 5) return {};
@@ -39,7 +39,7 @@ std::wstring localTime(const std::wstring& value) {
     tm local {};
     if (seconds == -1 || _localtime64_s(&local, &seconds) != 0) return {};
     wchar_t text[32] {};
-    return wcsftime(text, 32, L"%d.%m %H:%M", &local) ? std::wstring(text) : std::wstring();
+    return wcsftime(text, 32, L"%d.%m.%Y %H:%M", &local) ? std::wstring(text) : std::wstring();
 }
 }
 View::View(std::shared_ptr<Bridge> b, Plugin* p) : CPluginView(&rectangle), bridge(std::move(b)), plugin(p) {
@@ -78,9 +78,9 @@ tresult PLUGIN_API View::attached(void* parent, FIDString type) {
         return control;
     };
     picker = make(L"COMBOBOX", L"", WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL, 24, 105, 410, 210, 10);
-    chooseButton = make(L"BUTTON", L"Use project", WS_TABSTOP, 450, 105, 106, 28, 11);
-    changeButton = make(L"BUTTON", L"Change project", WS_TABSTOP, 420, 63, 136, 28, 12);
-    openButton = make(L"BUTTON", L"Open TrackMesh", WS_TABSTOP, 24, 170, 200, 32, 13);
+    chooseButton = make(L"BUTTON", L"Use project", WS_TABSTOP | BS_OWNERDRAW, 450, 105, 106, 28, 11);
+    changeButton = make(L"BUTTON", L"Change project", WS_TABSTOP | BS_OWNERDRAW, 420, 63, 136, 28, 12);
+    openButton = make(L"BUTTON", L"Open TrackMesh", WS_TABSTOP | BS_OWNERDRAW, 24, 170, 200, 32, 13);
     sendButton = make(L"BUTTON", L"Share current version", WS_TABSTOP | BS_OWNERDRAW, 24, 282, 254, 38, 1);
     receiveButton = make(L"BUTTON", L"Get collaborator's version", WS_TABSTOP | BS_OWNERDRAW, 302, 282, 254, 38, 2);
     autoShareCheckbox = make(L"BUTTON", L"Share automatically when the DAW project is saved", WS_TABSTOP | BS_AUTOCHECKBOX, 24, 328, 532, 26, 14);
@@ -219,17 +219,25 @@ LRESULT CALLBACK View::procedure(HWND handle, UINT message, WPARAM wparam, LPARA
             return 0;
         case WM_DRAWITEM: {
             const auto item = reinterpret_cast<DRAWITEMSTRUCT*>(lparam);
-            if (item->CtlID != 1 && item->CtlID != 2) break;
+            if (item->CtlID < 1 || (item->CtlID > 2 && (item->CtlID < 11 || item->CtlID > 13))) break;
+            // Every plugin button is drawn dark; Change project is the only secondary one.
             const bool disabled = (item->itemState & ODS_DISABLED) != 0;
-            const auto brush = CreateSolidBrush(disabled ? RGB(39, 46, 57) : RGB(51, 94, 89));
+            const auto brush = CreateSolidBrush(disabled ? RGB(39, 46, 57) : item->CtlID == 12 ? RGB(47, 58, 73) : RGB(51, 94, 89));
             FillRect(item->hDC, &item->rcItem, brush); DeleteObject(brush);
             SetBkMode(item->hDC, TRANSPARENT);
-            // Get opens TrackMesh on this project, hence the ellipsis.
             const auto status = self->bridge->status();
-            const auto text = item->CtlID == 1 ? pick(status, L"Share current version", L"Güncel sürümü paylaş")
-                : (status.getLabel.empty() ? pick(status, L"Get collaborator's version", L"İş arkadaşının sürümünü al") : status.getLabel) + L"…";
+            std::wstring text;
+            if (item->CtlID == 1) text = pick(status, L"Share current version", L"Güncel sürümü paylaş");
+            // Get opens TrackMesh on this project, hence the ellipsis.
+            else if (item->CtlID == 2) text = (status.getLabel.empty() ? pick(status, L"Get collaborator's version", L"İş arkadaşının sürümünü al") : status.getLabel) + L"…";
+            else {
+                wchar_t current[128] {};
+                GetWindowTextW(item->hwndItem, current, 128);
+                text = current;
+            }
             label(item->hDC, self->font, text, item->rcItem, disabled ? muted : foreground, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
-            if (item->itemState & ODS_FOCUS) DrawFocusRect(item->hDC, &item->rcItem);
+            // Keyboard focus only; a mouse press draws no focus box.
+            if ((item->itemState & ODS_FOCUS) && !(item->itemState & ODS_NOFOCUSRECT)) DrawFocusRect(item->hDC, &item->rcItem);
             return TRUE;
         }
         case WM_CTLCOLOREDIT:

@@ -101,10 +101,9 @@ function RawConnectionDetails({ status, projectId, busy, act }: { status: Deskto
   </details>;
 }
 
-function ProjectBackendSettings({ projectId, config, defaultSupabase, state, revokeProblem, missingFunctions, unreachable, busy, act }: {
+function ProjectBackendSettings({ projectId, config, defaultSupabase, revokeProblem, missingFunctions, unreachable, busy, act }: {
   projectId: string; config: ProjectBackendConfig | undefined; busy: boolean;
   defaultSupabase: SupabaseDefaultConfig | null;
-  state: DesktopStatus['supabase_states'][string];
   revokeProblem: boolean; missingFunctions: string[]; unreachable: boolean;
   act: Act;
 }) {
@@ -133,7 +132,7 @@ function ProjectBackendSettings({ projectId, config, defaultSupabase, state, rev
     </div>}
     <div className="actions"><button className="primary" disabled={busy || (backend === 'SUPABASE' && (!url.trim() || !anonKey.trim()))} onClick={() => void act({ kind: 'set_project_backend', project_id: projectId, backend,
       supabase_url: backend === 'SUPABASE' ? url.trim() : null,
-      supabase_anon_key: backend === 'SUPABASE' ? anonKey.trim() : null })}>{t('Save', 'Kaydet')}</button><span className="badge">{backend === 'SELF_HOSTED_MAILBOX' ? 'SELF_HOSTED' : state}</span></div>
+      supabase_anon_key: backend === 'SUPABASE' ? anonKey.trim() : null })}>{t('Save', 'Kaydet')}</button></div>
     {unreachable && <p className="error">{t("The invite service can't be reached. Check the address above and this PC's internet connection.", 'Davet servisine ulaşılamıyor. Yukarıdaki adresi ve bu bilgisayarın internet bağlantısını kontrol et.')}</p>}
     {revokeProblem && <p className="muted">{t("The invite service didn't remove a device. Only the device that created the project can remove others; it may also have been removed already.", 'Davet servisi bir cihazı çıkarmadı. Başkalarını yalnızca projeyi oluşturan cihaz çıkarabilir; cihaz zaten çıkarılmış da olabilir.')}</p>}
     {missingFunctions.length > 0 && <p className="error">{t('The invite service is missing these functions:', 'Davet servisinde şu fonksiyonlar eksik:')} {missingFunctions.join(', ')}. {t('Deploy them as described in services/supabase/README.md.', 'services/supabase/README.md içindeki gibi kur.')}</p>}
@@ -269,7 +268,7 @@ export function AdvancedScreen({ status, projectId, section, jobStartedAt, act, 
 
     <Section id="service" title={t('Invite service', 'Davet servisi')} summary={serviceSummary} tone={serviceConnected ? 'ok' : inviteState === 'UNREACHABLE' || card.missing_functions.length ? 'bad' : undefined}
       open={!!open.service} highlight={section === 'service'} onToggle={toggle('service')}>
-      <ProjectBackendSettings key={id} projectId={id} config={backend} defaultSupabase={status.default_supabase} state={inviteState} revokeProblem={card.revoke_problem} missingFunctions={card.missing_functions}
+      <ProjectBackendSettings key={id} projectId={id} config={backend} defaultSupabase={status.default_supabase} revokeProblem={card.revoke_problem} missingFunctions={card.missing_functions}
         unreachable={card.grant_problem === 'UNREACHABLE' || inviteState === 'UNREACHABLE'} busy={busy} act={act} />
     </Section>
 

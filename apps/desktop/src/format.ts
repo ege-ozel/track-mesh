@@ -1,7 +1,14 @@
 import type { DesktopStatus } from './api';
+import { t } from './i18n';
 
 export const short = (id: string | null | undefined) => id ? id.slice(0, 8) : '—';
-export const time = (value: string | null | undefined) => value ? new Date(value).toLocaleString() : 'Never';
+const pad = (n: number) => String(n).padStart(2, '0');
+/** One date format in the app and the plugin: 14.10.2026 16:05. */
+export const time = (value: string | null | undefined) => {
+  if (!value) return t('Never', 'Hiç');
+  const d = new Date(value);
+  return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
 export const bytes = (n: number) => n >= 1024 ** 3 ? `${(n / 1024 ** 3).toFixed(1)} GB` : n >= 1024 ** 2 ? `${(n / 1024 ** 2).toFixed(1)} MB` : n >= 1024 ? `${(n / 1024).toFixed(1)} KB` : `${n} B`;
 export const CHECK_TIMEOUT_SECONDS = 30;
 export const displayPath = (path: string) => path.replace(/^\\\\\?\\/, '');

@@ -15,6 +15,7 @@
   --success-bg:#15372b;
   --warn-bg:#2d291b;
   --danger-bg:#352229;
+  --info-bg:#16273c;
   --text:#e9edf5;
   --input-text:#edf3fa;
   --accent:#82dfb5;
@@ -22,22 +23,23 @@
   --accent-ink:#10251d;
   --danger:#f3a89d;
   --warn:#dcba7f;
+  --text-2:#b2c2d6;
   --muted:#8b9cb3;
-  --muted-strong:#8294ae;
+  --muted-strong:var(--muted);
   --muted-dim:#657992;
-  --muted-soft:#8192aa;
-  --muted-topbar:#8799b0;
-  --muted-code:#8c9fb8;
-  --muted-empty:#8fA3bd;
-  --muted-meta:#91a2ba;
-  --muted-detail:#91a7c3;
-  --muted-snapshot:#93a5bf;
-  --muted-label:#96a8bf;
-  --muted-tools:#9aacc2;
-  --muted-setup:#a4b5cd;
-  --muted-confirm:#a5b5ca;
-  --muted-field:#a8b9cf;
-  --muted-summary:#a8bad1;
+  --muted-soft:var(--muted);
+  --muted-topbar:var(--muted);
+  --muted-code:var(--muted);
+  --muted-empty:var(--muted);
+  --muted-meta:var(--muted);
+  --muted-detail:var(--muted);
+  --muted-snapshot:var(--muted);
+  --muted-label:var(--muted);
+  --muted-tools:var(--text-2);
+  --muted-setup:var(--text-2);
+  --muted-confirm:var(--text-2);
+  --muted-field:var(--text-2);
+  --muted-summary:var(--text-2);
   --verified:#a8c6e6;
   --link:#aac8eb;
   --chip-text:#acc1da;
@@ -63,6 +65,7 @@
   --success-border:#376454;
   --warn-border:#aa8d45;
   --danger-border:#71404a;
+  --info-border:#34557d;
   --status-idle:#7c8a9c;
   --overlay:#080e17ef;
   --shadow:#000b;
@@ -150,8 +153,11 @@ input,select {
 }
 input:focus,select:focus,button:focus-visible,summary:focus-visible {
   outline:2px solid var(--accent);
-  outline-offset:var(--s1)
+  outline-offset:2px
 }
+/* A press shows no highlight; only keyboard focus draws a ring, which follows the button's corners. */
+button,summary { -webkit-tap-highlight-color:transparent }
+button:focus:not(:focus-visible) { outline:none }
 input[type=checkbox] {
   width:18px;
   height:18px;
@@ -321,7 +327,7 @@ main {
   background:var(--danger-bg);
   border-color:var(--danger-border)
 }
-.job.warn {
+.notice.warn,.job.warn {
   background:var(--warn-bg);
   border-color:var(--warn-border)
 }
@@ -407,10 +413,11 @@ main {
   from { transform:translateX(-100%) }
   to { transform:translateX(290%) }
 }
+/* New and waiting for you: blue, like the project tab's dot. Green means done. */
 .new-version-notice {
-  border:1px solid var(--success-border);
-  background:var(--success-bg);
-  color:var(--accent);
+  border:1px solid var(--info-border);
+  background:var(--info-bg);
+  color:var(--link);
   border-radius:8px;
   padding:var(--s3) var(--s4);
   font-weight:650

@@ -34,9 +34,9 @@ export function SettingsScreen({ status, busy, act, poll, onError, zoom, setZoom
     <DeviceName name={status?.device?.name ?? ''} busy={busy} act={act} />
 
     <section className="settings-block"><h3>{t('Share when I save in the DAW', "DAW'da kaydedince paylaş")}</h3>
-      <p className="muted">{t('With the TrackMesh plugin in the project, every DAW save (including autosave) shares a new version.', "Projede TrackMesh eklentisi varsa, DAW'daki her kayıt (otomatik kayıt dahil) yeni bir sürüm paylaşır.")}</p>
+      <p className="muted">{t('With the TrackMesh plugin in the project, saving in the DAW shares a new version.', "Projede TrackMesh eklentisi varsa, DAW'da kaydedince yeni bir sürüm paylaşılır.")}</p>
       {status?.daw_plugin_settings.map(project => <div className="toggle-row" key={project.project_id}>
-        <div><strong>{project.name}</strong><span className="muted">{project.auto_share ? t('On · every DAW save is shared', 'Açık · her DAW kaydı paylaşılır') : t('Off · shared only when you press Share', "Kapalı · yalnızca Paylaş'a basınca")}</span></div>
+        <div><strong>{project.name}</strong></div>
         <label className="switch"><input type="checkbox" checked={project.auto_share} disabled={busy || !status.ready} onChange={event => void act({ kind: 'set_auto_share', project_id: project.project_id, enabled: event.currentTarget.checked })} /> {t('Share on save', 'Kaydedince paylaş')}</label>
       </div>)}
       {status?.ready && !status.daw_plugin_settings.length && <p className="muted">{t('Share a project folder first.', 'Önce bir proje klasörü paylaş.')}</p>}

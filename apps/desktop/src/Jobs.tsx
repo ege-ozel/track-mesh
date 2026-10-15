@@ -112,6 +112,8 @@ export function friendlyError(raw: string, collaboratorName?: string): string | 
     return t(`This device isn't approved for this project on ${who}'s PC.`, `Bu cihaz ${named(collaboratorName, 'gen')} bilgisayarında bu proje için onaylı değil.`);
   if (/local head advanced/i.test(raw))
     return t('You shared a newer version while this Get was paused. Press Get again.', 'Alma duraklatılmışken daha yeni bir sürüm paylaştın. Tekrar Al\'a bas.');
+  if (/Download cancelled/i.test(raw))
+    return t('Download cancelled. What was already downloaded is kept for Resume getting.', 'İndirme iptal edildi. İnen kısım, Almaya devam et için saklandı.');
   if (/exceeds MVP size limit|too many project files/i.test(raw))
     return t('This project is larger than TrackMesh supports yet.', 'Bu proje TrackMesh\'in şimdilik desteklediğinden büyük.');
   if (/BLAKE3|unexpected .*response|ancestry|signature/i.test(raw))
@@ -169,7 +171,8 @@ export function JobNotice({ job, startedAt, collaboratorName, online, onStop, ch
   if (job.running) return <InProgress action={onStop && STOPPABLE.has(job.label) ? <StopButton onStop={onStop} /> : undefined}>{text}</InProgress>;
   const sharedOffline = job.label === 'Share current version' && typeof job.outcome?.snapshot_id === 'string' && !!collaboratorName && !online;
   const tone = job.error || job.outcome?.pairing_state === 'retry' ? 'danger' : sharedOffline || job.outcome?.publication_error ? 'warn' : '';
-  return <div className={`job ${tone}`} role="status">
+  // A finished job is a green result line; boxes are only for warnings and errors.
+  return <div className={tone ? `job ${tone}` : 'delivery-receipt'} role="status">
     {text}{children}
     {job.error && <ErrorDetails raw={job.error} collaboratorName={collaboratorName} />}
     {typeof job.outcome?.path === 'string' && <p>{t('Saved file:', 'Kaydedilen dosya:')} <code>{displayPath(job.outcome.path)}</code></p>}

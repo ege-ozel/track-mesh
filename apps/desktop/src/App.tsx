@@ -259,7 +259,7 @@ export default function App() {
         <div><h1>{firstRun && screen === 'projects' ? t('Share a DAW project with one collaborator', 'Bir DAW projesini iş arkadaşınla paylaş') : title}</h1>
           <p className="muted">{firstRun && screen === 'projects' ? t('Files go directly between your PCs. Nothing is uploaded to a cloud drive.', 'Dosyalar doğrudan bilgisayarlarınız arasında gider. Hiçbir şey buluta yüklenmez.') : subtitle}</p></div>
         {screen === 'projects' && !firstRun && <div className="actions">
-          <button className="primary" disabled={busy} onClick={startLink}>{t('Share a project folder', 'Proje klasörü paylaş')}</button>
+          <button disabled={busy} onClick={startLink}>{t('Share a project folder', 'Proje klasörü paylaş')}</button>
           <button disabled={busy} onClick={() => void pasteInvite()}>{t('Open an invite link', 'Davet bağlantısı aç')}</button></div>}
         {screen === 'advanced' && <button className="text-button" onClick={() => go('projects')}>{t('← Back to Projects', '← Projelere dön')}</button>}
       </header>
