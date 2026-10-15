@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["shared/protocol", "crates/crypto", "crates/storage", "crates/snapshot", "crates/core", "crates/network", "crates/transfer", "crates/mailbox", "apps/desktop/src-tauri"]
+members = ["shared/protocol", "crates/crypto", "crates/storage", "crates/snapshot", "crates/core", "crates/network", "crates/transfer", "crates/supabase", "apps/desktop/src-tauri"]
 # Post-1.0 notes: kept on GitHub, not built.
 exclude = ["future"]
 
@@ -41,7 +41,7 @@ protocol = { package = "trackmesh-protocol", path = "shared/protocol" }
 crypto = { package = "trackmesh-crypto", path = "crates/crypto" }
 storage = { package = "trackmesh-storage", path = "crates/storage" }
 snapshot = { package = "trackmesh-snapshot", path = "crates/snapshot" }
-mailbox = { package = "trackmesh-mailbox", path = "crates/mailbox" }
+supabase_client = { package = "trackmesh-supabase", path = "crates/supabase" }
 
 [profile.release]
 lto = "thin"

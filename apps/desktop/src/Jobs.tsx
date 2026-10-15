@@ -33,8 +33,6 @@ export function jobLabel(label: string, collaboratorName?: string) {
     case 'Request automatic pairing': return t('Ask for approval', 'Onay iste');
     case 'Open invite link': return t('Invite link', 'Davet bağlantısı');
     case 'Share current version': return t('Share current version', 'Güncel sürümü paylaş');
-    case 'Publish metadata': return t('Post version notice', 'Sürüm bildirimini gönder');
-    case 'Refresh metadata': return t('Refresh version notices', 'Sürüm bildirimlerini yenile');
     case 'Check connection': return t('Check connection', 'Bağlantıyı kontrol et');
     case "Get collaborator's version": return t(`Get ${who}'s version`, `${named(collaboratorName, 'gen')} sürümünü al`);
     case "Use collaborator's version": return t(`Use ${who}'s version`, `${named(collaboratorName, 'gen')} sürümünü kullan`);
@@ -138,10 +136,9 @@ export function jobStatus(job: Job, startedAt: number | undefined, collaboratorN
     if (job.label === "Use collaborator's version" && typeof job.outcome?.transfer_id === 'string') return t(`Now using ${who}'s version ✓`, `Artık ${named(collaboratorName, 'gen')} sürümü kullanılıyor ✓`);
     if (job.label === "Get collaborator's version" && typeof job.outcome?.transfer_id === 'string') return t(`Got ${who}'s version ✓`, `${named(collaboratorName, 'gen')} sürümü alındı ✓`);
     if (job.label === 'Share current version' && typeof job.outcome?.snapshot_id === 'string') {
-      const notice = job.outcome?.publication_error ? t(' The version notice could not be posted to the invite service.', ' Sürüm bildirimi davet servisine gönderilemedi.') : '';
-      if (!collaboratorName) return t('Saved as a new version.', 'Yeni sürüm olarak kaydedildi.') + notice;
+      if (!collaboratorName) return t('Saved as a new version.', 'Yeni sürüm olarak kaydedildi.');
       return (online ? t(`Shared — ${who} can get this version now.`, `Paylaşıldı — ${who} bu sürümü şimdi alabilir.`)
-        : t(`Saved as a new version. ${who} can get it when you are both online.`, `Yeni sürüm olarak kaydedildi. İkiniz de bağlı olunca ${who} alabilir.`)) + notice;
+        : t(`Saved as a new version. ${who} can get it when you are both online.`, `Yeni sürüm olarak kaydedildi. İkiniz de bağlı olunca ${who} alabilir.`));
     }
     return job.outcome?.message ? backendMessage(String(job.outcome.message)) : `${label} ✓`;
   }
@@ -177,7 +174,7 @@ export function JobNotice({ job, startedAt, collaboratorName, online, onStop, ch
   const text = jobStatus(job, startedAt, collaboratorName, online);
   if (job.running) return <InProgress action={onStop && STOPPABLE.has(job.label) ? <StopButton onStop={onStop} /> : undefined}>{text}</InProgress>;
   const sharedOffline = job.label === 'Share current version' && typeof job.outcome?.snapshot_id === 'string' && !!collaboratorName && !online;
-  const tone = job.error || job.outcome?.pairing_state === 'retry' ? 'danger' : sharedOffline || job.outcome?.publication_error ? 'warn' : '';
+  const tone = job.error || job.outcome?.pairing_state === 'retry' ? 'danger' : sharedOffline ? 'warn' : '';
   // A finished job is a green result line; boxes are only for warnings and errors.
   return <div className={tone ? `job ${tone}` : 'delivery-receipt'} role="status">
     {text}{children}

@@ -1,7 +1,0 @@
-//! Bounded HTTPS transport for encrypted announcements. Core owns project decisions.
-mod http;
-pub use http::{
-    supabase_project_host, validate_mailbox_url, validate_supabase_project_url, MailboxClient,
-};
-mod supabase;
-pub use supabase::{validate_supabase_publishable_key, SupabaseClient, SupabaseError};

@@ -15,7 +15,7 @@ use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::DialogExt;
 use trackmesh_core::{
     default_data_directory, observe_firewall, observe_network, peer::PeerRuntime,
-    peer_connection_state, port_observation_status, Engine, FirewallObservation, MailboxRuntime,
+    peer_connection_state, port_observation_status, Engine, FirewallObservation,
     NetworkObservation, PairingStatus, PeerCheck, PeerConnectionState, PluginRuntime,
     PortObservationStatus, ProjectBackend, ProjectBackendConfig, RevokeOutcome, SessionGrace,
     SummaryPage, SupabaseDefaultConfig, SupabaseProjectState,
@@ -61,9 +61,6 @@ pub struct Options {
     port: u16,
     #[arg(long)]
     external_address: Vec<String>,
-    /// Development only: permit HTTP to a literal loopback IP.
-    #[arg(long)]
-    allow_loopback_http: bool,
     #[arg(long, env = "TRACKMESH_IPC_SUFFIX", default_value = "")]
     ipc_suffix: String,
 }
@@ -82,7 +79,6 @@ pub enum Action {
         project_id: Uuid,
         name: String,
         folder: PathBuf,
-        mailbox_url: Option<String>,
         relay_address: Option<String>,
     },
     ChangeProjectRoot {
@@ -153,12 +149,6 @@ pub enum Action {
     Send {
         project_id: Uuid,
     },
-    Publish {
-        project_id: Uuid,
-    },
-    Refresh {
-        project_id: Uuid,
-    },
     Check {
         project_id: Uuid,
         device_id: Uuid,
@@ -205,8 +195,6 @@ impl Action {
             | Self::RejectPairing { project_id, .. }
             | Self::RequestPairing { project_id, .. }
             | Self::Send { project_id }
-            | Self::Publish { project_id }
-            | Self::Refresh { project_id }
             | Self::Check { project_id, .. }
             | Self::Receive { project_id, .. }
             | Self::UsePeerVersion { project_id, .. }
@@ -237,8 +225,6 @@ impl Action {
             Self::RejectPairing { .. } => "Reject pairing",
             Self::RequestPairing { .. } => "Request automatic pairing",
             Self::Send { .. } => "Share current version",
-            Self::Publish { .. } => "Publish metadata",
-            Self::Refresh { .. } => "Refresh metadata",
             Self::Check { .. } => "Check connection",
             Self::Receive { .. } => "Get collaborator's version",
             Self::UsePeerVersion { .. } => "Use collaborator's version",
@@ -395,7 +381,6 @@ struct Session {
     network: Option<Network>,
     network_observation: NetworkObservation,
     firewall_observation: FirewallObservation,
-    metadata: Option<MailboxRuntime>,
     plugin: Option<PluginRuntime>,
     tasks: Vec<tauri::async_runtime::JoinHandle<()>>,
     jobs: Vec<Job>,
@@ -527,21 +512,12 @@ impl Desktop {
                         }
                     }
                 }
-                let engine = match desktop.lock() {
-                    Ok(state) if state.closing || state.closed => break,
-                    Ok(state) => state.engine.clone(),
-                    Err(_) => break,
-                };
-                let pending = match engine {
-                    Some(engine) => tauri::async_runtime::spawn_blocking(move || {
-                        engine.has_pending_publication()
-                    })
-                    .await
-                    .ok()
-                    .and_then(Result::ok)
-                    .unwrap_or(true),
-                    None => true,
-                };
+                if desktop
+                    .lock()
+                    .map_or(true, |state| state.closing || state.closed)
+                {
+                    break;
+                }
                 let mut stay_in_tray = false;
                 let should_stop = desktop.lock().is_ok_and(|mut state| {
                     if work_epoch != state.work_epoch {
@@ -563,14 +539,8 @@ impl Desktop {
                     let (Some(plugin), Some(peer)) = (&state.plugin, &state.peer) else {
                         return false;
                     };
-                    let failed = plugin.is_finished()
-                        || peer.is_finished()
-                        || state
-                            .metadata
-                            .as_ref()
-                            .is_some_and(MailboxRuntime::is_finished);
-                    let busy =
-                        pending || state.tasks.iter().any(|task| !task.inner().is_finished());
+                    let failed = plugin.is_finished() || peer.is_finished();
+                    let busy = state.tasks.iter().any(|task| !task.inner().is_finished());
                     if !failed && grace.ready(plugin, peer, busy) {
                         stay_in_tray = true;
                         return false;
@@ -603,7 +573,9 @@ impl Desktop {
                 .unwrap_or_else(default_data_directory)?;
             // A new install starts with the Windows user name; the first screen lets the user change it.
             let device_name = if options.device_name == "My studio PC" {
-                std::env::var("USERNAME").or_else(|_| std::env::var("COMPUTERNAME")).unwrap_or(options.device_name)
+                std::env::var("USERNAME")
+                    .or_else(|_| std::env::var("COMPUTERNAME"))
+                    .unwrap_or(options.device_name)
             } else {
                 options.device_name
             };
@@ -645,17 +617,14 @@ impl Desktop {
                 ))
             })
             .await??;
-        let metadata = MailboxRuntime::start(engine.clone(), self.options.allow_loopback_http);
         let mut state = self.lock()?;
         state.network = Some(peer.network.clone());
         state.network_observation = network_observation;
         state.firewall_observation = firewall_observation;
         state.peer = Some(peer);
-        state.metadata = Some(metadata);
         state.plugin = Some(PluginRuntime::start_with_desktop(
             engine,
             state.network.clone().context("Peer runtime missing")?,
-            self.options.allow_loopback_http,
             &self.options.ipc_suffix,
         )?);
         if state.closing {
@@ -833,14 +802,7 @@ impl Desktop {
             .peer
             .as_ref()
             .filter(|peer| peer.is_finished())
-            .map(|_| "Peer runtime stopped; reopen the desktop to reconnect".to_owned())
-            .or_else(|| {
-                state
-                    .metadata
-                    .as_ref()
-                    .filter(|worker| worker.is_finished())
-                    .map(|_| "Metadata worker stopped; reopen the desktop to retry".to_owned())
-            });
+            .map(|_| "Peer runtime stopped; reopen the desktop to reconnect".to_owned());
         let peer_states = page
             .as_ref()
             .zip(network.as_ref())
@@ -1414,7 +1376,6 @@ impl Desktop {
         stop: transfer::Stop,
     ) -> Result<Value> {
         let reload = action.changes_setup();
-        let allow_http = self.options.allow_loopback_http;
         let outcome = match action {
             Action::Join { folder } => {
                 let disk = engine.clone();
@@ -1491,7 +1452,7 @@ impl Desktop {
                     Ok(parent)
                 })
                 .await??;
-                let downloaded = mailbox::SupabaseClient::consume_invite_drop(
+                let downloaded = supabase_client::SupabaseClient::consume_invite_drop(
                     &config.url,
                     &config.publishable_key,
                     &id,
@@ -1511,8 +1472,8 @@ impl Desktop {
                 let signed_backend_matches = invite.backend.as_ref().is_some_and(|backend| {
                     backend.backend == protocol::InviteBackend::Supabase
                         && backend.supabase_anon_key.as_str() == config.publishable_key.as_str()
-                        && mailbox::supabase_project_host(&backend.supabase_url).ok()
-                            == mailbox::supabase_project_host(&config.url).ok()
+                        && supabase_client::supabase_project_host(&backend.supabase_url).ok()
+                            == supabase_client::supabase_project_host(&config.url).ok()
                 });
                 if !signed_backend_matches {
                     crypto::zeroize_project_invite(&mut invite);
@@ -1576,14 +1537,17 @@ impl Desktop {
                         )
                         .title(tr("Share current version?", "Güncel sürüm paylaşılsın mı?"))
                         .kind(tauri_plugin_dialog::MessageDialogKind::Warning)
-                        .buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancelCustom(tr("Share", "Paylaş").to_owned(), tr("Cancel", "Vazgeç").to_owned()))
+                        .buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancelCustom(
+                            tr("Share", "Paylaş").to_owned(),
+                            tr("Cancel", "Vazgeç").to_owned(),
+                        ))
                         .blocking_show())
                 })
                 .await??;
                 if accepted {
                     serde_json::to_value(
                         engine
-                            .send_snapshot_until(&network, project_id, allow_http, stop)
+                            .send_snapshot_until(&network, project_id, stop)
                             .await?,
                     )?
                 } else {
@@ -1608,9 +1572,7 @@ impl Desktop {
                 if !had_snapshot && root_empty {
                     json!({"message": "Collaborator approved. Add your project files, then Share."})
                 } else if !had_snapshot {
-                    let shared = engine
-                        .send_snapshot(&network, project_id, allow_http)
-                        .await?;
+                    let shared = engine.send_snapshot(&network, project_id).await?;
                     json!({"message": "Collaborator approved. First version shared and ready to receive.", "snapshot_id": shared.snapshot_id})
                 } else {
                     json!({"message": "Collaborator approved for this project."})
@@ -1630,8 +1592,8 @@ impl Desktop {
                 let anon_key = config
                     .supabase_anon_key
                     .context("Supabase is not configured")?;
-                mailbox::validate_supabase_project_url(&url)?;
-                mailbox::validate_supabase_publishable_key(&anon_key)?;
+                supabase_client::validate_supabase_project_url(&url)?;
+                supabase_client::validate_supabase_publishable_key(&anon_key)?;
                 let ref_name = invite_service_ref(&url)?;
                 wait_for_mapping_if_requested(&network).await?;
                 let addresses = invite_addresses(
@@ -1649,7 +1611,7 @@ impl Desktop {
                 let sealed_result = crypto::encrypt_invite_drop(&invite);
                 crypto::zeroize_project_invite(&mut invite);
                 let sealed = sealed_result?;
-                let client = mailbox::SupabaseClient::new(&url, &anon_key, project_id)?;
+                let client = supabase_client::SupabaseClient::new(&url, &anon_key, project_id)?;
                 let accepted = client
                     .create_invite_drop(
                         &engine.identity,
@@ -1700,12 +1662,6 @@ impl Desktop {
                     state.tasks.push(cleanup);
                 }
                 json!({"message": "Invite link copied — paste it within 60 s", "invite_copied": true, "cleared_pending": cleared_pending})
-            }
-            Action::Publish { project_id } => {
-                serde_json::to_value(engine.publish_metadata(project_id, allow_http).await?)?
-            }
-            Action::Refresh { project_id } => {
-                serde_json::to_value(engine.refresh_metadata(project_id, allow_http).await?)?
             }
             Action::Check {
                 project_id,
@@ -1870,11 +1826,11 @@ impl Desktop {
                             let bytes = disk.delete_old_backups(&selected)?;
                             Ok(json!({"message": format!("Deleted {bytes} bytes of old backups")}))
                         }
-                        Action::Link { project_id, name, folder, mailbox_url, relay_address } => {
+                        Action::Link { project_id, name, folder, relay_address } => {
                             ensure!(!project_id.is_nil(), "Project UUID cannot be nil");
                             if let Some(relay) = &relay_address { let _: network::NetworkConfig = NetworkConfig { rendezvous: vec![(relay.parse()?, String::new())], ..Default::default() }; }
                             let is_existing = disk.store.projects()?.iter().any(|project| project.project_id == project_id);
-                            disk.link(project_id, &name, &folder, mailbox_url.as_deref(), relay_address.as_deref())?;
+                            disk.link(project_id, &name, &folder, relay_address.as_deref())?;
                             if !is_existing {
                                 if let Some(default) = disk.default_supabase_config()? {
                                     disk.set_project_backend_config(project_id, ProjectBackendConfig {
@@ -2266,21 +2222,12 @@ impl Desktop {
             }
         }
         // Initialization may have installed the runtime while close was waiting for it.
-        let (metadata, peer, plugin) = {
+        let (peer, plugin) = {
             let mut state = self.lock()?;
-            (
-                state.metadata.take(),
-                state.peer.take(),
-                state.plugin.take(),
-            )
+            (state.peer.take(), state.plugin.take())
         };
         if let Some(plugin) = plugin {
             if let Err(error) = plugin.stop().await {
-                errors.push(error.to_string());
-            }
-        }
-        if let Some(metadata) = metadata {
-            if let Err(error) = metadata.stop().await {
                 errors.push(error.to_string());
             }
         }
@@ -2383,7 +2330,7 @@ async fn wait_for_peer(desktop: &Desktop, network: &Network, peer: &str) -> Resu
 }
 
 fn invite_service_ref(url: &str) -> Result<String> {
-    mailbox::validate_supabase_project_url(url)?;
+    supabase_client::validate_supabase_project_url(url)?;
     let raw_host = url
         .strip_prefix("https://")
         .context("Invite links require a Supabase project URL of https://<ref>.supabase.co")?;
@@ -2396,7 +2343,7 @@ fn invite_service_ref(url: &str) -> Result<String> {
     let raw_reference = raw_host
         .strip_suffix(".supabase.co")
         .context("Invite links require a Supabase project URL of https://<ref>.supabase.co")?;
-    let host = mailbox::supabase_project_host(url)?;
+    let host = supabase_client::supabase_project_host(url)?;
     let reference = host
         .strip_suffix(".supabase.co")
         .context("Invite links require a Supabase project URL of https://<ref>.supabase.co")?;

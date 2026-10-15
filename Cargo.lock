@@ -6202,11 +6202,11 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "trackmesh-crypto",
- "trackmesh-mailbox",
  "trackmesh-network",
  "trackmesh-protocol",
  "trackmesh-snapshot",
  "trackmesh-storage",
+ "trackmesh-supabase",
  "trackmesh-transfer",
  "uuid",
  "windows",
@@ -6252,28 +6252,13 @@ dependencies = [
  "tracing-subscriber",
  "trackmesh-core",
  "trackmesh-crypto",
- "trackmesh-mailbox",
  "trackmesh-network",
  "trackmesh-protocol",
+ "trackmesh-supabase",
  "trackmesh-transfer",
  "uuid",
  "windows-sys 0.61.2",
  "zeroize",
-]
-
-[[package]]
-name = "trackmesh-mailbox"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "base64 0.22.1",
- "reqwest",
- "rustls",
- "serde",
- "serde_json",
- "trackmesh-crypto",
- "trackmesh-protocol",
- "uuid",
 ]
 
 [[package]]
@@ -6331,6 +6316,21 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "trackmesh-protocol",
+ "uuid",
+]
+
+[[package]]
+name = "trackmesh-supabase"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "reqwest",
+ "rustls",
+ "serde",
+ "serde_json",
+ "trackmesh-crypto",
  "trackmesh-protocol",
  "uuid",
 ]

@@ -110,7 +110,7 @@ async fn run(shared: Arc<Shared>, project: Uuid, mut observed: bool, revision: A
             }
             Ok(_) => shared
                 .engine
-                .send_saved_snapshot(&shared.network, project, shared.allow_http)
+                .send_saved_snapshot(&shared.network, project)
                 .await
                 .map(Some),
             Err(error) => Err(error),

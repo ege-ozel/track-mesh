@@ -13,7 +13,6 @@ pub struct Project {
     pub last_verified_at: Option<String>,
     pub verified_peer_id: Option<String>,
     pub verified_snapshot_id: Option<Uuid>,
-    pub mailbox_url: Option<String>,
     pub relay_address: Option<String>,
     pub error: Option<String>,
     pub recovery_required: bool,
@@ -87,13 +86,12 @@ pub(super) fn project_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Project> 
         last_verified_at: row.get(4)?,
         verified_peer_id: row.get(5)?,
         verified_snapshot_id: optional_uuid(row.get(6)?)?,
-        mailbox_url: row.get(7)?,
-        relay_address: row.get(8)?,
-        error: row.get(9)?,
-        recovery_required: row.get(10)?,
+        relay_address: row.get(7)?,
+        error: row.get(8)?,
+        recovery_required: row.get(9)?,
     })
 }
-pub(super) const PROJECT_COLUMNS: &str = "project_id,name,root,latest_local_snapshot,last_verified_at,verified_peer_id,verified_snapshot_id,mailbox_url,relay_address,error,recovery_required";
+pub(super) const PROJECT_COLUMNS: &str = "project_id,name,root,latest_local_snapshot,last_verified_at,verified_peer_id,verified_snapshot_id,relay_address,error,recovery_required";
 pub(super) fn info_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SnapshotInfo> {
     Ok(SnapshotInfo {
         snapshot_id: uuid_value(row.get(0)?)?,

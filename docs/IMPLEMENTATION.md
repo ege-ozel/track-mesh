@@ -852,3 +852,11 @@ Checks actually run: `cargo fmt --all -- --check`; locked/offline check and stri
   - Font sizes (6), weights (3) and corner radii (3 plus pill) are tokens at the top of `styles.css`. The card's folder path is a link. The plugin keeps its colors in one palette and draws the project list (dark theme) and the share-on-save box dark.
   - The mailbox and relay services moved to `future/` and are no longer built; the client-side mailbox/relay code is unchanged.
   - Checks run: `tsc --noEmit`, `cargo check --workspace --offline` (clean). Not yet run: the VST3 build (it now links `uxtheme`), the window, the plugin in a DAW.
+
+## 1.0 review: mailbox client removed, plugin review (2026-10-15)
+
+The mailbox client is gone from the build. Removed: `crates/core/src/mailbox.rs` (`MailboxRuntime`, publish/refresh), `crates/storage/src/mailbox.rs`, the mailbox transport and envelope seal/open in `crates/crypto`, CLI `publish`/`refresh`/`--mailbox-url`/`--allow-loopback-http`, Desktop `publish`/`refresh` actions and `--allow-loopback-http`, and the share result's publication fields. `crates/mailbox` is now `crates/supabase` (`trackmesh-supabase`) with only the Supabase client and URL checks. Kept for compatibility: the `mailbox_url` field in the signed invitation (always written empty, ignored when read), the SQLite `mailbox_url` column and mailbox tables (cleared on link, no longer read), the `SELF_HOSTED_MAILBOX` backend value, the shared protocol types, and `pending_publications` in the plugin status (always 0). The libp2p relay client and `relay_address` are unchanged.
+
+Plugin: one primary button (Get when the collaborator is ahead, otherwise Share), the share warning shown in the window with Share anyway / Cancel, red/amber/gray bottom message that hides when it repeats the status line, "TrackMesh not reachable" instead of a stuck "Connecting…", Open TrackMesh visible after linking, and DPI-scaled layout and fonts.
+
+Checks run: `cargo check --workspace --offline`, `cargo clippy --workspace --offline -- -D warnings`, `cargo fmt --all`, Desktop `tsc --noEmit`, `git diff --check`, and the VST3 build (`cmake --build .build/vst3 --target TrackMesh`, no warnings). No automated tests or benchmarks. **Not run live: invite, pairing and sharing after the removal; the plugin in a DAW, including DPI scaling and the host resize.**

@@ -1,7 +1,6 @@
 //! SQLite connection ownership, schema initialization, and public storage API.
 //! Domain modules implement `Store`; transactions never cross module boundaries.
 mod endpoints;
-mod mailbox;
 mod models;
 mod projects;
 mod retention;

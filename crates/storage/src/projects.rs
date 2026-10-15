@@ -43,14 +43,7 @@ impl Store {
             .optional()?
             .context("project UUID is not linked to a folder")
     }
-    pub fn link(
-        &self,
-        id: Uuid,
-        name: &str,
-        root: &Path,
-        mailbox: Option<&str>,
-        relay: Option<&str>,
-    ) -> Result<()> {
+    pub fn link(&self, id: Uuid, name: &str, root: &Path, relay: Option<&str>) -> Result<()> {
         ensure!(
             !name.trim().is_empty() && name.len() <= 320,
             "invalid project name"
@@ -67,11 +60,8 @@ impl Store {
         if let Some(existing) = existing {
             ensure!(existing == root, "UUID already linked to another folder");
         }
-        db.execute("INSERT INTO projects(project_id,name,root,mailbox_url,relay_address) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(project_id) DO UPDATE SET name=excluded.name,mailbox_url=excluded.mailbox_url,relay_address=excluded.relay_address", params![id.to_string(),name,root,mailbox,relay])?;
-        db.execute(
-            "INSERT OR IGNORE INTO mailbox_state(project_id) VALUES(?1)",
-            [id.to_string()],
-        )?;
+        // The old mailbox_url column stays in the schema and is cleared here.
+        db.execute("INSERT INTO projects(project_id,name,root,relay_address) VALUES(?1,?2,?3,?4) ON CONFLICT(project_id) DO UPDATE SET name=excluded.name,mailbox_url=NULL,relay_address=excluded.relay_address", params![id.to_string(),name,root,relay])?;
         Ok(())
     }
     pub fn update_root(&self, id: Uuid, root: &Path) -> Result<()> {

@@ -306,11 +306,8 @@ pub fn summarize(
         status_line: bounded(&line),
         share_enabled,
         get_enabled,
-        pending_publications: if summary.mailbox_enabled {
-            summary.pending_publications
-        } else {
-            0
-        },
+        // Kept in the plugin protocol; nothing is queued since the mailbox was removed.
+        pending_publications: 0,
         auto_share_supported: true,
         auto_share: false,
         presence_warning: String::new(),

@@ -2,8 +2,8 @@ use anyhow::{ensure, Result};
 use clap::{Args, Parser, Subcommand};
 use std::{path::PathBuf, sync::Arc, time::Duration};
 use trackmesh_core::{
-    default_data_directory, observe_network, peer::PeerRuntime, Engine, MailboxRuntime,
-    PluginRuntime, RevokeOutcome, SessionGrace,
+    default_data_directory, observe_network, peer::PeerRuntime, Engine, PluginRuntime,
+    RevokeOutcome, SessionGrace,
 };
 use uuid::Uuid;
 
@@ -28,12 +28,6 @@ struct NetworkArgs {
     #[arg(long)]
     external_address: Vec<libp2p::Multiaddr>,
 }
-#[derive(Args)]
-struct MailboxArgs {
-    /// Development only: allow plain HTTP to a literal loopback IP.
-    #[arg(long)]
-    allow_loopback_http: bool,
-}
 impl NetworkArgs {
     fn config(self) -> network::NetworkConfig {
         network::NetworkConfig {
@@ -53,8 +47,6 @@ enum Command {
         #[arg(long)]
         folder: PathBuf,
         #[arg(long)]
-        mailbox_url: Option<String>,
-        #[arg(long)]
         relay_address: Option<String>,
     },
     Snapshot {
@@ -64,18 +56,6 @@ enum Command {
     },
     /// Local history and last verification; online status is obtained using `check`.
     Status,
-    /// Publish up to 64 pending authored announcements; marks PUBLISHED only after ACK.
-    Publish {
-        project_id: Uuid,
-        #[command(flatten)]
-        mailbox: MailboxArgs,
-    },
-    /// Fetch verified encrypted announcements. Does not download files or advance local head.
-    Refresh {
-        project_id: Uuid,
-        #[command(flatten)]
-        mailbox: MailboxArgs,
-    },
     Card {
         #[arg(long)]
         address: Vec<String>,
@@ -118,15 +98,11 @@ enum Command {
     Serve {
         #[command(flatten)]
         network: NetworkArgs,
-        #[command(flatten)]
-        mailbox: MailboxArgs,
     },
-    /// Local VST owner; exits 60 seconds after sessions, work and publication finish.
+    /// Local VST owner; exits 60 seconds after sessions and work finish.
     PluginServe {
         #[command(flatten)]
         network: NetworkArgs,
-        #[command(flatten)]
-        mailbox: MailboxArgs,
         #[arg(long, env = "TRACKMESH_IPC_SUFFIX", default_value = "")]
         ipc_suffix: String,
     },
@@ -198,45 +174,15 @@ async fn main() -> Result<()> {
             project_id,
             name,
             folder,
-            mailbox_url,
             relay_address,
         } => {
-            engine.link(
-                project_id,
-                &name,
-                &folder,
-                mailbox_url.as_deref(),
-                relay_address.as_deref(),
-            )?;
+            engine.link(project_id, &name, &folder, relay_address.as_deref())?;
             println!("Linked {project_id}");
         }
         Command::Snapshot { project_id, output } => {
             output_json(&engine.snapshot(project_id)?, output)?
         }
         Command::Status => output_json(&engine.local_status()?, None)?,
-        Command::Publish { project_id, .. } | Command::Refresh { project_id, .. }
-            if !engine.mailbox_enabled(project_id)? =>
-        {
-            println!("mailbox not used for Supabase projects or projects without a mailbox URL");
-        }
-        Command::Publish {
-            project_id,
-            mailbox,
-        } => output_json(
-            &engine
-                .publish_metadata(project_id, mailbox.allow_loopback_http)
-                .await?,
-            None,
-        )?,
-        Command::Refresh {
-            project_id,
-            mailbox,
-        } => output_json(
-            &engine
-                .refresh_metadata(project_id, mailbox.allow_loopback_http)
-                .await?,
-            None,
-        )?,
         Command::Card { address, output } => output_json(&engine.device_card(address)?, output)?,
         Command::Pair {
             project_id,
@@ -311,61 +257,46 @@ async fn main() -> Result<()> {
         }
         Command::PluginServe {
             network,
-            mailbox,
             ipc_suffix,
         } => {
             let observation = tokio::task::spawn_blocking(observe_network).await?;
             let runtime = PeerRuntime::start(engine.clone(), network.config(), observation, true)?;
-            let plugin = match PluginRuntime::start(
-                engine.clone(),
-                runtime.network.clone(),
-                mailbox.allow_loopback_http,
-                &ipc_suffix,
-            ) {
-                Ok(plugin) => plugin,
-                Err(error) => {
-                    runtime.stop().await?;
-                    return Err(error);
-                }
-            };
-            let metadata = MailboxRuntime::start(engine.clone(), mailbox.allow_loopback_http);
+            let plugin =
+                match PluginRuntime::start(engine.clone(), runtime.network.clone(), &ipc_suffix) {
+                    Ok(plugin) => plugin,
+                    Err(error) => {
+                        runtime.stop().await?;
+                        return Err(error);
+                    }
+                };
             let mut heartbeat = tokio::time::interval(Duration::from_secs(1));
             let mut grace = SessionGrace::default();
             loop {
                 tokio::select! {
                     _ = heartbeat.tick() => {
-                        let disk = engine.clone();
-                        let pending = tokio::task::spawn_blocking(move || disk.has_pending_publication())
-                            .await.ok().and_then(Result::ok).unwrap_or(true);
-                        if plugin.is_finished() || runtime.is_finished() || metadata.is_finished()
-                            || (grace.ready(&plugin, &runtime, pending) && plugin.close_if_idle()) { break; }
+                        if plugin.is_finished() || runtime.is_finished()
+                            || (grace.ready(&plugin, &runtime, false) && plugin.close_if_idle()) { break; }
                     },
                     _ = tokio::signal::ctrl_c() => break,
                 }
             }
             let plugin_shutdown = plugin.stop().await;
-            let metadata_shutdown = metadata.stop().await;
             let peer_shutdown = runtime.stop().await;
             plugin_shutdown?;
-            metadata_shutdown?;
             peer_shutdown?;
         }
-        Command::Serve { network, mailbox } => {
+        Command::Serve { network } => {
             let observation = tokio::task::spawn_blocking(observe_network).await?;
             let runtime = PeerRuntime::start(engine.clone(), network.config(), observation, true)?;
-            let metadata = MailboxRuntime::start(engine.clone(), mailbox.allow_loopback_http);
             println!("PeerId: {}", runtime.network.status().peer_id);
             let mut heartbeat = tokio::time::interval(Duration::from_secs(1));
             loop {
                 tokio::select! {
-                    _=heartbeat.tick()=>{if runtime.is_finished() || metadata.is_finished() {break;}},
+                    _=heartbeat.tick()=>{if runtime.is_finished() {break;}},
                     _=tokio::signal::ctrl_c()=>break,
                 }
             }
-            let metadata_shutdown = metadata.stop().await;
-            let peer_shutdown = runtime.stop().await;
-            metadata_shutdown?;
-            peer_shutdown?;
+            runtime.stop().await?;
         }
         Command::Check {
             project_id,

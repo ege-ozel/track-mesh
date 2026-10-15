@@ -16,19 +16,17 @@ pub use presence::PresenceWarning;
 mod connection;
 mod endpoints;
 mod firewall_observation;
+pub mod lang;
 mod network_observation;
 mod settings;
-pub mod lang;
 pub use auto_share::DawPluginSetting;
 mod supabase;
 pub use firewall_observation::{observe_firewall, FirewallObservation};
 pub use network_observation::{observe_network, NetworkObservation};
 mod pairing;
-pub use pairing::{PairingCandidate, PairingStatus, PAIRING_WINDOW};
-mod mailbox;
 pub use connection::public_ipv4_addresses;
+pub use pairing::{PairingCandidate, PairingStatus, PAIRING_WINDOW};
 pub mod peer;
-pub use mailbox::{MailboxRuntime, PublicationStatus, RefreshStatus};
 pub use settings::{
     GrantProblem, ManualPublicEndpoint, PendingGrant, PendingRevoke, ProjectBackend,
     ProjectBackendConfig, SupabaseDefaultConfig, SupabaseProjectState,
@@ -61,7 +59,6 @@ pub struct Engine {
     pub store: Arc<Store>,
     pub chunks: ChunkStore,
     pub identity: Arc<Identity>,
-    metadata_jobs: Mutex<std::collections::HashMap<Uuid, Arc<tokio::sync::Mutex<()>>>>,
     pairing: Mutex<pairing::PairingState>,
     settings: Mutex<settings::SettingsState>,
     supabase_states: Mutex<std::collections::HashMap<Uuid, SupabaseProjectState>>,
@@ -104,7 +101,6 @@ impl Engine {
             store,
             chunks,
             identity,
-            metadata_jobs: Mutex::new(std::collections::HashMap::new()),
             pairing: Mutex::new(pairing::PairingState::default()),
             settings: Mutex::new(settings),
             supabase_states: Mutex::new(std::collections::HashMap::new()),
@@ -116,24 +112,14 @@ impl Engine {
             peer_heads: Mutex::new(std::collections::HashMap::new()),
         })
     }
-    pub fn link(
-        &self,
-        project: Uuid,
-        name: &str,
-        root: &Path,
-        mailbox: Option<&str>,
-        relay: Option<&str>,
-    ) -> Result<()> {
-        if let Some(url) = mailbox {
-            ::mailbox::validate_mailbox_url(url)?;
-        }
+    pub fn link(&self, project: Uuid, name: &str, root: &Path, relay: Option<&str>) -> Result<()> {
         let root = snapshot::canonical_root(root)?;
         ensure!(
             !self.directory.starts_with(&root) && !root.starts_with(&self.directory),
             "project folder and agent data directory must be separate"
         );
         crypto::project_key(&self.directory.join("secrets/projects"), project, None)?;
-        self.store.link(project, name, &root, mailbox, relay)
+        self.store.link(project, name, &root, relay)
     }
 
     pub fn project_root_differs(&self, project: Uuid, root: &Path) -> Result<bool> {
@@ -277,8 +263,8 @@ impl Engine {
             ProjectBackend::Supabase => {
                 let url = config.supabase_url.as_deref().unwrap_or_default();
                 let key = config.supabase_anon_key.as_deref().unwrap_or_default();
-                ::mailbox::validate_supabase_project_url(url)?;
-                ::mailbox::validate_supabase_publishable_key(key)?;
+                ::supabase_client::validate_supabase_project_url(url)?;
+                ::supabase_client::validate_supabase_publishable_key(key)?;
             }
             ProjectBackend::None | ProjectBackend::SelfHostedMailbox => ensure!(
                 config.supabase_url.is_none() && config.supabase_anon_key.is_none(),
@@ -320,8 +306,8 @@ impl Engine {
             .default_supabase
             .clone();
         if let Some(config) = &config {
-            ::mailbox::validate_supabase_project_url(&config.url)?;
-            ::mailbox::validate_supabase_publishable_key(&config.publishable_key)?;
+            ::supabase_client::validate_supabase_project_url(&config.url)?;
+            ::supabase_client::validate_supabase_publishable_key(&config.publishable_key)?;
         }
         Ok(config)
     }
@@ -397,8 +383,8 @@ impl Engine {
 
     pub fn set_default_supabase_config(&self, config: Option<SupabaseDefaultConfig>) -> Result<()> {
         if let Some(config) = &config {
-            ::mailbox::validate_supabase_project_url(&config.url)?;
-            ::mailbox::validate_supabase_publishable_key(&config.publishable_key)?;
+            ::supabase_client::validate_supabase_project_url(&config.url)?;
+            ::supabase_client::validate_supabase_publishable_key(&config.publishable_key)?;
         }
         self.settings
             .lock()
@@ -692,7 +678,8 @@ impl Engine {
             project_id: project,
             project_name: p.name,
             project_key: base64::engine::general_purpose::STANDARD.encode(*key),
-            mailbox_url: p.mailbox_url,
+            // The mailbox was removed; the field stays in the signed invitation format.
+            mailbox_url: None,
             relay_address: p.relay_address,
             backend,
             device: self.device_card(addresses)?,
@@ -713,14 +700,13 @@ impl Engine {
             if invite.signature.is_some() || invite.backend.is_some() {
                 crypto::verify_project_invite(&invite)?;
             }
-            if let Some(url) = &invite.mailbox_url {
-                ::mailbox::validate_mailbox_url(url)?;
-            }
             if let Some(info) = &invite.backend {
                 match info.backend {
                     protocol::InviteBackend::Supabase => {
-                        ::mailbox::validate_supabase_project_url(&info.supabase_url)?;
-                        ::mailbox::validate_supabase_publishable_key(&info.supabase_anon_key)?;
+                        ::supabase_client::validate_supabase_project_url(&info.supabase_url)?;
+                        ::supabase_client::validate_supabase_publishable_key(
+                            &info.supabase_anon_key,
+                        )?;
                     }
                 }
             }
@@ -781,7 +767,6 @@ impl Engine {
                 invite.project_id,
                 &invite.project_name,
                 folder,
-                invite.mailbox_url.as_deref(),
                 invite.relay_address.as_deref(),
             )?;
             if let Some(backend) = backend {

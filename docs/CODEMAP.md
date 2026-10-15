@@ -54,11 +54,8 @@ Paths are relative to repository root. A crate's `src/lib.rs` lists its public A
 | Device identity bindings and per-project authorization | `crates/storage/src/trust.rs` | Network/transfer requests |
 | Immutable snapshot commit, indexed chunk authorization, lineage and bounded adapter history | `crates/storage/src/snapshots.rs` | Snapshot/apply |
 | Session creation, progress, transactional apply markers | `crates/storage/src/transfers.rs` | Receiver/apply |
-| Publication/retry and verified page ingestion | `crates/core/src/mailbox.rs` | `mailbox` transport and transactional storage |
-| Announcements, immutable envelopes, ACK state, transactional page/cursor | `crates/storage/src/mailbox.rs` | Core publication/refresh workflows |
-| Bounded HTTPS requests and response validation | `crates/mailbox/src/http.rs` | Request auth; no project decisions |
-| Supabase endpoint mailbox and invite drop | `services/supabase/README.md`, `services/supabase/supabase/migrations/20261012000100_trackmesh_m5d.sql`, `20261012000200_m6_invite_drop.sql`, `supabase/functions/`, `crates/mailbox/src/supabase.rs`, `crates/crypto/src/supabase.rs`, `crates/crypto/src/invite_drop.rs`, `crates/core/src/supabase.rs`, `crates/core/src/settings.rs` | Shared signed auth and invite types in `shared/protocol/src/`; Desktop native link/clipboard in `apps/desktop/src-tauri/src/{uri,clipboard}.rs`; project controls in `apps/desktop/src/ProjectCard.tsx`, `AdvancedScreen.tsx` |
-| Supabase one-read invite drop and native invite link | `services/supabase/supabase/migrations/20261012000200_m6_invite_drop.sql`, `supabase/functions/invite-create/`, `invite-consume/`, `crates/crypto/src/invite_drop.rs`, `crates/mailbox/src/supabase.rs`, `apps/desktop/src-tauri/src/clipboard.rs`, `uri.rs` | Signed ProjectInvite payload; native Rust parses/decrypts; invite locator is opaque; Windows per-user URI and clipboard formats; ProjectInvite backend settings remain signed |
+| Supabase endpoint mailbox and invite drop | `services/supabase/README.md`, `services/supabase/supabase/migrations/20261012000100_trackmesh_m5d.sql`, `20261012000200_m6_invite_drop.sql`, `supabase/functions/`, `crates/supabase/src/client.rs`, `crates/crypto/src/supabase.rs`, `crates/crypto/src/invite_drop.rs`, `crates/core/src/supabase.rs`, `crates/core/src/settings.rs` | Shared signed auth and invite types in `shared/protocol/src/`; Desktop native link/clipboard in `apps/desktop/src-tauri/src/{uri,clipboard}.rs`; project controls in `apps/desktop/src/ProjectCard.tsx`, `AdvancedScreen.tsx` |
+| Supabase one-read invite drop and native invite link | `services/supabase/supabase/migrations/20261012000200_m6_invite_drop.sql`, `supabase/functions/invite-create/`, `invite-consume/`, `crates/crypto/src/invite_drop.rs`, `crates/supabase/src/client.rs`, `apps/desktop/src-tauri/src/clipboard.rs`, `uri.rs` | Signed ProjectInvite payload; native Rust parses/decrypts; invite locator is opaque; Windows per-user URI and clipboard formats; ProjectInvite backend settings remain signed |
 | QUIC/TCP/Noise/Yamux and behavior configuration | `crates/network/src/behaviour.rs` | Config, codec, discovery |
 | Swarm ownership, request authorization, preferred connections | `crates/network/src/actor.rs` | Discovery and status |
 | Private rendezvous, relay reservation, QUIC/TCP/circuit retry | `crates/network/src/discovery.rs` | Pinned infrastructure and trusted cards |
@@ -70,7 +67,7 @@ Paths are relative to repository root. A crate's `src/lib.rs` lists its public A
 | Scanner, chunk store, safe paths, Windows file/project locks | `crates/snapshot/src/lib.rs` | Manifest model and transfer disk operations |
 | Event-triggered inventory quiet period and writer-lock settlement | `crates/snapshot/src/settlement.rs` | Existing guarded scanner; no watcher |
 | Manifest/path validation, signing serialization, peer/IPC/mailbox types | `shared/protocol/src/lib.rs`, `shared/protocol/src/endpoint.rs` | Endpoint record domain, bounds, time/sequence and IP Multiaddr validation; all crates |
-| Signed HTTP request scope, timestamp, nonce and body binding | `shared/protocol/src/mailbox.rs`, `crates/crypto/src/mailbox.rs` | Existing envelope signing/AAD unchanged |
+| Signed HTTP request scope, timestamp, nonce and body binding | `shared/protocol/src/mailbox.rs`, `crates/crypto/src/supabase.rs` | Wire types kept for compatibility; the mailbox client was removed |
 
 ## Public call paths
 
@@ -89,7 +86,7 @@ plugin:   VST3 worker → bounded per-user Named Pipe → PluginRuntime → Engi
 save:     SAVE_OBSERVED → project debounce → snapshot_after_save → scan_after_save → commit → publish/ACK
 ```
 
-`PeerRuntime` owns the network actor/responder lifetime. `MailboxRuntime` owns session-scoped metadata retry. `Network` is a handle, not another swarm. SQLite ownership remains in `Store`; each domain module adds methods to that same type. Infrastructure services own independent stores/swarms in their separate processes.
+`PeerRuntime` owns the network actor/responder lifetime. `Network` is a handle, not another swarm. SQLite ownership remains in `Store`; each domain module adds methods to that same type. Infrastructure services own independent stores/swarms in their separate processes.
 
 `PeerRuntime` holds an exclusive Windows data-directory lease shared with its actor/responder tasks. CLI-only plugin owners use `SessionGrace`: live plugin sessions, accepted local work, active peer responses and eligible authored mailbox publication retain the owner. Brief requests between polls reset grace through activity epochs; advisory presence refreshes do not. Plugin-launched Desktop owners move into the tray after idle grace and reuse the persisted first-tray notice. Desktop window close retains the user session in the native tray; tray/Open and explicit desktop reopen restore the same window/process. Close safely and tray/Quit confirm collaborator availability loss, reject new IPC under the acceptance gate and drain workers before stopping the one peer runtime. Status summaries use bounded storage queries in `projects.rs`, `snapshots.rs`, and `transfers.rs`; `local_status` retains its complete CLI output.
 

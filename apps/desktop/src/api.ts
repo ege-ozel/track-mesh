@@ -20,14 +20,14 @@ export interface Transfer {
 export interface ProjectCard {
   project: { project_id: string; name: string; root: string; latest_local_snapshot: string | null;
     last_verified_at: string | null; verified_peer_id: string | null; verified_snapshot_id: string | null;
-    recovery_required: boolean; mailbox_url: string | null; relay_address: string | null; error: string | null };
+    recovery_required: boolean; relay_address: string | null; error: string | null };
   grant_problem: 'REJECTED' | 'UNREACHABLE' | null;
   revoke_problem: boolean;
   missing_functions: string[];
   root_available: boolean;
   root_empty: boolean;
   active_transfer: boolean;
-  local_snapshot: SnapshotInfo | null; peers: Peer[]; pending_publications: number; mailbox_enabled: boolean; transfer: Transfer | null;
+  local_snapshot: SnapshotInfo | null; peers: Peer[]; transfer: Transfer | null;
 }
 export type ProjectBackend = 'NONE' | 'SELF_HOSTED_MAILBOX' | 'SUPABASE';
 export interface ProjectBackendConfig {
@@ -89,7 +89,7 @@ export interface DesktopStatus {
 export type Action =
   | { kind: 'set_auto_share'; project_id: string; enabled: boolean }
   | { kind: 'delete_backups'; selected: { transfer_id: string; path: string; bytes: number }[] }
-  | { kind: 'link'; project_id: string; name: string; folder: string; mailbox_url: string | null; relay_address: string | null }
+  | { kind: 'link'; project_id: string; name: string; folder: string; relay_address: string | null }
   | { kind: 'change_project_root'; project_id: string; folder: string }
   | { kind: 'set_project_backend'; project_id: string; backend: ProjectBackend; supabase_url: string | null; supabase_anon_key: string | null }
   | { kind: 'set_default_supabase'; url: string | null; publishable_key: string | null }
@@ -102,7 +102,7 @@ export type Action =
   | { kind: 'open_pairing' | 'close_pairing'; project_id: string }
   | { kind: 'approve_pairing' | 'reject_pairing'; project_id: string; request_id: string }
   | { kind: 'request_pairing'; project_id: string; device_id: string }
-  | { kind: 'pair' | 'send' | 'publish' | 'refresh'; project_id: string }
+  | { kind: 'pair' | 'send'; project_id: string }
   | { kind: 'export_invite'; project_id: string; public_ip?: string | null; external_port?: number | null }
   | { kind: 'copy_invite_link'; project_id: string }
   | { kind: 'revoke' | 'check'; project_id: string; device_id: string }

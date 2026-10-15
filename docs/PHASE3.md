@@ -52,7 +52,7 @@ The mailbox backend binds literal loopback only (default `127.0.0.1:8787`). Expo
 
 Allow inbound UDP and TCP on the relay's configured port. Pin the **printed relay PeerId**, obtained through a trusted operator channel, in the agent's complete relay address, for example `/dns4/relay.example.com/udp/4001/quic-v1/p2p/REPLACE-WITH-RELAY-PEER-ID`. Advertise addresses that clients can actually reach. The relay PeerId persists across restarts because its protected identity is retained.
 
-Update an existing project by repeating `link` with its **same UUID and folder**, plus `--mailbox-url https://mailbox.example.com` and `--relay-address` set to the pinned address. Retain both options when relinking; omitted endpoint options clear their stored values. Export a fresh invitation for a new device, or relink existing collaborators individually. Do not unlink or recreate existing data directories.
+Update an existing project by repeating `link` with its **same UUID and folder**, plus `--relay-address` set to the pinned address. Retain both options when relinking; omitted endpoint options clear their stored values. Export a fresh invitation for a new device, or relink existing collaborators individually. Do not unlink or recreate existing data directories.
 
 ## Publish and refresh
 
