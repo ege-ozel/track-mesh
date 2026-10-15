@@ -3,7 +3,7 @@ use libp2p::{swarm::ConnectionId, PeerId};
 use serde::Serialize;
 use std::{collections::HashMap, sync::RwLock};
 
-pub(super) type Connections = HashMap<ConnectionId, (PeerId, bool, String)>;
+pub(super) type Connections = HashMap<ConnectionId, (PeerId, String)>;
 #[derive(Clone, Debug, Serialize, Default)]
 pub struct NetworkStatus {
     pub peer_id: String,
@@ -67,10 +67,7 @@ pub struct ConnectionStatus {
     pub route: String,
     pub transport: String,
 }
-pub(super) fn refresh_status(
-    status: &RwLock<NetworkStatus>,
-    connections: &HashMap<ConnectionId, (PeerId, bool, String)>,
-) {
+pub(super) fn refresh_status(status: &RwLock<NetworkStatus>, connections: &Connections) {
     if let Ok(mut status) = status.write() {
         let previously_online = status
             .peers
@@ -81,7 +78,7 @@ pub(super) fn refresh_status(
             state.online = false;
             state.route = "OFFLINE".into();
         }
-        for (peer, relayed, transport) in connections.values() {
+        for (peer, transport) in connections.values() {
             let state = status
                 .peers
                 .entry(peer.to_string())
@@ -91,14 +88,12 @@ pub(super) fn refresh_status(
                     route: String::new(),
                     transport: String::new(),
                 });
-            if !state.online || !relayed {
-                if !state.online && !previously_online.contains(&peer.to_string()) {
-                    state.generation = state.generation.wrapping_add(1);
-                }
-                state.online = true;
-                state.route = if *relayed { "RELAYED" } else { "DIRECT" }.into();
-                state.transport = transport.clone();
+            if !state.online && !previously_online.contains(&peer.to_string()) {
+                state.generation = state.generation.wrapping_add(1);
             }
+            state.online = true;
+            state.route = "DIRECT".into();
+            state.transport = transport.clone();
         }
     }
 }

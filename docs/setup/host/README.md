@@ -4,23 +4,23 @@ Host ilk aktarımın kaynağıdır. Ortak sıra ve bağlantı sorunları [kurulu
 
 ## Klasörü bağla ve bağlantıyı paylaş
 
-1. Başlat menüsünden TRACKMESH'i açın. Küçük proje kopyasını **+ Link folder** ile seçip **Link project** yapın. Yerel veri profili ve DAW klasörü ayrı olsun.
-2. Kendi Supabase projenizin URL ve publishable key'ini **Settings → Advanced → Default Supabase service** içinde ayarlayın. Secret key veya DB parolası girilmez. Gerekirse proje kartındaki **Advanced → Connection details → ENDPOINT BACKEND** ayarlarını kontrol edin.
+1. Başlat menüsünden TRACKMESH'i açın. Küçük proje kopyasını **Add project** ile seçip ekleyin. Yerel veri profili ve DAW klasörü ayrı olsun.
+2. Kendi Supabase projenizin URL ve publishable key'ini **Advanced → This PC → Default invite service** içinde ayarlayın. Secret key veya DB parolası girilmez. Gerekirse **Advanced → (proje) → Invite service** ayarlarını kontrol edin.
 3. Proje kartında **Invite collaborator** seçin. İlk kullanımda **Router setup** sorusu gelir; **Allow (recommended)** süreli UPnP eşlemesine izin verir, **Not now** izin vermez.
 4. Oluşan v2 bağlantıyı B'ye özel kanaldan gönderin. 15 dakika geçerlidir ve bir kez tüketilir. B yeni bağlantı için URL/key yazmaz. Bağlantıyı, fragment anahtarını veya davet içeriğini ajan/log bağlamına vermeyin.
-5. B bağlantıyı kabul edince **Approve collaborator** bölümünde isteği görün. Public Device/Identity değerlerini B ile karşılaştırıp **Approve** seçin. Beklenmeyen isteği **Reject** edin.
+5. B bağlantıyı kabul edince proje kartındaki **Someone opened your invite link** kutusunda isteği görün. Public Device/Identity değerlerini B ile karşılaştırıp **Approve** seçin. Beklenmeyen isteği **Reject** edin.
 
 Onay yerel erişimi verir ve Supabase üyelik grant'ini kuyruğa alır. Klasörde dosyalar ve henüz snapshot yoksa ilk sürüm oluşturulur. Boş, daha önce sürüm almamış B klasörüne ilk sürüm otomatik gider. Kaynak açık ve erişilebilir kalsın; onay tek başına dosya teslimi değildir.
 
-Onay gecikirse **Reopen approval window** kullanın ve B'den **Try again** isteyin. Aynı projenin penceresini yeniden açmak bekleyen istekleri korur; farklı projeninki önceki onaysız istekleri temizler. Onaylı cihaz yeniden pencere istemez.
+Onay gecikirse **Open approval window** kullanın ve B'den **Ask for approval** isteyin. Aynı projenin penceresini yeniden açmak bekleyen istekleri korur; farklı projeninki önceki onaysız istekleri temizler. Onaylı cihaz yeniden pencere istemez.
 
 ## Sonraki sürümler ve revoke
 
-Projeyi kaydedin, ilk denemede DAW'ı kapatın ve **Share current version** seçin. B DAW projesini kapatıp onay kutusuyla **Get collaborator's version** kullanır. İşlem tamamlanınca **Check connection** güncel karşılaştırmayı kontrol eder. Snapshot oluşturma, metadata yayını ve B'nin dosyaları alması ayrı sonuçlardır.
+Projeyi kaydedin, ilk denemede DAW'ı kapatın ve **Share current version** seçin. B DAW projesini kapatıp onay kutusuyla **Get <isim>'s version** kullanır. İşlem tamamlanınca **Advanced → Connection → Check connection** güncel karşılaştırmayı kontrol eder. Snapshot oluşturma, metadata yayını ve B'nin dosyaları alması ayrı sonuçlardır.
 
-B de kaynak olabilir: açık bağlantı iki yönde çalışır. Bağımsız bağlantı kurabilmek ve IP değişimleri için [ortak bağlantı rehberini](../README.md#bağlantı-kurulamazsa) izleyin. Relay desteklenen kurulumun parçası değildir.
+B de kaynak olabilir: açık bağlantı iki yönde çalışır. Bağımsız bağlantı kurabilmek ve IP değişimleri için [ortak bağlantı rehberini](../README.md#bağlantı-kurulamazsa) izleyin. Relay yoktur; en az bir taraf doğrudan erişilebilir olmalıdır.
 
-**Revoke** bu PC'deki erişimi kaldırır. Projeyi oluşturan cihaz Supabase üyelik revoke'unu da kuyruğa alır. Anahtar değişmez; B daha önce aldığı dosyaları ve anahtarı elinde tutar. Hata veya eksik servis fonksiyonu **Advanced → Connection details → ENDPOINT BACKEND** altında görünür.
+**Advanced → Folder, ID and access → Remove access** bu PC'deki erişimi kaldırır. Projeyi oluşturan cihaz Supabase üyelik revoke'unu da kuyruğa alır. Anahtar değişmez; B daha önce aldığı dosyaları ve anahtarı elinde tutar. Hata veya eksik servis fonksiyonu proje kartında uyarı olarak çıkar ve **Advanced → (proje) → Invite service** altında görünür.
 
 ## Advanced dosya daveti
 

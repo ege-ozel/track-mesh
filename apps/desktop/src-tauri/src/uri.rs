@@ -1,8 +1,8 @@
 //! Per-user `trackmesh://` association used by the native invite handler.
 use anyhow::{ensure, Context, Result};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-use mailbox::validate_supabase_publishable_key;
 use std::ptr;
+use supabase_client::validate_supabase_publishable_key;
 use windows_sys::Win32::System::Registry::{
     RegCloseKey, RegCreateKeyExW, RegSetValueExW, HKEY, HKEY_CURRENT_USER, KEY_SET_VALUE,
     REG_OPTION_NON_VOLATILE, REG_SZ,

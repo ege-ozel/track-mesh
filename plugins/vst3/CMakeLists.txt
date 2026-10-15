@@ -26,7 +26,7 @@ set_target_properties(TrackMesh PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${TRACKMESH
 target_compile_features(TrackMesh PRIVATE cxx_std_17)
 target_compile_definitions(TrackMesh PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
 target_compile_options(TrackMesh PRIVATE /W4 /WX /permissive- /utf-8)
-target_link_libraries(TrackMesh PRIVATE sdk advapi32 ole32 user32 gdi32)
+target_link_libraries(TrackMesh PRIVATE sdk advapi32 ole32 user32 gdi32 uxtheme)
 if(NOT EXISTS "${TRACKMESH_AGENT}" OR NOT EXISTS "${TRACKMESH_DESKTOP}")
     message(FATAL_ERROR "Build trackmesh-core and trackmesh-desktop first, or set TRACKMESH_AGENT and TRACKMESH_DESKTOP")
 endif()

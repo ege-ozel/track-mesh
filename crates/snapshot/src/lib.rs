@@ -9,7 +9,10 @@ use std::{
     fs::{self, File, OpenOptions},
     io::{Read, Write},
     path::{Path, PathBuf},
-    sync::{atomic::AtomicU64, Arc},
+    sync::{
+        atomic::{AtomicBool, AtomicU64, Ordering},
+        Arc,
+    },
     time::SystemTime,
 };
 use uuid::Uuid;
@@ -17,6 +20,29 @@ mod retention;
 mod settlement;
 pub use retention::CacheLease;
 pub use settlement::scan_after_save;
+
+/// A person's request to stop long work. Holders check it only at points where
+/// stopping leaves no partly written project state behind.
+#[derive(Clone, Default)]
+pub struct Stop(Arc<AtomicBool>);
+impl Stop {
+    pub fn request(&self) {
+        self.0.store(true, Ordering::SeqCst);
+    }
+    pub fn requested(&self) -> bool {
+        self.0.load(Ordering::SeqCst)
+    }
+}
+
+/// Work ended at a safe point because a `Stop` was requested.
+#[derive(Debug, Clone, Copy)]
+pub struct Stopped;
+impl std::fmt::Display for Stopped {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("Stopped")
+    }
+}
+impl std::error::Error for Stopped {}
 
 /// Whether a project-relative file is generated metadata that should not be
 /// included in TrackMesh snapshots. Paths use `/` separators, as manifests do.
@@ -232,11 +258,15 @@ pub fn is_empty(root: &Path) -> Result<bool> {
 
 pub struct ScanOptions {
     pub chunk_size: u32,
+    /// Checked between chunks; a stopped scan commits nothing and its cached chunks
+    /// stay unreferenced until storage maintenance prunes them.
+    pub stop: Stop,
 }
 impl Default for ScanOptions {
     fn default() -> Self {
         Self {
             chunk_size: DEFAULT_CHUNK_SIZE,
+            stop: Stop::default(),
         }
     }
 }
@@ -296,6 +326,7 @@ fn scan_impl(
     let mut total_size = 0u64;
     let mut changed_bytes = 0u64;
     let mut buffer = vec![0u8; options.chunk_size as usize];
+    let stop = &options.stop;
     for stamp in &before {
         let path = safe_path(root, &stamp.path)?;
         let mut options = OpenOptions::new();
@@ -322,6 +353,9 @@ fn scan_impl(
         let mut parts = Vec::new();
         let mut offset = 0u64;
         loop {
+            if stop.requested() {
+                return Err(Stopped.into());
+            }
             let mut filled = 0;
             while filled < buffer.len() {
                 let n = file.read(&mut buffer[filled..])?;

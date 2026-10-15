@@ -6,11 +6,10 @@ Read root `AGENTS.md`. Core owns reusable application decisions; adapters own pr
 - `src/snapshots.rs`: manual/settled snapshot creation shares the project lock, recovery guard, unchanged-content reuse and transactional commit. `src/sending.rs` publishes only after this commit; settlement runs in blocking workers.
 - `src/workflows.rs`: typed local status, online peer check, receive setup, explicit recovery. Future UI/IPC should call these methods.
 - `src/status.rs`: compact bounded project/peer/transfer summaries for adapters; full CLI status remains unchanged.
-- `src/sending.rs`: explicit manual snapshot plus publication result; a mailbox failure must preserve and report the successful local commit.
+- `src/sending.rs`: explicit manual snapshot and its result.
 - `src/pairing.rs`: ephemeral pairing windows, one-use invitation possession challenge, bounded pending candidates, explicit approval/rejection and automatic reply/approval workflow. Keep all project decisions in core; only approval calls existing `pair` to grant DB authorization. No project keys or proof payloads enter React/logs.
 - `src/peer.rs`: network/responder lifetime, blocking request workers, signed ancestry retrieval.
 - Peer runtime startup acquires an exclusive Windows data-directory lease held through actor/responder drain, including when an adapter handle is dropped. Adapters must explicitly stop their session.
-- `src/mailbox.rs`: durable own-author publication, ACK validation, verified page/cursor commit, session-scoped retry. No head advance or online-equality claim from metadata.
 - `src/supabase.rs`: long-lived signed endpoint-mailbox claim/grant/poll session, bounded cursor refresh and retry; every received record uses `Engine::apply_endpoint_record`. `src/settings.rs` stores project backend settings and durable grant sequence/queue outside SQLite with fail-closed version handling.
 - Metadata methods share a per-project coordinator within an Engine so foreground commands and the session worker cannot race page cursors; SQLite expected-cursor guards remain authoritative across processes.
 - `src/main.rs`: CLI parsing, bounded input files, output, network startup/wait/stop, Ctrl+C. Keep lineage and snapshot-install decisions in core/transfer.

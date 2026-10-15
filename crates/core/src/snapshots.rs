@@ -2,20 +2,25 @@
 use crate::Engine;
 use anyhow::{ensure, Result};
 use protocol::SignedSnapshot;
-use snapshot::ScanOptions;
+use snapshot::{ScanOptions, Stop};
 use std::path::Path;
 use uuid::Uuid;
 
 impl Engine {
     pub fn snapshot(&self, project: Uuid) -> Result<SignedSnapshot> {
-        self.snapshot_impl(project, false)
+        self.snapshot_impl(project, false, Stop::default())
+    }
+
+    /// A stopped scan returns `snapshot::Stopped` before anything is committed.
+    pub fn snapshot_until(&self, project: Uuid, stop: Stop) -> Result<SignedSnapshot> {
+        self.snapshot_impl(project, false, stop)
     }
 
     pub fn snapshot_after_save(&self, project: Uuid) -> Result<SignedSnapshot> {
-        self.snapshot_impl(project, true)
+        self.snapshot_impl(project, true, Stop::default())
     }
 
-    fn snapshot_impl(&self, project: Uuid, settled: bool) -> Result<SignedSnapshot> {
+    fn snapshot_impl(&self, project: Uuid, settled: bool, stop: Stop) -> Result<SignedSnapshot> {
         let lease = self.chunks.lease(false)?;
         let _lock = snapshot::ProjectLock::acquire(&self.directory, project)?;
         let project = self.store.project(project)?;
@@ -35,7 +40,10 @@ impl Engine {
             project.project_id,
             self.identity.device_id,
             parent.as_ref().map(|s| &s.manifest),
-            &ScanOptions::default(),
+            &ScanOptions {
+                stop,
+                ..ScanOptions::default()
+            },
         )?;
         ensure!(
             !manifest.files.is_empty(),
@@ -52,7 +60,7 @@ impl Engine {
             }
         }
         let signed = self.identity.sign_snapshot(manifest)?;
-        // Always pending until a matching mailbox ACK.
+        // Stored with the legacy PENDING metadata status; nothing publishes it any more.
         self.store.commit_local(
             &signed,
             &self.identity.name(),

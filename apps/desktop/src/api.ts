@@ -20,14 +20,14 @@ export interface Transfer {
 export interface ProjectCard {
   project: { project_id: string; name: string; root: string; latest_local_snapshot: string | null;
     last_verified_at: string | null; verified_peer_id: string | null; verified_snapshot_id: string | null;
-    recovery_required: boolean; mailbox_url: string | null; relay_address: string | null; error: string | null };
+    recovery_required: boolean; error: string | null };
   grant_problem: 'REJECTED' | 'UNREACHABLE' | null;
   revoke_problem: boolean;
   missing_functions: string[];
   root_available: boolean;
   root_empty: boolean;
   active_transfer: boolean;
-  local_snapshot: SnapshotInfo | null; peers: Peer[]; pending_publications: number; mailbox_enabled: boolean; transfer: Transfer | null;
+  local_snapshot: SnapshotInfo | null; peers: Peer[]; transfer: Transfer | null;
 }
 export type ProjectBackend = 'NONE' | 'SELF_HOSTED_MAILBOX' | 'SUPABASE';
 export interface ProjectBackendConfig {
@@ -36,7 +36,7 @@ export interface ProjectBackendConfig {
   supabase_anon_key: string | null;
 }
 export interface SupabaseDefaultConfig { url: string; publishable_key: string }
-export interface Connection { online: boolean; route: 'DIRECT' | 'RELAYED' | 'OFFLINE'; transport: string }
+export interface Connection { online: boolean; route: 'DIRECT' | 'OFFLINE'; transport: string }
 export interface FirewallObservation {
   state: string;
   profiles: { name: string; enabled: boolean | null; block_all_inbound: boolean | null; default_inbound: string | null }[];
@@ -89,7 +89,7 @@ export interface DesktopStatus {
 export type Action =
   | { kind: 'set_auto_share'; project_id: string; enabled: boolean }
   | { kind: 'delete_backups'; selected: { transfer_id: string; path: string; bytes: number }[] }
-  | { kind: 'link'; project_id: string; name: string; folder: string; mailbox_url: string | null; relay_address: string | null }
+  | { kind: 'link'; project_id: string; name: string; folder: string }
   | { kind: 'change_project_root'; project_id: string; folder: string }
   | { kind: 'set_project_backend'; project_id: string; backend: ProjectBackend; supabase_url: string | null; supabase_anon_key: string | null }
   | { kind: 'set_default_supabase'; url: string | null; publishable_key: string | null }
@@ -102,7 +102,7 @@ export type Action =
   | { kind: 'open_pairing' | 'close_pairing'; project_id: string }
   | { kind: 'approve_pairing' | 'reject_pairing'; project_id: string; request_id: string }
   | { kind: 'request_pairing'; project_id: string; device_id: string }
-  | { kind: 'pair' | 'send' | 'publish' | 'refresh'; project_id: string }
+  | { kind: 'pair' | 'send'; project_id: string }
   | { kind: 'export_invite'; project_id: string; public_ip?: string | null; external_port?: number | null }
   | { kind: 'copy_invite_link'; project_id: string }
   | { kind: 'revoke' | 'check'; project_id: string; device_id: string }
@@ -122,6 +122,17 @@ export const chooseInviteParentFolder = () => invoke<string | null>('choose_invi
 export const openInviteParentFolder = () => invoke<void>('open_invite_parent_folder');
 export const pasteInviteLink = () => invoke<void>('paste_invite_link');
 export const cancelInviteLink = () => invoke<void>('cancel_invite_link');
+/** Stops the project's running Check, Share or Get at its next safe point. Installing files always finishes. */
+export const stopOperation = (projectId: string) => invoke<void>('stop_operation', { projectId });
 export const submitAction = (action: Action) => invoke<string>('submit_action', { action });
 export const setUpnpMapping = (enabled: boolean) => invoke<void>('set_upnp_mapping', { enabled });
+// One question at a time: a second click while a question is open counts as Cancel.
+let asking = false;
+export const ask = async (title: string, message: string, ok: string, cancel: string) => {
+  if (asking) return false;
+  asking = true;
+  try { return await invoke<boolean>('ask', { title, message, ok, cancel }); }
+  finally { asking = false; }
+};
+export const setLanguage = (lang: string) => invoke<void>('set_language', { lang });
 export const closeApp = () => invoke<void>('close_app');

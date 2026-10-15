@@ -50,9 +50,12 @@ pub fn run() {
             commands::open_invite_parent_folder,
             commands::paste_invite_link,
             commands::cancel_invite_link,
+            commands::stop_operation,
             commands::open_previous_version,
             commands::submit_action,
             commands::set_upnp_mapping,
+            commands::set_language,
+            commands::ask,
             commands::close_app
         ])
         .setup(move |app| {

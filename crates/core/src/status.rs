@@ -35,8 +35,6 @@ pub struct ProjectSummary {
     pub active_transfer: bool,
     pub local_snapshot: Option<SnapshotInfo>,
     pub peers: Vec<PeerSummary>,
-    pub pending_publications: u64,
-    pub mailbox_enabled: bool,
     pub grant_problem: Option<GrantProblem>,
     pub revoke_problem: bool,
     pub missing_functions: Vec<String>,
@@ -127,13 +125,6 @@ impl Engine {
                 .map(|id| self.store.snapshot_info(id))
                 .transpose()?
                 .flatten(),
-            mailbox_enabled: self.mailbox_enabled(project.project_id)?,
-            pending_publications: if self.mailbox_enabled(project.project_id)? {
-                self.store
-                    .pending_publication_count(project.project_id, self.identity.device_id)?
-            } else {
-                0
-            },
             grant_problem: self.grant_problem(project.project_id)?,
             revoke_problem: self.revoke_problem(project.project_id)?,
             missing_functions: self.missing_supabase_functions(project.project_id)?,

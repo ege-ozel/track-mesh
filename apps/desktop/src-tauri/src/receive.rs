@@ -1,5 +1,5 @@
 //! Native confirmation based on verified missing chunks, pinned to the requested snapshot.
-use crate::runtime::Desktop;
+use crate::runtime::{is_turkish, tr, Desktop};
 use anyhow::{ensure, Result};
 use network::Network;
 use protocol::DeviceCard;
@@ -20,9 +20,10 @@ impl Desktop {
         peer: DeviceCard,
         target: Option<Uuid>,
         replace: bool,
+        stop: &transfer::Stop,
     ) -> Result<Uuid> {
         let mut target = target;
-        let mut limit = 1_000_000_000;
+        let mut limit = 1 << 30;
         loop {
             let result = if replace {
                 engine
@@ -32,11 +33,19 @@ impl Desktop {
                         peer.clone(),
                         target,
                         limit,
+                        stop.clone(),
                     )
                     .await
             } else {
                 engine
-                    .receive_from_peer_with_limit(network, project, peer.clone(), target, limit)
+                    .receive_from_peer_with_limit(
+                        network,
+                        project,
+                        peer.clone(),
+                        target,
+                        limit,
+                        stop.clone(),
+                    )
                     .await
             };
             match result {
@@ -46,8 +55,14 @@ impl Desktop {
                     limit = approval.new_bytes;
                     let app = app.clone();
                     let accepted = tauri::async_runtime::spawn_blocking(move || {
-                        app.dialog().message(format!("This version needs about {:.2} GB of new data. TrackMesh also keeps a backup of the files it replaces. Continue?", limit as f64 / 1_000_000_000.0))
-                            .title("Confirm download").buttons(MessageDialogButtons::OkCancel).blocking_show()
+                        let size = limit as f64 / f64::from(1u32 << 30);
+                        let message = if is_turkish() {
+                            format!("Bu sürüm yaklaşık {size:.2} GB yeni veri gerektiriyor.\n\nTrackMesh değiştirdiği dosyaların yedeğini de tutar.\n\nİndirilsin mi?")
+                        } else {
+                            format!("This version needs about {size:.2} GB of new data.\n\nTrackMesh also keeps a backup of the files it replaces.\n\nDownload it?")
+                        };
+                        app.dialog().message(message)
+                            .title(tr("Confirm download", "İndirmeyi onayla")).buttons(MessageDialogButtons::OkCancelCustom(tr("Download", "İndir").to_owned(), tr("Cancel", "Vazgeç").to_owned())).blocking_show()
                     }).await?;
                     ensure!(
                         accepted,

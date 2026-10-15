@@ -375,58 +375,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
-name = "axum"
-version = "0.8.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31b698c5f9a010f6573133b09e0de5408834d0c82f8d7475a89fc1867a71cd90"
-dependencies = [
- "axum-core",
- "bytes",
- "form_urlencoded",
- "futures-util",
- "http",
- "http-body",
- "http-body-util",
- "hyper",
- "hyper-util",
- "itoa",
- "matchit",
- "memchr",
- "mime",
- "percent-encoding",
- "pin-project-lite",
- "serde_core",
- "serde_json",
- "serde_path_to_error",
- "serde_urlencoded",
- "sync_wrapper",
- "tokio",
- "tower",
- "tower-layer",
- "tower-service",
- "tracing",
-]
-
-[[package]]
-name = "axum-core"
-version = "0.5.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08c78f31d7b1291f7ee735c1c6780ccde7785daae9a9206026862dab7d8792d1"
-dependencies = [
- "bytes",
- "futures-core",
- "http",
- "http-body",
- "http-body-util",
- "mime",
- "pin-project-lite",
- "sync_wrapper",
- "tower-layer",
- "tower-service",
- "tracing",
-]
-
-[[package]]
 name = "base-x"
 version = "0.2.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -471,12 +419,6 @@ name = "base64ct"
 version = "1.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
-
-[[package]]
-name = "bimap"
-version = "0.6.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "230c5f1ca6a325a32553f8640d31ac9b49f2411e901e427570154868b46da4f7"
 
 [[package]]
 name = "bit-set"
@@ -2089,15 +2031,6 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
-version = "0.16.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "841d1cc9bed7f9236f321df977030373f4a4163ae1a7dbfe1a51a2c1a51d9100"
-dependencies = [
- "foldhash 0.2.0",
-]
-
-[[package]]
-name = "hashbrown"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
@@ -2109,15 +2042,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7382cf6263419f2d8df38c55d7da83da5c18aef87fc7a7fc1fb1e344edfe14c1"
 dependencies = [
  "hashbrown 0.15.5",
-]
-
-[[package]]
-name = "hashlink"
-version = "0.11.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "824e001ac4f3012dd16a264bec811403a67ca9deb6c102fc5049b32c4574b35f"
-dependencies = [
- "hashbrown 0.16.1",
 ]
 
 [[package]]
@@ -2259,12 +2183,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6dbf3de79e51f3d586ab4cb9d5c3e2c14aa28ed23d180cf89b4df0454a69cc87"
 
 [[package]]
-name = "httpdate"
-version = "1.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
-
-[[package]]
 name = "hyper"
 version = "1.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2278,7 +2196,6 @@ dependencies = [
  "http",
  "http-body",
  "httparse",
- "httpdate",
  "itoa",
  "pin-project-lite",
  "smallvec",
@@ -2894,7 +2811,6 @@ dependencies = [
  "libp2p-allow-block-list",
  "libp2p-connection-limits",
  "libp2p-core",
- "libp2p-dcutr",
  "libp2p-dns",
  "libp2p-identify",
  "libp2p-identity",
@@ -2903,8 +2819,6 @@ dependencies = [
  "libp2p-noise",
  "libp2p-ping",
  "libp2p-quic",
- "libp2p-relay",
- "libp2p-rendezvous",
  "libp2p-request-response",
  "libp2p-swarm",
  "libp2p-tcp",
@@ -2960,28 +2874,6 @@ dependencies = [
  "thiserror 2.0.21",
  "tracing",
  "unsigned-varint 0.8.0",
- "web-time",
-]
-
-[[package]]
-name = "libp2p-dcutr"
-version = "0.14.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b4107305e12158af3e66960b6181789c547394c9c9a8696f721521602bfc73a"
-dependencies = [
- "asynchronous-codec",
- "either",
- "futures",
- "futures-bounded",
- "futures-timer",
- "hashlink 0.10.0",
- "libp2p-core",
- "libp2p-identity",
- "libp2p-swarm",
- "quick-protobuf",
- "quick-protobuf-codec",
- "thiserror 2.0.21",
- "tracing",
  "web-time",
 ]
 
@@ -3067,11 +2959,9 @@ checksum = "805a555148522cb3414493a5153451910cb1a146c53ffbf4385708349baf62b7"
 dependencies = [
  "futures",
  "libp2p-core",
- "libp2p-dcutr",
  "libp2p-identify",
  "libp2p-identity",
  "libp2p-ping",
- "libp2p-relay",
  "libp2p-swarm",
  "pin-project",
  "prometheus-client",
@@ -3141,54 +3031,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "libp2p-relay"
-version = "0.21.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d8b9b0392ed623243ad298326b9f806d51191829ac7585cc825c54c6c67b04d9"
-dependencies = [
- "asynchronous-codec",
- "bytes",
- "either",
- "futures",
- "futures-bounded",
- "futures-timer",
- "libp2p-core",
- "libp2p-identity",
- "libp2p-swarm",
- "quick-protobuf",
- "quick-protobuf-codec",
- "rand 0.8.8",
- "static_assertions",
- "thiserror 2.0.21",
- "tracing",
- "web-time",
-]
-
-[[package]]
-name = "libp2p-rendezvous"
-version = "0.17.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31114bab295403e9934ae2e4415c45d681353829ea218390eed8f5bcc82dd1fb"
-dependencies = [
- "async-trait",
- "asynchronous-codec",
- "bimap",
- "futures",
- "futures-timer",
- "hashlink 0.11.1",
- "libp2p-core",
- "libp2p-identity",
- "libp2p-request-response",
- "libp2p-swarm",
- "quick-protobuf",
- "quick-protobuf-codec",
- "rand 0.8.8",
- "thiserror 2.0.21",
- "tracing",
- "web-time",
-]
-
-[[package]]
 name = "libp2p-request-response"
 version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3215,7 +3057,7 @@ dependencies = [
  "fnv",
  "futures",
  "futures-timer",
- "hashlink 0.10.0",
+ "hashlink",
  "libp2p-core",
  "libp2p-identity",
  "libp2p-swarm-derive",
@@ -3386,12 +3228,6 @@ checksum = "d1525a2a28c7f4fa0fc98bb91ae755d1e2d1505079e05539e35bc876b5d65ae9"
 dependencies = [
  "regex-automata",
 ]
-
-[[package]]
-name = "matchit"
-version = "0.8.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
 
 [[package]]
 name = "memchr"
@@ -4775,7 +4611,7 @@ dependencies = [
  "bitflags 2.13.2",
  "fallible-iterator",
  "fallible-streaming-iterator",
- "hashlink 0.10.0",
+ "hashlink",
  "libsqlite3-sys",
  "smallvec",
 ]
@@ -4907,12 +4743,6 @@ dependencies = [
  "pin-project",
  "static_assertions",
 ]
-
-[[package]]
-name = "ryu"
-version = "1.0.23"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 
 [[package]]
 name = "same-file"
@@ -5108,17 +4938,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde_path_to_error"
-version = "0.1.20"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "10a9ff822e371bb5403e391ecd83e182e0e77ba7f6fe0160b795797109d1b457"
-dependencies = [
- "itoa",
- "serde",
- "serde_core",
-]
-
-[[package]]
 name = "serde_repr"
 version = "0.1.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5145,18 +4964,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6662b5879511e06e8999a8a235d848113e942c9124f211511b16466ee2995f26"
 dependencies = [
  "serde_core",
-]
-
-[[package]]
-name = "serde_urlencoded"
-version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d3491c14715ca2294c4d6a88f15e84739788c1d030eed8c110436aafdaa2f3fd"
-dependencies = [
- "form_urlencoded",
- "itoa",
- "ryu",
- "serde",
 ]
 
 [[package]]
@@ -6187,7 +5994,6 @@ dependencies = [
  "tokio",
  "tower-layer",
  "tower-service",
- "tracing",
 ]
 
 [[package]]
@@ -6297,11 +6103,11 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "trackmesh-crypto",
- "trackmesh-mailbox",
  "trackmesh-network",
  "trackmesh-protocol",
  "trackmesh-snapshot",
  "trackmesh-storage",
+ "trackmesh-supabase",
  "trackmesh-transfer",
  "uuid",
  "windows",
@@ -6347,47 +6153,13 @@ dependencies = [
  "tracing-subscriber",
  "trackmesh-core",
  "trackmesh-crypto",
- "trackmesh-mailbox",
  "trackmesh-network",
  "trackmesh-protocol",
+ "trackmesh-supabase",
  "trackmesh-transfer",
  "uuid",
  "windows-sys 0.61.2",
  "zeroize",
-]
-
-[[package]]
-name = "trackmesh-mailbox"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "base64 0.22.1",
- "reqwest",
- "rustls",
- "serde",
- "serde_json",
- "trackmesh-crypto",
- "trackmesh-protocol",
- "uuid",
-]
-
-[[package]]
-name = "trackmesh-mailbox-service"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "axum",
- "base64 0.22.1",
- "chrono",
- "clap",
- "rusqlite",
- "serde",
- "serde_json",
- "tokio",
- "trackmesh-crypto",
- "trackmesh-network",
- "trackmesh-protocol",
- "uuid",
 ]
 
 [[package]]
@@ -6423,21 +6195,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "trackmesh-relay-service"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "futures",
- "libp2p",
- "serde_json",
- "tokio",
- "trackmesh-crypto",
- "trackmesh-network",
- "trackmesh-protocol",
-]
-
-[[package]]
 name = "trackmesh-snapshot"
 version = "0.1.0"
 dependencies = [
@@ -6460,6 +6217,21 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "trackmesh-protocol",
+ "uuid",
+]
+
+[[package]]
+name = "trackmesh-supabase"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "reqwest",
+ "rustls",
+ "serde",
+ "serde_json",
+ "trackmesh-crypto",
  "trackmesh-protocol",
  "uuid",
 ]

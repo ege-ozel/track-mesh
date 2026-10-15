@@ -37,7 +37,7 @@ pub(super) enum Command {
     ),
     PairingRespond(Incoming, PairingResponse),
     PairingWindow(Duration),
-    Reload(Vec<(Multiaddr, String)>),
+    Reload,
     SetExternalAddresses(Vec<Multiaddr>),
     EndpointAddresses(oneshot::Sender<Vec<String>>),
     LearnPeerAddresses(PeerId, Vec<Multiaddr>, u64, Instant),
@@ -48,7 +48,6 @@ pub(super) enum Command {
 pub(super) enum ExternalAddressSource {
     Gateway,
     Manual,
-    PeerObserved,
 }
 #[derive(Clone)]
 pub struct Network {
@@ -226,9 +225,10 @@ impl Network {
             .await
             .context("network stopped")
     }
-    pub async fn reload(&self, namespaces: Vec<(Multiaddr, String)>) -> Result<()> {
+    /// Re-reads the trusted-peer allow-list now instead of at the next retry tick.
+    pub async fn reload(&self) -> Result<()> {
         self.command
-            .send(Command::Reload(namespaces))
+            .send(Command::Reload)
             .await
             .context("network stopped")
     }

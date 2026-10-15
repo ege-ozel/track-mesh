@@ -1,5 +1,5 @@
 [package]
-name = "trackmesh-mailbox"
+name = "trackmesh-supabase"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

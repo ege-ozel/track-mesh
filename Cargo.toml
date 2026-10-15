@@ -1,6 +1,8 @@
 [workspace]
 resolver = "2"
-members = ["shared/protocol", "crates/crypto", "crates/storage", "crates/snapshot", "crates/core", "crates/network", "crates/transfer", "crates/mailbox", "services/mailbox", "services/relay", "apps/desktop/src-tauri"]
+members = ["shared/protocol", "crates/crypto", "crates/storage", "crates/snapshot", "crates/core", "crates/network", "crates/transfer", "crates/supabase", "apps/desktop/src-tauri"]
+# Post-1.0 notes: kept on GitHub, not built.
+exclude = ["future"]
 
 [workspace.package]
 version = "0.1.0"
@@ -32,14 +34,14 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 zeroize = { version = "1", features = ["derive"] }
-libp2p = { version = "0.56", default-features = false, features = ["tokio", "tcp", "quic", "noise", "yamux", "dns", "identify", "ping", "relay", "dcutr", "rendezvous", "request-response", "macros", "ed25519"] }
+libp2p = { version = "0.56", default-features = false, features = ["tokio", "tcp", "quic", "noise", "yamux", "dns", "identify", "ping", "request-response", "macros", "ed25519"] }
 network = { package = "trackmesh-network", path = "crates/network" }
 transfer = { package = "trackmesh-transfer", path = "crates/transfer" }
 protocol = { package = "trackmesh-protocol", path = "shared/protocol" }
 crypto = { package = "trackmesh-crypto", path = "crates/crypto" }
 storage = { package = "trackmesh-storage", path = "crates/storage" }
 snapshot = { package = "trackmesh-snapshot", path = "crates/snapshot" }
-mailbox = { package = "trackmesh-mailbox", path = "crates/mailbox" }
+supabase_client = { package = "trackmesh-supabase", path = "crates/supabase" }
 
 [profile.release]
 lto = "thin"

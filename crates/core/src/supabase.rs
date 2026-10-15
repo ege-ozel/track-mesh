@@ -108,7 +108,7 @@ impl SupabaseRuntime {
                     if session.retry_at > Instant::now() {
                         continue;
                     }
-                    let client = match ::mailbox::SupabaseClient::new(url, key, project) {
+                    let client = match ::supabase_client::SupabaseClient::new(url, key, project) {
                         Ok(client) => client,
                         Err(_) => {
                             mark_unavailable(&engine, project, session);
@@ -158,7 +158,7 @@ impl SupabaseRuntime {
                                         apply_rows(engine.clone(), network.clone(), project, rows)
                                             .await;
                                     }
-                                    Err(::mailbox::SupabaseError::Rejected) => {
+                                    Err(::supabase_client::SupabaseError::Rejected) => {
                                         session.list_at = Instant::now() + Duration::from_secs(30);
                                         let _ = engine.set_supabase_project_state(
                                             project,
@@ -166,11 +166,11 @@ impl SupabaseRuntime {
                                         );
                                         continue;
                                     }
-                                    Err(::mailbox::SupabaseError::Unavailable) => {
+                                    Err(::supabase_client::SupabaseError::Unavailable) => {
                                         mark_unavailable(&engine, project, session);
                                         continue;
                                     }
-                                    Err(::mailbox::SupabaseError::NotDeployed) => {
+                                    Err(::supabase_client::SupabaseError::NotDeployed) => {
                                         let _ = engine.record_supabase_function(
                                             project,
                                             "endpoint-list",
@@ -181,7 +181,7 @@ impl SupabaseRuntime {
                                     }
                                 }
                             }
-                            Err(::mailbox::SupabaseError::Rejected) => {
+                            Err(::supabase_client::SupabaseError::Rejected) => {
                                 let _ = engine.record_supabase_function(
                                     project,
                                     "project-claim",
@@ -205,7 +205,7 @@ impl SupabaseRuntime {
                                         apply_rows(engine.clone(), network.clone(), project, rows)
                                             .await;
                                     }
-                                    Err(::mailbox::SupabaseError::Rejected) => {
+                                    Err(::supabase_client::SupabaseError::Rejected) => {
                                         session.list_at = Instant::now() + Duration::from_secs(30);
                                         let _ = engine.set_supabase_project_state(
                                             project,
@@ -213,11 +213,11 @@ impl SupabaseRuntime {
                                         );
                                         continue;
                                     }
-                                    Err(::mailbox::SupabaseError::Unavailable) => {
+                                    Err(::supabase_client::SupabaseError::Unavailable) => {
                                         mark_unavailable(&engine, project, session);
                                         continue;
                                     }
-                                    Err(::mailbox::SupabaseError::NotDeployed) => {
+                                    Err(::supabase_client::SupabaseError::NotDeployed) => {
                                         let _ = engine.record_supabase_function(
                                             project,
                                             "endpoint-list",
@@ -228,11 +228,11 @@ impl SupabaseRuntime {
                                     }
                                 }
                             }
-                            Err(::mailbox::SupabaseError::Unavailable) => {
+                            Err(::supabase_client::SupabaseError::Unavailable) => {
                                 mark_unavailable(&engine, project, session);
                                 continue;
                             }
-                            Err(::mailbox::SupabaseError::NotDeployed) => {
+                            Err(::supabase_client::SupabaseError::NotDeployed) => {
                                 let _ =
                                     engine.record_supabase_function(project, "project-claim", true);
                                 mark_unavailable(&engine, project, session);
@@ -262,7 +262,7 @@ impl SupabaseRuntime {
                                 );
                                 apply_rows(engine.clone(), network.clone(), project, rows).await;
                             }
-                            Err(::mailbox::SupabaseError::Rejected) => {
+                            Err(::supabase_client::SupabaseError::Rejected) => {
                                 let _ = engine.record_supabase_function(
                                     project,
                                     "endpoint-list",
@@ -275,11 +275,11 @@ impl SupabaseRuntime {
                                 );
                                 continue;
                             }
-                            Err(::mailbox::SupabaseError::Unavailable) => {
+                            Err(::supabase_client::SupabaseError::Unavailable) => {
                                 mark_unavailable(&engine, project, session);
                                 continue;
                             }
-                            Err(::mailbox::SupabaseError::NotDeployed) => {
+                            Err(::supabase_client::SupabaseError::NotDeployed) => {
                                 let _ =
                                     engine.record_supabase_function(project, "endpoint-list", true);
                                 mark_unavailable(&engine, project, session);
@@ -299,14 +299,14 @@ impl SupabaseRuntime {
                                     engine.record_supabase_function(project, "head-list", false);
                                 apply_head_rows(engine.clone(), project, rows).await;
                             }
-                            Err(::mailbox::SupabaseError::NotDeployed) => {
+                            Err(::supabase_client::SupabaseError::NotDeployed) => {
                                 let _ = engine.record_supabase_function(project, "head-list", true);
                             }
-                            Err(::mailbox::SupabaseError::Rejected) => {
+                            Err(::supabase_client::SupabaseError::Rejected) => {
                                 let _ =
                                     engine.record_supabase_function(project, "head-list", false);
                             }
-                            Err(::mailbox::SupabaseError::Unavailable) => {}
+                            Err(::supabase_client::SupabaseError::Unavailable) => {}
                         }
                     }
                     if let Some(snapshot) = latest_local_head(engine.clone(), project).await {
@@ -375,21 +375,21 @@ impl SupabaseRuntime {
                                     session.head_seq = None;
                                     session.head_ciphertext = None;
                                 }
-                                Err(::mailbox::SupabaseError::NotDeployed) => {
+                                Err(::supabase_client::SupabaseError::NotDeployed) => {
                                     let _ = engine.record_supabase_function(
                                         project,
                                         "head-publish",
                                         true,
                                     );
                                 }
-                                Err(::mailbox::SupabaseError::Rejected) => {
+                                Err(::supabase_client::SupabaseError::Rejected) => {
                                     let _ = engine.record_supabase_function(
                                         project,
                                         "head-publish",
                                         false,
                                     );
                                 }
-                                Err(::mailbox::SupabaseError::Unavailable) => {}
+                                Err(::supabase_client::SupabaseError::Unavailable) => {}
                             }
                         }
                     }
@@ -420,14 +420,14 @@ impl SupabaseRuntime {
                                 );
                                 apply_rows(engine.clone(), network.clone(), project, rows).await;
                             }
-                            Err(::mailbox::SupabaseError::NotDeployed) => {
+                            Err(::supabase_client::SupabaseError::NotDeployed) => {
                                 let _ =
                                     engine.record_supabase_function(project, "endpoint-list", true);
                                 mark_unavailable(&engine, project, session);
                                 session.member_proven = false;
                                 session.list_at = Instant::now() + backoff(session.failures);
                             }
-                            Err(::mailbox::SupabaseError::Rejected) => {
+                            Err(::supabase_client::SupabaseError::Rejected) => {
                                 let _ = engine.record_supabase_function(
                                     project,
                                     "endpoint-list",
@@ -437,7 +437,7 @@ impl SupabaseRuntime {
                                 session.member_proven = false;
                                 session.list_at = Instant::now() + backoff(session.failures);
                             }
-                            Err(::mailbox::SupabaseError::Unavailable) => {
+                            Err(::supabase_client::SupabaseError::Unavailable) => {
                                 mark_unavailable(&engine, project, session);
                                 session.member_proven = false;
                                 session.list_at = Instant::now() + backoff(session.failures);
@@ -583,7 +583,7 @@ fn last_cursor_after(previous: Option<&str>, rows: &[SupabaseEndpointRow]) -> Op
 
 async fn flush_member_actions(
     engine: &Arc<Engine>,
-    client: &::mailbox::SupabaseClient,
+    client: &::supabase_client::SupabaseClient,
     project: Uuid,
 ) -> bool {
     let grants = match engine.pending_supabase_grants(Some(project)) {
@@ -633,7 +633,7 @@ async fn flush_member_actions(
                         return false;
                     }
                 }
-                Ok(false) | Err(::mailbox::SupabaseError::Rejected) => {
+                Ok(false) | Err(::supabase_client::SupabaseError::Rejected) => {
                     let _ = engine.record_supabase_function(project, "member-grant", false);
                     grant_failed = true;
                     grant_problem = Some(crate::GrantProblem::Rejected);
@@ -642,12 +642,12 @@ async fn flush_member_actions(
                         return false;
                     }
                 }
-                Err(::mailbox::SupabaseError::NotDeployed) => {
+                Err(::supabase_client::SupabaseError::NotDeployed) => {
                     let _ = engine.record_supabase_function(project, "member-grant", true);
                     let _ = engine.set_grant_problem(project, crate::GrantProblem::Unreachable);
                     return false;
                 }
-                Err(::mailbox::SupabaseError::Unavailable) => {
+                Err(::supabase_client::SupabaseError::Unavailable) => {
                     let _ = engine.set_grant_problem(project, crate::GrantProblem::Unreachable);
                     return false;
                 }
@@ -668,19 +668,19 @@ async fn flush_member_actions(
                         let _ = engine.set_revoke_problem(project);
                     }
                 }
-                Err(::mailbox::SupabaseError::Rejected) => {
+                Err(::supabase_client::SupabaseError::Rejected) => {
                     let _ = engine.record_supabase_function(project, "member-revoke", false);
                     if engine.complete_supabase_revoke(&revoke).is_err() {
                         return false;
                     }
                     let _ = engine.set_revoke_problem(project);
                 }
-                Err(::mailbox::SupabaseError::NotDeployed) => {
+                Err(::supabase_client::SupabaseError::NotDeployed) => {
                     let _ = engine.record_supabase_function(project, "member-revoke", true);
                     let _ = engine.set_grant_problem(project, crate::GrantProblem::Unreachable);
                     return false;
                 }
-                Err(::mailbox::SupabaseError::Unavailable) => {
+                Err(::supabase_client::SupabaseError::Unavailable) => {
                     let _ = engine.set_grant_problem(project, crate::GrantProblem::Unreachable);
                     return false;
                 }

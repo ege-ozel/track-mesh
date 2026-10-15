@@ -51,18 +51,4 @@ impl Engine {
         }
         Ok(recipients.into_iter().collect())
     }
-    /// A narrow query; adapters schedule this outside their UI/network threads.
-    pub fn has_pending_publication(&self) -> Result<bool> {
-        for project in self.store.projects()? {
-            if self.mailbox_enabled(project.project_id)?
-                && self
-                    .store
-                    .pending_publication_count(project.project_id, self.identity.device_id)?
-                    > 0
-            {
-                return Ok(true);
-            }
-        }
-        Ok(false)
-    }
 }

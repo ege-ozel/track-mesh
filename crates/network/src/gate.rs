@@ -35,7 +35,7 @@ impl Gate {
     }
     pub(super) fn window(&mut self, duration: Duration) {
         self.until =
-            (!duration.is_zero()).then(|| Instant::now() + duration.min(Duration::from_secs(600)));
+            (!duration.is_zero()).then(|| Instant::now() + duration.min(Duration::from_secs(900)));
     }
     pub(super) fn is_open(&self) -> bool {
         self.until.is_some_and(|until| until > Instant::now())

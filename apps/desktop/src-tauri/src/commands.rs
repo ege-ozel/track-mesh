@@ -5,6 +5,7 @@ use crate::{
 };
 use std::sync::Arc;
 use tauri::{AppHandle, State};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 use uuid::Uuid;
 
 #[tauri::command]
@@ -122,6 +123,16 @@ pub async fn cancel_invite_link(desktop: State<'_, Arc<Desktop>>) -> Result<(), 
 }
 
 #[tauri::command]
+pub async fn stop_operation(
+    desktop: State<'_, Arc<Desktop>>,
+    project_id: Uuid,
+) -> Result<(), String> {
+    desktop
+        .stop_operation(project_id)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub async fn open_previous_version(
     desktop: State<'_, Arc<Desktop>>,
     project_id: Uuid,
@@ -153,6 +164,33 @@ pub async fn set_upnp_mapping(
         .set_upnp_mapping(enabled)
         .await
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn set_language(app: AppHandle, desktop: State<'_, Arc<Desktop>>, lang: String) {
+    desktop.set_language(&lang);
+    // The tray keeps working with its old labels if it can't be relabelled.
+    let _ = crate::tray::relabel(&app);
+}
+
+/// A native yes/no question for the window, so every confirmation looks the same.
+#[tauri::command]
+pub async fn ask(
+    app: AppHandle,
+    title: String,
+    message: String,
+    ok: String,
+    cancel: String,
+) -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .message(message)
+            .title(title)
+            .buttons(MessageDialogButtons::OkCancelCustom(ok, cancel))
+            .blocking_show()
+    })
+    .await
+    .map_err(|error| error.to_string())
 }
 
 #[tauri::command]

@@ -2,7 +2,7 @@
 
 This is the agreed product scope, including unfinished phases. Current deliverables and evidence are in [IMPLEMENTATION.md](IMPLEMENTATION.md); this page does not imply these features are all built.
 
-Foundation phases 1–8 name the original implementation. Aşama 1 M0–M10 names the current direct-P2P plan, and #NN identifies review/UX tasks. The original infrastructure scope includes legacy relay code; the supported setup uses direct connections and defers relay to [post-1.0](plans/post-1.0.md#relay).
+Foundation phases 1–8 name the original implementation. Aşama 1 M0–M10 names the current direct-P2P plan, and #NN identifies review/UX tasks. The original infrastructure scope included relay code, now kept unbuilt in `future/`; the product uses direct connections only and defers relay to [post-1.0](plans/post-1.0.md#relay).
 
 ## Product and priorities
 

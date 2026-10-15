@@ -8,8 +8,8 @@ use anyhow::{ensure, Context, Result};
 use crypto::Identity;
 use network::Network;
 use protocol::{DeviceCard, PeerRequest, PeerResponse, SignedSnapshot};
-use snapshot::{ChunkStore, ProjectLock};
-use std::{path::PathBuf, sync::Arc};
+use snapshot::{ChunkStore, ProjectLock, Stop, Stopped};
+use std::{future::Future, path::PathBuf, sync::Arc, time::Duration};
 use storage::{Lineage, Store, TransferState};
 use uuid::Uuid;
 
@@ -33,6 +33,19 @@ impl std::fmt::Display for ReceiveRefusal {
 
 impl std::error::Error for ReceiveRefusal {}
 
+/// Run `work` until it finishes or `stop` is requested. A stopped future is dropped at its
+/// current await point, so wrap only work whose durable writes are each complete on their own.
+pub async fn or_stop<T>(stop: &Stop, work: impl Future<Output = Result<T>>) -> Result<T> {
+    tokio::select! {
+        result = work => result,
+        () = async {
+            while !stop.requested() {
+                tokio::time::sleep(Duration::from_millis(200)).await;
+            }
+        } => Err(Stopped.into()),
+    }
+}
+
 pub struct Receiver {
     pub store: Arc<Store>,
     pub chunks: ChunkStore,
@@ -40,6 +53,8 @@ pub struct Receiver {
     pub identity: Arc<Identity>,
     pub directory: PathBuf,
     pub download_limit: u64,
+    /// Honoured before and during download and before apply; never while files are installed.
+    pub stop: Stop,
 }
 impl Receiver {
     pub async fn receive(&self, snapshot: SignedSnapshot, source: DeviceCard) -> Result<Uuid> {
@@ -81,8 +96,10 @@ impl Receiver {
                 } else {
                     TransferState::Paused
                 };
+                // A requested stop is a normal pause, not a failure to report.
+                let message = (!error.is::<Stopped>()).then(|| error.to_string());
                 self.store
-                    .transfer_state(session.transfer_id, state, Some(&error.to_string()))?;
+                    .transfer_state(session.transfer_id, state, message.as_deref())?;
             }
         }
         result
@@ -170,22 +187,34 @@ impl Receiver {
                 self.store.project(project)?.latest_local_snapshot == session.base_snapshot_id,
                 "local head advanced since this transfer started"
             );
+            if self.stop.requested() {
+                return Err(Stopped.into());
+            }
             self.store
                 .transfer_state(id, TransferState::Receiving, None)?;
-            if let Err(error) = download(
-                &self.store,
-                &self.chunks,
-                &self.network,
-                &snapshot,
-                id,
-                &source.peer_id,
-                self.download_limit,
+            // Each verified chunk is cached and recorded on its own, so dropping the download
+            // between chunks keeps all finished progress for Resume.
+            if let Err(error) = or_stop(
+                &self.stop,
+                download(
+                    &self.store,
+                    &self.chunks,
+                    &self.network,
+                    &snapshot,
+                    id,
+                    &source.peer_id,
+                    self.download_limit,
+                ),
             )
             .await
             {
+                let message = (!error.is::<Stopped>()).then(|| error.to_string());
                 self.store
-                    .transfer_state(id, TransferState::Paused, Some(&error.to_string()))?;
+                    .transfer_state(id, TransferState::Paused, message.as_deref())?;
                 return Err(error);
+            }
+            if self.stop.requested() {
+                return Err(Stopped.into());
             }
             self.apply_locked(snapshot.clone(), id, lock.clone(), cache_lease.clone())
                 .await?;

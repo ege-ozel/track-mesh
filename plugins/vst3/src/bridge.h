@@ -25,11 +25,14 @@ struct ViewStatus {
     bool autoShareSupported {false}, autoShare {false};
     bool presenceDanger {false};
     std::wstring presenceWarning, shareConfirmation;
+    // The Desktop language ("tr" or "en") and the Get button text; older agents send neither.
+    std::wstring language, getLabel;
 };
 struct BridgeState {
     std::mutex mutex;
     ProjectId project {};
     ViewStatus view;
+    std::wstring language; // last language the agent sent, kept while it is unreachable
     std::atomic<uint64_t> generation {0}, save {0}, send {0}, receive {0};
     std::atomic<uint64_t> autoShareChange {0};
     std::atomic<bool> autoShareValue {false};

@@ -23,7 +23,7 @@ impl Engine {
     }
 
     /// Validate and persist an endpoint update from any authenticated delivery source.
-    /// M5d mailbox delivery must call this same function as M5c direct delivery.
+    /// Supabase endpoint delivery (M5d) calls this same function as direct delivery (M5c).
     pub async fn apply_endpoint_record(
         &self,
         network: &Network,
@@ -327,7 +327,7 @@ pub(crate) async fn run_endpoint_publisher(
             let Ok(Ok(ciphertext)) = wrapper else {
                 continue;
             };
-            let client = match ::mailbox::SupabaseClient::new(&url, &anon_key, project) {
+            let client = match ::supabase_client::SupabaseClient::new(&url, &anon_key, project) {
                 Ok(client) => client,
                 Err(_) => continue,
             };
@@ -340,13 +340,13 @@ pub(crate) async fn run_endpoint_publisher(
                     let _ = engine.record_supabase_function(project, "endpoint-publish", false);
                     state.supabase_acknowledged.insert(project);
                 }
-                Ok(false) | Err(::mailbox::SupabaseError::Rejected) => {
+                Ok(false) | Err(::supabase_client::SupabaseError::Rejected) => {
                     let _ = engine.record_supabase_function(project, "endpoint-publish", false);
                 }
-                Err(::mailbox::SupabaseError::NotDeployed) => {
+                Err(::supabase_client::SupabaseError::NotDeployed) => {
                     let _ = engine.record_supabase_function(project, "endpoint-publish", true);
                 }
-                Err(::mailbox::SupabaseError::Unavailable) => {}
+                Err(::supabase_client::SupabaseError::Unavailable) => {}
             }
         }
     }

@@ -48,12 +48,11 @@ impl Drop for ResponderWork {
 impl PeerRuntime {
     pub fn start(
         engine: Arc<Engine>,
-        mut config: NetworkConfig,
+        config: NetworkConfig,
         observation: crate::NetworkObservation,
         start_mapping: bool,
     ) -> Result<Self> {
         let lease = Arc::new(runtime_lease(&engine.directory)?);
-        config.rendezvous = engine.namespaces()?;
         let (network, mut incoming, actor) =
             network::start(engine.identity.clone(), engine.store.clone(), config)?;
         let initial_target = upnp_target(&observation);
@@ -413,11 +412,7 @@ impl PeerRuntime {
 type NetworkSignature = (Vec<(u32, Vec<Ipv4Addr>)>, Vec<(u32, Ipv4Addr)>);
 
 fn listener_signature(addresses: &[String]) -> Vec<String> {
-    let mut listeners = addresses
-        .iter()
-        .filter(|address| !address.contains("/p2p-circuit"))
-        .cloned()
-        .collect::<Vec<_>>();
+    let mut listeners = addresses.to_vec();
     listeners.sort();
     listeners.dedup();
     listeners
@@ -674,6 +669,7 @@ impl Engine {
             identity: self.identity.clone(),
             directory: self.directory.clone(),
             download_limit: u64::MAX,
+            stop: transfer::Stop::default(),
         }
     }
 }

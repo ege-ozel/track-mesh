@@ -52,7 +52,10 @@ pub(crate) fn verify_working_folder(
             .map(|p| p.manifest.author_device_id)
             .unwrap_or(Uuid::nil()),
         parent.map(|p| &p.manifest),
-        &ScanOptions { chunk_size },
+        &ScanOptions {
+            chunk_size,
+            ..ScanOptions::default()
+        },
     )?;
     let expected = parent
         .into_iter()

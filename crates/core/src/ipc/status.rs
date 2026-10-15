@@ -1,12 +1,31 @@
-use crate::{Engine, ProjectSummary};
+use crate::{
+    lang::{genitive, is_turkish, tr},
+    Engine, ProjectSummary,
+};
 use anyhow::Result;
 use network::Network;
 use protocol::{PluginProject, PluginStatus};
 use storage::Lineage;
 use uuid::Uuid;
 
-pub(super) const GET_GUIDANCE: &str =
-    "Save and close this project in your DAW, then press Get collaborator's version.";
+/// What Get in the plugin asks for; TrackMesh opens on the project with the Get button.
+pub(super) fn get_guidance() -> String {
+    tr(
+        "TrackMesh is open on this project. Save and close the project in your DAW, then press Get there.",
+        "TrackMesh bu projede açıldı. Projeyi DAW'da kaydedip kapat, sonra orada Al'a bas.",
+    )
+    .into()
+}
+
+/// The plugin's Get button names the collaborator, as the Desktop card does.
+fn get_label(name: &str) -> String {
+    match (name.is_empty(), is_turkish()) {
+        (true, false) => "Get collaborator's version".into(),
+        (true, true) => "İş arkadaşının sürümünü al".into(),
+        (false, false) => format!("Get {name}'s version"),
+        (false, true) => format!("{} sürümünü al", genitive(name)),
+    }
+}
 
 #[derive(Clone)]
 pub(super) enum Notice {
@@ -20,14 +39,35 @@ pub(super) enum Notice {
 impl Notice {
     fn message(&self) -> (bool, String) {
         match self {
-            Self::Queued => (true, "Share current version queued; waiting for project files to settle.".into()),
-            Self::Saving => (true, "Save observed; waiting for project files to settle.".into()),
-            Self::Committed => (true, "Current version shared. Your collaborator can get it while TrackMesh is running.".into()),
-            Self::Failed => (false, "Sharing failed or files did not settle. Check locks/recovery in TrackMesh, then retry Share current version.".into()),
-            Self::Receive => (true, GET_GUIDANCE.into()),
-            Self::Saved => (true, "Saved. Press Share current version to send it.".into()),
+            Self::Queued => (true, queued()),
+            Self::Saving => (true, saving()),
+            Self::Committed => (true, tr("Shared. Your collaborator can get this version while TrackMesh is open.", "Paylaşıldı. TrackMesh açıkken iş arkadaşın bu sürümü alabilir.").into()),
+            Self::Failed => (false, tr("Sharing didn't finish. Open TrackMesh to see why, then press Share current version again.", "Paylaşım bitmedi. Nedenini görmek için TrackMesh'i aç, sonra Güncel sürümü paylaş'a yeniden bas.").into()),
+            Self::Receive => (true, get_guidance()),
+            Self::Saved => (true, saved()),
         }
     }
+}
+pub(super) fn queued() -> String {
+    tr(
+        "Sharing… waiting for the DAW to finish saving.",
+        "Paylaşılıyor… DAW'ın kaydetmeyi bitirmesi bekleniyor.",
+    )
+    .into()
+}
+pub(super) fn saving() -> String {
+    tr(
+        "Saved. Sharing once the DAW finishes writing files…",
+        "Kaydedildi. DAW dosyaları yazmayı bitirince paylaşılacak…",
+    )
+    .into()
+}
+pub(super) fn saved() -> String {
+    tr(
+        "Saved. Press Share current version to send it.",
+        "Kaydedildi. Göndermek için Güncel sürümü paylaş'a bas.",
+    )
+    .into()
 }
 // Only local names and last folder components leave Rust; never full paths.
 pub(super) fn projects(engine: &Engine) -> Result<(Vec<PluginProject>, bool)> {
@@ -87,6 +127,8 @@ pub fn unavailable(project_id: Uuid, message: &str) -> PluginStatus {
         presence_danger: false,
         presence_since: 0,
         presence_get_line: String::new(),
+        language: tr("en", "tr").into(),
+        get_label: get_label(""),
     }
 }
 pub fn summarize(
@@ -114,51 +156,101 @@ pub fn summarize(
         .transfer
         .as_ref()
         .filter(|t| t.state != storage::TransferState::Complete);
+    let turkish = is_turkish();
     let (state, line) = if summary.project.recovery_required {
         (
             storage::TransferState::RecoveryRequired.as_str(),
-            "Close the DAW and recover this project before receiving another version.".into(),
+            tr(
+                "The last Get did not finish. Close the project in your DAW and press Recover in TrackMesh.",
+                "Son alma işlemi bitmedi. Projeyi DAW'da kapat ve TrackMesh'te Kurtar'a bas.",
+            )
+            .into(),
         )
     } else if let Some(transfer) = transfer {
         let message = match transfer.state {
-            storage::TransferState::Receiving | storage::TransferState::Applying => format!(
-                "Receiving project… {} %",
-                transfer
+            storage::TransferState::Receiving | storage::TransferState::Applying => {
+                let percent = transfer
                     .completed_bytes
                     .saturating_mul(100)
                     .checked_div(transfer.total_bytes)
                     .unwrap_or(0)
-                    .min(100)
-            ),
-            storage::TransferState::Paused => "Receive paused. Resume receive in TrackMesh.".into(),
-            _ => format!("Transfer {}", transfer.state.as_str().replace('_', " ")),
+                    .min(100);
+                if turkish {
+                    format!("{} sürümü alınıyor… %{percent}", genitive(&name))
+                } else {
+                    format!("Getting {name}'s version… {percent} %")
+                }
+            }
+            storage::TransferState::Paused => tr(
+                "Get paused. Press Resume getting in TrackMesh.",
+                "Alma duraklatıldı. TrackMesh'te Almaya devam et'e bas.",
+            )
+            .into(),
+            _ => tr("Getting a version…", "Sürüm alınıyor…").into(),
         };
         (transfer.state.as_str(), message)
     } else if lineage == Some(&Lineage::Diverged) {
         (
             "DIVERGED",
-            format!("You and {name} both changed the project"),
+            if turkish {
+                format!("Senin sürümün de {} sürümü de değişti. Hangisinin kalacağını TrackMesh'te seç.", genitive(&name))
+            } else {
+                format!("You and {name} both changed the project. Choose which version to keep in TrackMesh.")
+            },
         )
     } else if selected.is_none() {
-        ("LAST_KNOWN", "Invite a collaborator in TrackMesh.".into())
+        (
+            "LAST_KNOWN",
+            tr(
+                "Invite a collaborator in TrackMesh.",
+                "TrackMesh'te bir iş arkadaşını davet et.",
+            )
+            .into(),
+        )
     } else if route.is_none() {
         (
             "OFFLINE",
-            format!("{name} is offline; their version can be fetched when they are online"),
+            if turkish {
+                format!("{name} bağlı değil. Bağlanınca sürümü alınabilir.")
+            } else {
+                format!("{name} is not connected. You can get their version when they are.")
+            },
         )
     } else if hint.is_some() || lineage == Some(&Lineage::RemoteAhead) {
-        ("REMOTE_AHEAD", format!("{name} shared a new version"))
+        (
+            "REMOTE_AHEAD",
+            if turkish {
+                format!("{name} yeni bir sürüm paylaştı")
+            } else {
+                format!("{name} shared a new version")
+            },
+        )
     } else if lineage == Some(&Lineage::LocalAhead) {
         (
             "LOCAL_AHEAD",
-            format!("Your version is newer than {name}'s"),
+            if turkish {
+                format!("Senin sürümün {} sürümünden daha yeni", genitive(&name))
+            } else {
+                format!("Your version is newer than {name}'s")
+            },
         )
     } else if lineage == Some(&Lineage::Equal) {
-        ("UP_TO_DATE", format!("Up to date with {name}"))
+        (
+            "UP_TO_DATE",
+            if turkish {
+                format!("{} son sürümü sende ✓", genitive(&name))
+            } else {
+                format!("You have {name}'s latest version ✓")
+            },
+        )
     } else {
         (
             "LAST_KNOWN",
-            format!("Waiting for {name} to share a version"),
+            if turkish {
+                format!("{} bir sürüm paylaşması bekleniyor", genitive(&name))
+            } else {
+                format!("Waiting for {name} to share a version")
+            },
         )
     };
     let first_share_blocked = summary.local_snapshot.is_none()
@@ -197,6 +289,8 @@ pub fn summarize(
         remote_snapshot: hint
             .map(|s| s.snapshot_id.to_string())
             .or_else(|| remote.map(|s| s.snapshot_id.to_string())),
+        get_label: get_label(&name),
+        language: tr("en", "tr").into(),
         author: selected.map(|_| name),
         created_at: hint
             .map(|s| s.created_at.clone())
@@ -212,11 +306,8 @@ pub fn summarize(
         status_line: bounded(&line),
         share_enabled,
         get_enabled,
-        pending_publications: if summary.mailbox_enabled {
-            summary.pending_publications
-        } else {
-            0
-        },
+        // Kept in the plugin protocol; nothing is queued since the mailbox was removed.
+        pending_publications: 0,
         auto_share_supported: true,
         auto_share: false,
         presence_warning: String::new(),

@@ -4,7 +4,7 @@ Bu belge dağıtım paketinde kök `CLAUDE.md` olarak kullanılır ve repo check
 
 ## Önce Desktop bağlantı akışı
 
-Gönderen **+ Link folder → Link project** ile projeyi bağlar, **Invite collaborator** seçer ve v2 bağlantıyı özel kanaldan paylaşır. Alıcı Windows'ta açar veya **Paste invite link** kullanır; **Accept invite link** penceresinde oluşturulacak proje alt klasörünün üst dizinini kontrol edip **Accept** seçer; **Choose another folder** üst dizini değiştirir. Yeni bağlantı servis bilgisini taşır, URL/key girişi gerekmez. 15 dakika geçerlidir ve bir kez tüketilir. İlk Invite/Accept **Router setup** ile süreli UPnP için **Allow (recommended)** / **Not now** sorusunu gösterir.
+Gönderen **Add project** ile projeyi ekler, **Invite collaborator** seçer ve v2 bağlantıyı özel kanaldan paylaşır. Alıcı Windows'ta açar veya **Paste invite link** kullanır; **Invite link** penceresinde oluşturulacak proje alt klasörünün üst dizinini kontrol edip **Accept** seçer; **Choose another folder** üst dizini değiştirir. Yeni bağlantı servis bilgisini taşır, URL/key girişi gerekmez. 15 dakika geçerlidir ve bir kez tüketilir. İlk Invite/Accept **Router setup** ile süreli UPnP için **Allow (recommended)** / **Not now** sorusunu gösterir.
 
 İmzalı cihaz isteği otomatik gider. Gönderen public Device/Identity değerlerini alıcıyla karşılaştırıp **Approve** seçer. İlk sürüm boş, daha önce sürüm almamış klasöre otomatik kurulur. Sonraki sürümlerde kaynak **Share current version**, alıcı DAW kapalı onayıyla **Get collaborator's version** kullanır. CLI bu link tüketme ve otomatik ilk alma akışını içermez.
 
@@ -18,7 +18,7 @@ Paket klasöründe PowerShell açın. Claude Code kurulu ve giriş yapılmışsa
 
 Davet import'u yerel proje ve gönderen kimliğini kaydeder. Bu kayıt online bağlantı veya dosya teslimi değildir. Onaylı bir cihaz her bağlantıda yeni pencere istemez. CLI network işi yalnız komut boyunca online kalır; aynı profilde iki owner açılmaz. Kaynak daha sonra alıcı olabilir; kurulu bağlantı iki yönlüdür.
 
-Yerel SQLite trust, history ve transfer durumunu tutar. Public rehber, browser deployment, offline pairing kuyruğu, kalıcı arka plan servisi ve otomatik merge yoktur. Relay alanı legacy'dir ve desteklenen kurulumun dışındadır. Supabase offline kaynağın dosyalarını taşımaz veya NAT engelini kaldırmaz.
+Yerel SQLite trust, history ve transfer durumunu tutar. Public rehber, browser deployment, offline pairing kuyruğu, kalıcı arka plan servisi ve otomatik merge yoktur. Relay yoktur; eski davetteki relay adresi yok sayılır. Supabase offline kaynağın dosyalarını taşımaz veya NAT engelini kaldırmaz.
 
 
 ## Claude için görev ve sınırlar
@@ -71,7 +71,7 @@ $trialStatus = & $trialAgent --data-dir $trialData status | ConvertFrom-Json
 
 ### D. Eşleştirme isteğini otomatik gönder
 
-Gönderen kendi Desktop'ında daveti export etmiş (pencereyi açar) veya **Reopen approval window** seçmiş olsun. Uygulaması açık kalsın. Her komutun sonucunu kontrol et:
+Gönderen kendi Desktop'ında daveti export etmiş (pencereyi açar) veya **Open approval window** seçmiş olsun. Uygulaması açık kalsın. Her komutun sonucunu kontrol et:
 
 ```powershell
 & $trialAgent --data-dir $trialData request-pairing $trialProjectId --device-id $trialSenderId --connect-timeout 30
@@ -103,7 +103,7 @@ Receive bitmeden diğer komutu başlatma. Başarıyı son check'in `verified_equ
 
 Her seferinde tek koşulu düzeltip check yapın. Ayrıntılı IP, TCP/UDP, Windows Firewall ve TP-Link adımları paketteki ortak kurulum README'sinin **Bağlantı kurulamazsa** bölümünde tutulur; bulunmuyorsa gönderenden bu rehberi isteyin. Ajan router/firewall kuralı veya servis kurmaz.
 
-Gerçekten eskimiş dosya daveti için gönderenden güncel adresli dosya isteyip aynı profil/proje/hedefe native join yapabilirsiniz. Sıradan timeout için yeniden import yapmayın. En az bir uç erişilebilir olmalıdır; relay desteklenmez. Gerçek ayrı-ağ aktarımı henüz doğrulanmış sayılmaz.
+Gerçekten eskimiş dosya daveti için gönderenden güncel adresli dosya isteyip aynı profil/proje/hedefe native join yapabilirsiniz. Sıradan timeout için yeniden import yapmayın. En az bir uç erişilebilir olmalıdır; relay yoktur. Gerçek ayrı-ağ aktarımı henüz doğrulanmış sayılmaz.
 
 
 ## Desktop'ı daha sonra açmak

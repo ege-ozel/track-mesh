@@ -57,7 +57,6 @@ pub fn start(
     let actor = Actor {
         swarm,
         store,
-        namespaces: config.rendezvous,
         commands,
         incoming_tx,
         status,
@@ -80,7 +79,6 @@ pub fn start(
 struct Actor {
     swarm: PeerSwarm,
     store: Arc<Store>,
-    namespaces: Vec<(Multiaddr, String)>,
     commands: mpsc::Receiver<Command>,
     incoming_tx: mpsc::Sender<Incoming>,
     status: Arc<RwLock<NetworkStatus>>,
@@ -137,14 +135,14 @@ impl Actor {
                     if !self.command(command)? { break; }
                 },
                 _ = retry.tick() => {
-                    configure(&mut self.swarm, &self.store, &self.namespaces)?;
+                    configure(&mut self.swarm, &self.store)?;
                     self.pending.retain(|_, reply| !reply.is_closed());
                     self.pairing_pending.retain(|_, reply| !reply.is_closed());
                     self.pairing_rates.retain(|_, (at, _)| at.elapsed() < Duration::from_secs(60));
                     for peer in self.swarm.behaviour().allow.expired_peers() {
                         let _ = self.swarm.disconnect_peer_id(peer);
                     }
-                    self.discovery.tick(&mut self.swarm, &self.store, &self.namespaces, &self.connections)?;
+                    self.discovery.tick(&mut self.swarm, &self.store, &self.connections)?;
                 },
                 event = self.swarm.select_next_some() => self.event(event)?,
             }
@@ -168,10 +166,10 @@ impl Actor {
                     && !self
                         .connections
                         .values()
-                        .any(|(connected, relayed, _)| *connected == peer && !*relayed)
+                        .any(|(connected, _)| *connected == peer)
                 {
                     let _ = reply.send(Err(anyhow::anyhow!(
-                        "endpoint updates require an existing direct connection"
+                        "endpoint updates require an existing connection"
                     )));
                     return Ok(true);
                 }
@@ -222,11 +220,7 @@ impl Actor {
                         .send_response(channel, response);
                 }
             }
-            Some(Command::Reload(new)) => {
-                self.namespaces = new;
-                configure(&mut self.swarm, &self.store, &self.namespaces)?;
-                self.discovery.reload();
-            }
+            Some(Command::Reload) => configure(&mut self.swarm, &self.store)?,
             Some(Command::SetExternalAddresses(addresses)) => {
                 let new = addresses.into_iter().collect::<HashSet<_>>();
                 let previous = std::mem::replace(&mut self.gateway_external_addresses, new.clone());
@@ -334,16 +328,13 @@ impl Actor {
                     send_back_addr,
                 } = &endpoint
                 {
-                    let relayed = send_back_addr
-                        .iter()
-                        .any(|p| matches!(p, Protocol::P2pCircuit));
                     let transport = if send_back_addr.iter().any(|p| matches!(p, Protocol::QuicV1))
                     {
                         "QUIC"
                     } else {
                         "TCP"
                     };
-                    if !relayed && is_public_remote(send_back_addr) {
+                    if is_public_remote(send_back_addr) {
                         self.inbound_connections.insert(
                             connection_id,
                             InboundConnection {
@@ -356,15 +347,10 @@ impl Actor {
                 }
                 self.connected(peer_id, connection_id, endpoint.get_remote_address())
             }
-            SwarmEvent::ConnectionClosed {
-                connection_id,
-                peer_id,
-                ..
-            } => {
+            SwarmEvent::ConnectionClosed { connection_id, .. } => {
                 self.connections.remove(&connection_id);
                 self.inbound_connections.remove(&connection_id);
                 refresh_status(&self.status, &self.connections);
-                self.discovery.disconnected(peer_id, &self.namespaces);
             }
             SwarmEvent::Behaviour(BehaviourEvent::Identify(identify::Event::Received {
                 peer_id,
@@ -379,12 +365,7 @@ impl Actor {
                     .allowed_peers()
                     .contains(&peer_id)
                 {
-                    if let Some(address) =
-                        self.discovery
-                            .identified(&mut self.swarm, peer_id, info, &self.namespaces)
-                    {
-                        self.add_external_source(address, ExternalAddressSource::PeerObserved);
-                    }
+                    self.discovery.identified(&mut self.swarm, peer_id, info);
                 }
             }
             SwarmEvent::Behaviour(BehaviourEvent::Pairing(request_response::Event::Message {
@@ -445,9 +426,6 @@ impl Actor {
                     let _ = reply.send(Err(anyhow::anyhow!("automatic pairing failed; check the inviter's pairing window and connection")));
                 }
             }
-            SwarmEvent::Behaviour(BehaviourEvent::Rendezvous(event)) => {
-                self.discovery.event(&mut self.swarm, &self.store, event)?
-            }
             SwarmEvent::Behaviour(BehaviourEvent::Transfer(request_response::Event::Message {
                 peer,
                 connection_id,
@@ -461,12 +439,12 @@ impl Actor {
                         && !self
                             .connections
                             .get(&connection_id)
-                            .is_some_and(|(connected, relayed, _)| *connected == peer && !*relayed)
+                            .is_some_and(|(connected, _)| *connected == peer)
                     {
                         let _ = self.swarm.behaviour_mut().transfer.send_response(
                             channel,
                             PeerResponse::Error {
-                                message: "endpoint updates require a direct connection".into(),
+                                message: "endpoint updates require a connection".into(),
                             },
                         );
                         return Ok(());
@@ -542,10 +520,7 @@ impl Actor {
     }
 
     fn connected(&mut self, peer: PeerId, connection: ConnectionId, address: &Multiaddr) {
-        let relayed = address.iter().any(|p| matches!(p, Protocol::P2pCircuit));
-        let transport = if relayed {
-            "NOISE/YAMUX"
-        } else if address.iter().any(|p| matches!(p, Protocol::QuicV1)) {
+        let transport = if address.iter().any(|p| matches!(p, Protocol::QuicV1)) {
             "QUIC"
         } else {
             "TCP"
@@ -554,17 +529,17 @@ impl Actor {
         let better = self
             .connections
             .values()
-            .any(|(p, r, t)| *p == peer && !r && (relayed || (t == "QUIC" && transport != "QUIC")));
+            .any(|(p, t)| *p == peer && t == "QUIC" && transport != "QUIC");
         if better {
             self.swarm.close_connection(connection);
             return;
         }
-        tracing::info!(peer=%peer, route=if relayed {"RELAYED"} else {"DIRECT"}, %transport, "peer connected");
-        if !relayed && transport == "QUIC" {
+        tracing::info!(peer=%peer, %transport, "peer connected");
+        if transport == "QUIC" {
             let close: Vec<_> = self
                 .connections
                 .iter()
-                .filter_map(|(cid, (p, _, t))| {
+                .filter_map(|(cid, (p, t))| {
                     if *p == peer && t == "TCP" {
                         Some(*cid)
                     } else {
@@ -576,19 +551,7 @@ impl Actor {
                 self.swarm.close_connection(cid);
             }
         }
-        self.connections
-            .insert(connection, (peer, relayed, transport));
-        // Request/response then uses the remaining direct peer connection.
-        if !relayed {
-            let close: Vec<_> = self
-                .connections
-                .iter()
-                .filter_map(|(cid, (p, r, _))| if *p == peer && *r { Some(*cid) } else { None })
-                .collect();
-            for cid in close {
-                self.swarm.close_connection(cid);
-            }
-        }
+        self.connections.insert(connection, (peer, transport));
         refresh_status(&self.status, &self.connections);
     }
 

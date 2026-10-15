@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 use network::{ConnectionStatus, Network, NetworkStatus};
 use protocol::{DeviceCard, PeerRequest, PeerResponse};
 use serde::Serialize;
+use snapshot::Stop;
 use storage::{Lineage, Project, SnapshotInfo, TransferInfo};
 use uuid::Uuid;
 
@@ -192,7 +193,7 @@ impl Engine {
         peer: DeviceCard,
         target: Option<Uuid>,
     ) -> Result<Uuid> {
-        self.receive_from_peer_with_limit(network, project, peer, target, u64::MAX)
+        self.receive_from_peer_with_limit(network, project, peer, target, u64::MAX, Stop::default())
             .await
     }
 
@@ -203,13 +204,18 @@ impl Engine {
         peer: DeviceCard,
         target: Option<Uuid>,
         download_limit: u64,
+        stop: Stop,
     ) -> Result<Uuid> {
-        let snapshot = self
-            .fetch_snapshot_chain(network, project, &peer.peer_id, target)
-            .await?
-            .context("source has no local snapshot")?;
+        // The chain fetch only caches verified manifests, so it may stop at any await.
+        let snapshot = transfer::or_stop(
+            &stop,
+            self.fetch_snapshot_chain(network, project, &peer.peer_id, target),
+        )
+        .await?
+        .context("source has no local snapshot")?;
         let mut receiver = self.receiver(network.clone());
         receiver.download_limit = download_limit;
+        receiver.stop = stop;
         let result = receiver.receive(snapshot, peer).await;
         if result.is_ok() {
             self.presence_applied(project);
@@ -227,8 +233,15 @@ impl Engine {
         peer: DeviceCard,
         target: Option<Uuid>,
     ) -> Result<Uuid> {
-        self.receive_replacing_local_with_limit(network, project, peer, target, u64::MAX)
-            .await
+        self.receive_replacing_local_with_limit(
+            network,
+            project,
+            peer,
+            target,
+            u64::MAX,
+            Stop::default(),
+        )
+        .await
     }
 
     pub async fn receive_replacing_local_with_limit(
@@ -238,10 +251,12 @@ impl Engine {
         peer: DeviceCard,
         target: Option<Uuid>,
         download_limit: u64,
+        stop: Stop,
     ) -> Result<Uuid> {
         // Scanning and hashing are blocking disk work. `snapshot` reuses the head when nothing
         // changed, so the folder is hashed once; an empty folder has nothing to preserve.
         let engine = self.clone();
+        let scan_stop = stop.clone();
         tokio::task::spawn_blocking(move || -> Result<()> {
             let project_record = engine.store.project(project)?;
             anyhow::ensure!(
@@ -249,18 +264,21 @@ impl Engine {
                 "receive recovery must finish before replacing the local version"
             );
             if !snapshot::is_empty(std::path::Path::new(&project_record.root))? {
-                engine.snapshot(project)?;
+                engine.snapshot_until(project, scan_stop)?;
             }
             Ok(())
         })
         .await??;
 
-        let snapshot = self
-            .fetch_snapshot_chain(network, project, &peer.peer_id, target)
-            .await?
-            .context("source has no local snapshot")?;
+        let snapshot = transfer::or_stop(
+            &stop,
+            self.fetch_snapshot_chain(network, project, &peer.peer_id, target),
+        )
+        .await?
+        .context("source has no local snapshot")?;
         let mut receiver = self.receiver(network.clone());
         receiver.download_limit = download_limit;
+        receiver.stop = stop;
         let result = receiver.receive_diverged(snapshot, peer).await;
         if result.is_ok() {
             self.presence_applied(project);

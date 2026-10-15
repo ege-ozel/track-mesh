@@ -15,12 +15,15 @@ use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::DialogExt;
 use trackmesh_core::{
     default_data_directory, observe_firewall, observe_network, peer::PeerRuntime,
-    peer_connection_state, port_observation_status, Engine, FirewallObservation, MailboxRuntime,
+    peer_connection_state, port_observation_status, Engine, FirewallObservation,
     NetworkObservation, PairingStatus, PeerCheck, PeerConnectionState, PluginRuntime,
     PortObservationStatus, ProjectBackend, ProjectBackendConfig, RevokeOutcome, SessionGrace,
     SummaryPage, SupabaseDefaultConfig, SupabaseProjectState,
 };
 use uuid::Uuid;
+
+// The window sends its language on start and on change; native dialogs and the plugin follow it.
+pub use trackmesh_core::lang::{is_turkish, tr};
 
 fn receive_blocked_or_error(error: anyhow::Error) -> Result<Value> {
     if let Some(refusal) = error.downcast_ref::<transfer::ReceiveRefusal>() {
@@ -58,9 +61,6 @@ pub struct Options {
     port: u16,
     #[arg(long)]
     external_address: Vec<String>,
-    /// Development only: permit HTTP to a literal loopback IP.
-    #[arg(long)]
-    allow_loopback_http: bool,
     #[arg(long, env = "TRACKMESH_IPC_SUFFIX", default_value = "")]
     ipc_suffix: String,
 }
@@ -79,8 +79,6 @@ pub enum Action {
         project_id: Uuid,
         name: String,
         folder: PathBuf,
-        mailbox_url: Option<String>,
-        relay_address: Option<String>,
     },
     ChangeProjectRoot {
         project_id: Uuid,
@@ -150,12 +148,6 @@ pub enum Action {
     Send {
         project_id: Uuid,
     },
-    Publish {
-        project_id: Uuid,
-    },
-    Refresh {
-        project_id: Uuid,
-    },
     Check {
         project_id: Uuid,
         device_id: Uuid,
@@ -202,8 +194,6 @@ impl Action {
             | Self::RejectPairing { project_id, .. }
             | Self::RequestPairing { project_id, .. }
             | Self::Send { project_id }
-            | Self::Publish { project_id }
-            | Self::Refresh { project_id }
             | Self::Check { project_id, .. }
             | Self::Receive { project_id, .. }
             | Self::UsePeerVersion { project_id, .. }
@@ -234,8 +224,6 @@ impl Action {
             Self::RejectPairing { .. } => "Reject pairing",
             Self::RequestPairing { .. } => "Request automatic pairing",
             Self::Send { .. } => "Share current version",
-            Self::Publish { .. } => "Publish metadata",
-            Self::Refresh { .. } => "Refresh metadata",
             Self::Check { .. } => "Check connection",
             Self::Receive { .. } => "Get collaborator's version",
             Self::UsePeerVersion { .. } => "Use collaborator's version",
@@ -274,6 +262,13 @@ pub struct Job {
     pub outcome: Option<Value>,
     pub error: Option<String>,
     pub completed_at: Option<u64>,
+    /// Check connection is aborted outright: it reads peer state and writes nothing durable.
+    #[serde(skip)]
+    pub abort: Option<tokio::task::AbortHandle>,
+    /// Share and Get stop only at the core's safe points (before commit, between chunks,
+    /// before install); installing files always finishes.
+    #[serde(skip)]
+    pub stop: Option<transfer::Stop>,
 }
 
 fn prune_finished_jobs(jobs: &mut Vec<Job>) {
@@ -385,7 +380,6 @@ struct Session {
     network: Option<Network>,
     network_observation: NetworkObservation,
     firewall_observation: FirewallObservation,
-    metadata: Option<MailboxRuntime>,
     plugin: Option<PluginRuntime>,
     tasks: Vec<tauri::async_runtime::JoinHandle<()>>,
     jobs: Vec<Job>,
@@ -397,6 +391,8 @@ struct Session {
     pending_invite: Option<PendingInviteLink>,
     auto_receive_attempted: HashSet<(Uuid, Uuid)>,
     head_pulled_at: HashMap<(Uuid, Uuid), Instant>,
+    /// (project, device) pairs whose head was pulled during the current online period.
+    heads_pulled_online: HashSet<(Uuid, Uuid)>,
     pairing_approval_states: HashMap<(Uuid, Uuid), PairingApprovalState>,
     pairing_approval_checked_at: HashMap<(Uuid, Uuid), Instant>,
     pairing_approval_in_flight: HashSet<(Uuid, Uuid)>,
@@ -515,21 +511,12 @@ impl Desktop {
                         }
                     }
                 }
-                let engine = match desktop.lock() {
-                    Ok(state) if state.closing || state.closed => break,
-                    Ok(state) => state.engine.clone(),
-                    Err(_) => break,
-                };
-                let pending = match engine {
-                    Some(engine) => tauri::async_runtime::spawn_blocking(move || {
-                        engine.has_pending_publication()
-                    })
-                    .await
-                    .ok()
-                    .and_then(Result::ok)
-                    .unwrap_or(true),
-                    None => true,
-                };
+                if desktop
+                    .lock()
+                    .map_or(true, |state| state.closing || state.closed)
+                {
+                    break;
+                }
                 let mut stay_in_tray = false;
                 let should_stop = desktop.lock().is_ok_and(|mut state| {
                     if work_epoch != state.work_epoch {
@@ -551,14 +538,8 @@ impl Desktop {
                     let (Some(plugin), Some(peer)) = (&state.plugin, &state.peer) else {
                         return false;
                     };
-                    let failed = plugin.is_finished()
-                        || peer.is_finished()
-                        || state
-                            .metadata
-                            .as_ref()
-                            .is_some_and(MailboxRuntime::is_finished);
-                    let busy =
-                        pending || state.tasks.iter().any(|task| !task.inner().is_finished());
+                    let failed = plugin.is_finished() || peer.is_finished();
+                    let busy = state.tasks.iter().any(|task| !task.inner().is_finished());
                     if !failed && grace.ready(plugin, peer, busy) {
                         stay_in_tray = true;
                         return false;
@@ -589,8 +570,11 @@ impl Desktop {
                 .data_dir
                 .map(Ok)
                 .unwrap_or_else(default_data_directory)?;
+            // A new install starts with the Windows user name; the first screen lets the user change it.
             let device_name = if options.device_name == "My studio PC" {
-                std::env::var("COMPUTERNAME").unwrap_or(options.device_name)
+                std::env::var("USERNAME")
+                    .or_else(|_| std::env::var("COMPUTERNAME"))
+                    .unwrap_or(options.device_name)
             } else {
                 options.device_name
             };
@@ -623,7 +607,6 @@ impl Desktop {
                         .iter()
                         .map(|v| v.parse())
                         .collect::<std::result::Result<_, _>>()?,
-                    ..Default::default()
                 };
                 Ok::<_, anyhow::Error>((
                     PeerRuntime::start(engine_for_network, config, observation.clone(), true)?,
@@ -632,17 +615,14 @@ impl Desktop {
                 ))
             })
             .await??;
-        let metadata = MailboxRuntime::start(engine.clone(), self.options.allow_loopback_http);
         let mut state = self.lock()?;
         state.network = Some(peer.network.clone());
         state.network_observation = network_observation;
         state.firewall_observation = firewall_observation;
         state.peer = Some(peer);
-        state.metadata = Some(metadata);
         state.plugin = Some(PluginRuntime::start_with_desktop(
             engine,
             state.network.clone().context("Peer runtime missing")?,
-            self.options.allow_loopback_http,
             &self.options.ipc_suffix,
         )?);
         if state.closing {
@@ -820,14 +800,7 @@ impl Desktop {
             .peer
             .as_ref()
             .filter(|peer| peer.is_finished())
-            .map(|_| "Peer runtime stopped; reopen the desktop to reconnect".to_owned())
-            .or_else(|| {
-                state
-                    .metadata
-                    .as_ref()
-                    .filter(|worker| worker.is_finished())
-                    .map(|_| "Metadata worker stopped; reopen the desktop to retry".to_owned())
-            });
+            .map(|_| "Peer runtime stopped; reopen the desktop to reconnect".to_owned());
         let peer_states = page
             .as_ref()
             .zip(network.as_ref())
@@ -919,6 +892,43 @@ impl Desktop {
             (network.clone(), engine.clone())
         };
         for item in &page.projects {
+            // A version shared while the PCs were disconnected is announced only at share time.
+            // Pull each collaborator's head once whenever they come back online, so the card can
+            // show their newer version. Once per online period keeps idle owners free to exit.
+            if item.project.latest_local_snapshot.is_some()
+                && !item.project.recovery_required
+                && !item.active_transfer
+            {
+                for peer in &item.peers {
+                    let key = (item.project.project_id, peer.device.device_id);
+                    let online = network.online(&peer.device.peer_id);
+                    let pull = {
+                        let mut state = self.lock()?;
+                        if !online {
+                            state.heads_pulled_online.remove(&key);
+                            false
+                        } else if state.jobs.iter().any(|job| {
+                            job.running && job.project_id == Some(item.project.project_id)
+                        }) {
+                            false
+                        } else {
+                            state.heads_pulled_online.insert(key)
+                        }
+                    };
+                    if pull {
+                        let (engine, network) = (engine.clone(), network.clone());
+                        let (project, source) =
+                            (item.project.project_id, peer.device.peer_id.clone());
+                        tauri::async_runtime::spawn(async move {
+                            let _ = tokio::time::timeout(
+                                Duration::from_secs(30),
+                                engine.fetch_snapshot_chain(&network, project, &source, None),
+                            )
+                            .await;
+                        });
+                    }
+                }
+            }
             if item.local_snapshot.is_some()
                 || item.project.latest_local_snapshot.is_some()
                 || item.project.recovery_required
@@ -939,7 +949,7 @@ impl Desktop {
                     continue;
                 }
                 let Some(snapshot) = peer.announcement.as_ref() else {
-                    // Without a mailbox nothing pushes the collaborator's head; pull it with
+                    // Nothing pushes the collaborator's head; pull it with
                     // the existing Head request, at most every 10 s per project and peer.
                     let key = (item.project.project_id, peer.device.device_id);
                     {
@@ -1133,22 +1143,57 @@ impl Desktop {
             outcome: None,
             error: None,
             completed_at: None,
+            abort: None,
+            stop: None,
         });
+        let abortable = matches!(action, Action::Check { .. });
+        let stop = transfer::Stop::default();
+        let stopped_message = match action {
+            Action::Check { .. } => Some("Connection check stopped"),
+            Action::Send { .. } => Some("Sharing stopped. Nothing was shared."),
+            Action::Receive { .. } | Action::UsePeerVersion { .. } => {
+                Some("Getting stopped. Anything already downloaded is kept for Resume getting.")
+            }
+            _ => None,
+        };
+        if stopped_message.is_some() && !abortable {
+            if let Some(job) = state.jobs.iter_mut().find(|job| job.job_id == job_id) {
+                job.stop = Some(stop.clone());
+            }
+        }
         let desktop = self.clone();
         let engine = state.engine.clone().context("Engine is unavailable")?;
         let network = state.network.clone().context("Network is unavailable")?;
         state.tasks.push(tauri::async_runtime::spawn(async move {
             let worker_desktop = desktop.clone();
             // Join the inner task so a panic becomes a visible completed job, never a stuck gate.
-            let result =
-                tokio::spawn(
-                    async move { worker_desktop.execute(app, engine, network, action).await },
-                )
-                .await
-                .unwrap_or_else(|_| Err(anyhow::anyhow!("Operation worker stopped unexpectedly")));
+            let worker = tokio::spawn(async move {
+                worker_desktop
+                    .execute(app, engine, network, action, stop)
+                    .await
+            });
+            if abortable {
+                if let Ok(mut state) = desktop.lock() {
+                    if let Some(job) = state.jobs.iter_mut().find(|job| job.job_id == job_id) {
+                        job.abort = Some(worker.abort_handle());
+                    }
+                }
+            }
+            let result = match worker.await {
+                Ok(Err(error)) if error.downcast_ref::<transfer::Stopped>().is_some() => {
+                    Ok(json!({"message": stopped_message, "stopped": true}))
+                }
+                Ok(result) => result,
+                Err(error) if error.is_cancelled() => {
+                    Ok(json!({"message": stopped_message, "stopped": true}))
+                }
+                Err(_) => Err(anyhow::anyhow!("Operation worker stopped unexpectedly")),
+            };
             if let Ok(mut state) = desktop.lock() {
                 if let Some(job) = state.jobs.iter_mut().find(|job| job.job_id == job_id) {
                     job.running = false;
+                    job.abort = None;
+                    job.stop = None;
                     job.completed_at = Some(
                         std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
@@ -1182,6 +1227,23 @@ impl Desktop {
         tauri::async_runtime::spawn_blocking(move || disk.set_upnp_mapping_enabled(enabled))
             .await??;
         network.set_mapping_consent(enabled);
+        Ok(())
+    }
+
+    pub fn stop_operation(&self, project_id: Uuid) -> Result<()> {
+        let state = self.lock()?;
+        let job = state
+            .jobs
+            .iter()
+            .find(|job| job.running && job.project_id == Some(project_id))
+            .context("Nothing is running for this project")?;
+        if let Some(abort) = &job.abort {
+            abort.abort();
+        } else if let Some(stop) = &job.stop {
+            stop.request();
+        } else {
+            anyhow::bail!("This operation can't be stopped");
+        }
         Ok(())
     }
 
@@ -1309,9 +1371,9 @@ impl Desktop {
         engine: Arc<Engine>,
         network: Network,
         action: Action,
+        stop: transfer::Stop,
     ) -> Result<Value> {
         let reload = action.changes_setup();
-        let allow_http = self.options.allow_loopback_http;
         let outcome = match action {
             Action::Join { folder } => {
                 let disk = engine.clone();
@@ -1324,11 +1386,8 @@ impl Desktop {
                         Ok((project, device))
                     })
                     .await??;
-                let disk = engine.clone();
-                let namespaces =
-                    tauri::async_runtime::spawn_blocking(move || disk.namespaces()).await??;
                 network
-                    .reload(namespaces)
+                    .reload()
                     .await
                     .context("Invitation accepted, but network reload failed; reopen desktop")?;
                 // Import is committed even when the inviter is offline or their window is closed.
@@ -1388,7 +1447,7 @@ impl Desktop {
                     Ok(parent)
                 })
                 .await??;
-                let downloaded = mailbox::SupabaseClient::consume_invite_drop(
+                let downloaded = supabase_client::SupabaseClient::consume_invite_drop(
                     &config.url,
                     &config.publishable_key,
                     &id,
@@ -1408,8 +1467,8 @@ impl Desktop {
                 let signed_backend_matches = invite.backend.as_ref().is_some_and(|backend| {
                     backend.backend == protocol::InviteBackend::Supabase
                         && backend.supabase_anon_key.as_str() == config.publishable_key.as_str()
-                        && mailbox::supabase_project_host(&backend.supabase_url).ok()
-                            == mailbox::supabase_project_host(&config.url).ok()
+                        && supabase_client::supabase_project_host(&backend.supabase_url).ok()
+                            == supabase_client::supabase_project_host(&config.url).ok()
                 });
                 if !signed_backend_matches {
                     crypto::zeroize_project_invite(&mut invite);
@@ -1436,11 +1495,8 @@ impl Desktop {
                 let disk = engine.clone();
                 tauri::async_runtime::spawn_blocking(move || disk.import_invite(invite, &folder))
                     .await??;
-                let disk = engine.clone();
-                let namespaces =
-                    tauri::async_runtime::spawn_blocking(move || disk.namespaces()).await??;
                 network
-                    .reload(namespaces)
+                    .reload()
                     .await
                     .context("Invite accepted, but network reload failed; reopen desktop")?;
                 self.automatic_pairing(&engine, &network, project, device, true)
@@ -1469,18 +1525,21 @@ impl Desktop {
                                 .iter()
                                 .map(|warning| warning.share_confirmation.as_str())
                                 .collect::<Vec<_>>()
-                                .join("\n"),
+                                .join("\n\n"),
                         )
-                        .title("Share current version?")
+                        .title(tr("Share current version?", "Güncel sürüm paylaşılsın mı?"))
                         .kind(tauri_plugin_dialog::MessageDialogKind::Warning)
-                        .buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancel)
+                        .buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancelCustom(
+                            tr("Share", "Paylaş").to_owned(),
+                            tr("Cancel", "Vazgeç").to_owned(),
+                        ))
                         .blocking_show())
                 })
                 .await??;
                 if accepted {
                     serde_json::to_value(
                         engine
-                            .send_snapshot(&network, project_id, allow_http)
+                            .send_snapshot_until(&network, project_id, stop)
                             .await?,
                     )?
                 } else {
@@ -1505,9 +1564,7 @@ impl Desktop {
                 if !had_snapshot && root_empty {
                     json!({"message": "Collaborator approved. Add your project files, then Share."})
                 } else if !had_snapshot {
-                    let shared = engine
-                        .send_snapshot(&network, project_id, allow_http)
-                        .await?;
+                    let shared = engine.send_snapshot(&network, project_id).await?;
                     json!({"message": "Collaborator approved. First version shared and ready to receive.", "snapshot_id": shared.snapshot_id})
                 } else {
                     json!({"message": "Collaborator approved for this project."})
@@ -1527,8 +1584,8 @@ impl Desktop {
                 let anon_key = config
                     .supabase_anon_key
                     .context("Supabase is not configured")?;
-                mailbox::validate_supabase_project_url(&url)?;
-                mailbox::validate_supabase_publishable_key(&anon_key)?;
+                supabase_client::validate_supabase_project_url(&url)?;
+                supabase_client::validate_supabase_publishable_key(&anon_key)?;
                 let ref_name = invite_service_ref(&url)?;
                 wait_for_mapping_if_requested(&network).await?;
                 let addresses = invite_addresses(
@@ -1546,7 +1603,7 @@ impl Desktop {
                 let sealed_result = crypto::encrypt_invite_drop(&invite);
                 crypto::zeroize_project_invite(&mut invite);
                 let sealed = sealed_result?;
-                let client = mailbox::SupabaseClient::new(&url, &anon_key, project_id)?;
+                let client = supabase_client::SupabaseClient::new(&url, &anon_key, project_id)?;
                 let accepted = client
                     .create_invite_drop(
                         &engine.identity,
@@ -1597,12 +1654,6 @@ impl Desktop {
                     state.tasks.push(cleanup);
                 }
                 json!({"message": "Invite link copied — paste it within 60 s", "invite_copied": true, "cleared_pending": cleared_pending})
-            }
-            Action::Publish { project_id } => {
-                serde_json::to_value(engine.publish_metadata(project_id, allow_http).await?)?
-            }
-            Action::Refresh { project_id } => {
-                serde_json::to_value(engine.refresh_metadata(project_id, allow_http).await?)?
             }
             Action::Check {
                 project_id,
@@ -1658,7 +1709,7 @@ impl Desktop {
                     disk.paired_peer(project_id, device_id)
                 })
                 .await??;
-                wait_for_peer(self, &network, &peer.peer_id).await?;
+                transfer::or_stop(&stop, wait_for_peer(self, &network, &peer.peer_id)).await?;
                 let peer_device = peer.device_id;
                 match self
                     .receive_with_confirmation(
@@ -1669,6 +1720,7 @@ impl Desktop {
                         peer,
                         snapshot_id,
                         false,
+                        &stop,
                     )
                     .await
                 {
@@ -1694,10 +1746,10 @@ impl Desktop {
                     disk.paired_peer(project_id, device_id)
                 })
                 .await??;
-                wait_for_peer(self, &network, &peer.peer_id).await?;
+                transfer::or_stop(&stop, wait_for_peer(self, &network, &peer.peer_id)).await?;
                 match self
                     .receive_with_confirmation(
-                        &app, &engine, &network, project_id, peer, None, true,
+                        &app, &engine, &network, project_id, peer, None, true, &stop,
                     )
                     .await
                 {
@@ -1754,17 +1806,22 @@ impl Desktop {
                     match action {
                         Action::DeleteBackups { selected } => {
                             let total = selected.iter().try_fold(0u64, |sum, item| sum.checked_add(item.bytes)).context("backup size overflow")?;
-                            let accepted = dialog_app.dialog().message(format!("Delete {} old backups ({:.2} GB)? Each project's newest backup will be kept.", selected.len(), total as f64 / 1_000_000_000.0))
-                                .title("Delete old backups?").buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancel).blocking_show();
+                            let size = total as f64 / f64::from(1u32 << 30);
+                            let message = if is_turkish() {
+                                format!("{} eski yedek silinsin mi ({size:.2} GB)?\n\nHer projenin en yeni yedeği tutulur.", selected.len())
+                            } else {
+                                format!("Delete {} old backups ({size:.2} GB)?\n\nEach project's newest backup will be kept.", selected.len())
+                            };
+                            let accepted = dialog_app.dialog().message(message)
+                                .title(tr("Delete old backups?", "Eski yedekler silinsin mi?")).buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancelCustom(tr("Delete", "Sil").to_owned(), tr("Cancel", "Vazgeç").to_owned())).blocking_show();
                             ensure!(accepted, "Backup deletion cancelled");
                             let bytes = disk.delete_old_backups(&selected)?;
                             Ok(json!({"message": format!("Deleted {bytes} bytes of old backups")}))
                         }
-                        Action::Link { project_id, name, folder, mailbox_url, relay_address } => {
+                        Action::Link { project_id, name, folder } => {
                             ensure!(!project_id.is_nil(), "Project UUID cannot be nil");
-                            if let Some(relay) = &relay_address { let _: network::NetworkConfig = NetworkConfig { rendezvous: vec![(relay.parse()?, String::new())], ..Default::default() }; }
                             let is_existing = disk.store.projects()?.iter().any(|project| project.project_id == project_id);
-                            disk.link(project_id, &name, &folder, mailbox_url.as_deref(), relay_address.as_deref())?;
+                            disk.link(project_id, &name, &folder)?;
                             if !is_existing {
                                 if let Some(default) = disk.default_supabase_config()? {
                                     disk.set_project_backend_config(project_id, ProjectBackendConfig {
@@ -1779,7 +1836,8 @@ impl Desktop {
                         Action::ChangeProjectRoot { project_id, folder } => {
                             let differs = disk.project_root_differs(project_id, &folder)?;
                             if differs {
-                                let accepted = dialog_app.dialog().message("This folder differs from your last shared version").title("Change project folder?").kind(tauri_plugin_dialog::MessageDialogKind::Warning).blocking_show();
+                                let accepted = dialog_app.dialog().message(tr("This folder differs from your last shared version.\n\nUse it as the project folder anyway?", "Bu klasör son paylaştığın sürümden farklı.\n\nYine de proje klasörü olarak kullanılsın mı?")).title(tr("Change project folder?", "Proje klasörü değiştirilsin mi?")).kind(tauri_plugin_dialog::MessageDialogKind::Warning)
+                                    .buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancelCustom(tr("Use this folder", "Bu klasörü kullan").to_owned(), tr("Cancel", "Vazgeç").to_owned())).blocking_show();
                                 ensure!(accepted, "Folder change cancelled");
                             }
                             disk.change_project_root(project_id, &folder, differs)?;
@@ -1819,7 +1877,7 @@ impl Desktop {
                             let message = if let Some(other) = replaced {
                                 format!("Pending approvals for {} were cleared; only one project can accept new devices at a time.", disk.store.project(other)?.name)
                             } else {
-                                "Approval window open for 15 minutes. Ask your collaborator to press Try again, then verify the arriving device before approving.".to_owned()
+                                "Approval window open for 15 minutes. Ask your collaborator to press Ask for approval, then verify the arriving device before approving.".to_owned()
                             };
                             Ok(json!({"message": message}))
                         }
@@ -1876,11 +1934,8 @@ impl Desktop {
             .pairing_window(Duration::from_secs(pairing.remaining_seconds))
             .await?;
         if reload {
-            let disk = engine;
-            let namespaces =
-                tauri::async_runtime::spawn_blocking(move || disk.namespaces()).await??;
             network
-                .reload(namespaces)
+                .reload()
                 .await
                 .context("Project setup saved, but network reload failed; reopen desktop")?;
         }
@@ -1918,10 +1973,14 @@ impl Desktop {
                     "The inviter approved this device for the project.",
                 )
             },
-            _ => ("retry", PairingApprovalState::NotReachable, "Automatic pairing could not complete. Your project remains imported. Ask the inviter to open a pairing window and keep TrackMesh online, then use Try again. Do not reimport or create a new UUID. Both devices need a build supporting automatic pairing."),
+            _ => ("retry", PairingApprovalState::NotReachable, "Automatic pairing could not complete. Your project remains imported. Ask the inviter to open the approval window and keep TrackMesh open, then press Ask for approval. Do not reimport or create a new UUID. Both devices need a build supporting automatic pairing."),
         };
         self.set_pairing_approval(project, device, approval);
         json!({"project_id": project, "invitation_imported": imported, "pairing_state": state, "message": message})
+    }
+
+    pub fn set_language(&self, lang: &str) {
+        trackmesh_core::lang::set_turkish(lang == "tr");
     }
 
     pub fn hide_to_tray(self: &Arc<Self>, app: AppHandle) {
@@ -1941,7 +2000,12 @@ impl Desktop {
             let result = tauri::async_runtime::spawn_blocking(move || -> Result<()> {
                 let shown = engine.as_ref().map(|engine| engine.tray_notice_shown()).transpose()?.unwrap_or(false);
                 if !shown {
-                    dialog_app.dialog().message("TRACKMESH keeps running in the system tray after the window or DAW closes so collaborators can get your versions. Click the tray icon to reopen. Use Close safely or the tray's Quit to exit.").title("TRACKMESH stays available").blocking_show();
+                    let (title, message) = if is_turkish() {
+                        ("TrackMesh açık kalıyor", "Pencere ya da DAW kapanınca TrackMesh saatin yanında çalışmaya devam eder; iş arkadaşların sürümlerini alabilir.\n\nYeniden açmak için saatin yanındaki TrackMesh simgesine tıkla.\n\nTamamen kapatmak için penceredeki ya da simge menüsündeki TrackMesh'ten çık'ı kullan.")
+                    } else {
+                        ("TrackMesh stays available", "TrackMesh keeps running next to the clock after the window or DAW closes, so collaborators can get your versions.\n\nClick the TrackMesh icon next to the clock to reopen it.\n\nTo exit, use Quit TrackMesh in the window or in the icon's menu.")
+                    };
+                    dialog_app.dialog().message(message).title(title).blocking_show();
                     if let Some(engine) = engine { engine.mark_tray_notice_shown()?; }
                 }
                 Ok(())
@@ -1992,8 +2056,14 @@ impl Desktop {
                 if recipients.is_empty() {
                     return Ok(true);
                 }
-                let message = format!("{} can't get your versions while TRACKMESH is closed. Quit? Accepted work will finish before closing.", recipients.join(", "));
-                Ok(dialog_app.dialog().message(message).title("Close safely?").buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancel).blocking_show())
+                // One name per line so a long list stays readable.
+                let names = recipients.iter().map(|name| format!("    • {name}")).collect::<Vec<_>>().join("\n");
+                let (title, message, quit, cancel) = if is_turkish() {
+                    ("TrackMesh kapatılsın mı?", format!("TrackMesh kapalıyken bu kişiler sürümlerini alamaz:\n\n{names}\n\nBaşlamış işler kapanmadan önce biter."), "Çık", "Vazgeç")
+                } else {
+                    ("Quit TrackMesh?", format!("While TrackMesh is closed, these collaborators can't get your versions:\n\n{names}\n\nWork that has already started finishes before TrackMesh closes."), "Quit", "Cancel")
+                };
+                Ok(dialog_app.dialog().message(message).title(title).buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancelCustom(quit.to_owned(), cancel.to_owned())).blocking_show())
             }).await;
             let close = desktop.lock().is_ok_and(|mut state| {
                 state.close_prompt_active = false;
@@ -2086,6 +2156,8 @@ impl Desktop {
                     }
                 ),
                 completed_at: None,
+                abort: None,
+                stop: None,
             });
             prune_finished_jobs(&mut state.jobs);
         }
@@ -2138,21 +2210,12 @@ impl Desktop {
             }
         }
         // Initialization may have installed the runtime while close was waiting for it.
-        let (metadata, peer, plugin) = {
+        let (peer, plugin) = {
             let mut state = self.lock()?;
-            (
-                state.metadata.take(),
-                state.peer.take(),
-                state.plugin.take(),
-            )
+            (state.peer.take(), state.plugin.take())
         };
         if let Some(plugin) = plugin {
             if let Err(error) = plugin.stop().await {
-                errors.push(error.to_string());
-            }
-        }
-        if let Some(metadata) = metadata {
-            if let Err(error) = metadata.stop().await {
                 errors.push(error.to_string());
             }
         }
@@ -2255,7 +2318,7 @@ async fn wait_for_peer(desktop: &Desktop, network: &Network, peer: &str) -> Resu
 }
 
 fn invite_service_ref(url: &str) -> Result<String> {
-    mailbox::validate_supabase_project_url(url)?;
+    supabase_client::validate_supabase_project_url(url)?;
     let raw_host = url
         .strip_prefix("https://")
         .context("Invite links require a Supabase project URL of https://<ref>.supabase.co")?;
@@ -2268,7 +2331,7 @@ fn invite_service_ref(url: &str) -> Result<String> {
     let raw_reference = raw_host
         .strip_suffix(".supabase.co")
         .context("Invite links require a Supabase project URL of https://<ref>.supabase.co")?;
-    let host = mailbox::supabase_project_host(url)?;
+    let host = supabase_client::supabase_project_host(url)?;
     let reference = host
         .strip_suffix(".supabase.co")
         .context("Invite links require a Supabase project URL of https://<ref>.supabase.co")?;
