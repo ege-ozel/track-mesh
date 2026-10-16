@@ -41,12 +41,33 @@ impl Engine {
             .mark_tray_notice_shown(&self.directory)
     }
 
-    /// Collaborators lose access to locally served versions even when currently offline.
-    pub fn shutdown_recipients(&self) -> Result<Vec<String>> {
+    /// Collaborators who would miss this PC's latest version while TrackMesh is closed. Someone known
+    /// to have it already (the same or a newer version, or a receipt for it) is left out, so quitting
+    /// asks nothing when everyone is up to date.
+    pub fn shutdown_recipients(
+        &self,
+        received: &[network::ReceivedSnapshot],
+    ) -> Result<Vec<String>> {
         let mut recipients = std::collections::BTreeSet::new();
         for project in self.store.projects()? {
-            for peer in self.store.peers(Some(project.project_id))? {
-                recipients.insert(peer.name);
+            let Some(latest) = project.latest_local_snapshot else {
+                continue;
+            };
+            for peer in self.project_summary(project.project_id)?.peers {
+                let has_latest = matches!(
+                    peer.known_lineage,
+                    Some(storage::Lineage::Equal | storage::Lineage::RemoteAhead)
+                ) || (project.verified_peer_id.as_deref()
+                    == Some(peer.device.peer_id.as_str())
+                    && project.verified_snapshot_id == Some(latest))
+                    || received.iter().any(|item| {
+                        item.project_id == project.project_id
+                            && item.peer_id == peer.device.peer_id
+                            && item.snapshot_id == latest
+                    });
+                if !has_latest {
+                    recipients.insert(peer.device.name);
+                }
             }
         }
         Ok(recipients.into_iter().collect())

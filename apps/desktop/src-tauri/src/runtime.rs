@@ -2082,7 +2082,7 @@ impl Desktop {
     }
 
     pub fn request_quit(self: &Arc<Self>, app: AppHandle) {
-        let engine = {
+        let (engine, received) = {
             let Ok(mut state) = self.lock() else {
                 return;
             };
@@ -2090,14 +2090,19 @@ impl Desktop {
                 return;
             }
             state.close_prompt_active = true;
-            state.engine.clone()
+            let received = state
+                .network
+                .as_ref()
+                .map(|network| network.status().received_snapshots)
+                .unwrap_or_default();
+            (state.engine.clone(), received)
         };
         let desktop = self.clone();
         tauri::async_runtime::spawn(async move {
             let dialog_app = app.clone();
             let result = tauri::async_runtime::spawn_blocking(move || -> Result<bool> {
-                let recipients = engine.as_ref().map(|engine| engine.shutdown_recipients()).transpose()?.unwrap_or_default();
-                // Nobody loses access without collaborators, so quit needs no confirmation.
+                let recipients = engine.as_ref().map(|engine| engine.shutdown_recipients(&received)).transpose()?.unwrap_or_default();
+                // Everyone already has this PC's latest version (or there is nobody), so quit needs no confirmation.
                 if recipients.is_empty() {
                     return Ok(true);
                 }
