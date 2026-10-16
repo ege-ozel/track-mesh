@@ -18,7 +18,7 @@ constexpr COLORREF surface = RGB(18, 29, 44), paneFill = RGB(20, 31, 47), inputF
 constexpr COLORREF paneBorder = RGB(37, 48, 68), divider = RGB(39, 52, 73);
 constexpr COLORREF buttonFill = RGB(26, 37, 53), buttonHover = RGB(40, 56, 79), buttonBorder = RGB(48, 60, 79), inputBorder = RGB(52, 66, 87);
 constexpr COLORREF text = RGB(233, 237, 245), text2 = RGB(178, 194, 214), muted = RGB(139, 156, 179), link = RGB(170, 200, 235);
-constexpr COLORREF accent = RGB(130, 223, 181), accentHover = RGB(155, 236, 206), accentInk = RGB(16, 37, 29), accentEdge = RGB(196, 245, 222);
+constexpr COLORREF accent = RGB(130, 223, 181), accentHover = RGB(155, 236, 206), accentInk = RGB(16, 37, 29), accentEdge = RGB(228, 255, 242), accentShade = RGB(79, 174, 134);
 constexpr COLORREF warn = RGB(220, 186, 127), danger = RGB(243, 168, 157), badgeText = RGB(156, 170, 189), badgeBorder = RGB(60, 72, 90);
 constexpr Tone idleTone {surface, badgeBorder, badgeText}, onlineTone {RGB(21, 55, 43), RGB(55, 100, 84), accent},
     warnTone {RGB(45, 41, 27), RGB(170, 141, 69), warn}, dangerTone {RGB(53, 34, 41), RGB(113, 64, 74), danger},
@@ -424,14 +424,16 @@ void View::drawItem(const DRAWITEMSTRUCT& item) {
     const auto shade = disabled ? 40 : 100;
     const auto face = primary ? (pressed ? accentHover : accent) : (pressed ? buttonHover : buttonFill);
     rounded(dc, area, px(6), mix(face, backdrop, shade), mix(primary ? accent : buttonBorder, backdrop, shade));
-    // A 1 px lighter top edge gives the one green button a little depth, as `.primary` does in the app.
+    // A lighter top edge and a darker bottom edge, 1 px each, give the one green button a little depth, as `.primary` does in the app.
     if (primary && !disabled) {
-        const auto pen = CreatePen(PS_SOLID, 1, accentEdge);
-        const auto oldPen = SelectObject(dc, pen);
-        MoveToEx(dc, area.left + px(6), area.top + 1, nullptr);
-        LineTo(dc, area.right - px(6), area.top + 1);
-        SelectObject(dc, oldPen);
-        DeleteObject(pen);
+        for (const auto& [y, color] : {std::pair{area.top + 1, accentEdge}, std::pair{area.bottom - 2, accentShade}}) {
+            const auto pen = CreatePen(PS_SOLID, 1, color);
+            const auto oldPen = SelectObject(dc, pen);
+            MoveToEx(dc, area.left + px(6), y, nullptr);
+            LineTo(dc, area.right - px(6), y);
+            SelectObject(dc, oldPen);
+            DeleteObject(pen);
+        }
     }
     label(dc, strongFont, caption, {area.left + px(8), area.top, area.right - px(8), area.bottom}, mix(primary ? accentInk : text, backdrop, shade),
         DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
