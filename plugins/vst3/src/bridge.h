@@ -32,7 +32,9 @@ struct BridgeState {
     std::mutex mutex;
     ProjectId project {};
     ViewStatus view;
-    std::wstring language; // last language the agent sent, kept while it is unreachable
+    // Last language the agent sent, kept while it is unreachable. Until TrackMesh first answers, Windows' display
+    // language decides, as the Desktop does on its first start; otherwise "TrackMesh not reachable" was always English.
+    std::wstring language {PRIMARYLANGID(GetUserDefaultUILanguage()) == LANG_TURKISH ? L"tr" : L"en"};
     std::atomic<uint64_t> generation {0}, save {0}, send {0}, receive {0};
     std::atomic<uint64_t> autoShareChange {0};
     std::atomic<bool> autoShareValue {false};

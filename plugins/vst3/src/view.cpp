@@ -150,10 +150,10 @@ tresult PLUGIN_API View::attached(void* parent, FIDString type) {
     // The projects show as an owner-drawn list rather than a drop-down: nothing to open first, and every
     // part of it uses the card's colours (a closed combo box keeps Windows' light border and arrow).
     picker = make(L"LISTBOX", WS_TABSTOP | WS_VSCROLL | LBS_OWNERDRAWFIXED | LBS_HASSTRINGS | LBS_NOTIFY | LBS_NOINTEGRALHEIGHT,
-        left + 2, 138, 368, 32, Picker, font);
+        left + 2, 138, 338, 32, Picker, font);
     SetWindowTheme(picker, L"DarkMode_Explorer", nullptr); // dark scroll bar on Windows 10 1809 and later
     SendMessageW(picker, LB_SETITEMHEIGHT, 0, px(36)); // rows match the 36 px buttons
-    chooseButton = make(L"BUTTON", WS_TABSTOP | BS_OWNERDRAW, 416, 136, right - 416, 36, Choose, strongFont);
+    chooseButton = make(L"BUTTON", WS_TABSTOP | BS_OWNERDRAW, 386, 136, right - 386, 36, Choose, strongFont); // wide enough for "Bu projeyi kullan"
     // Share and Get sit at the bottom of their panes, as in the app's card.
     sendButton = make(L"BUTTON", WS_TABSTOP | BS_OWNERDRAW, left + 16, 238, paneSplit - 8 - left - 32, 36, Share, strongFont);
     receiveButton = make(L"BUTTON", WS_TABSTOP | BS_OWNERDRAW, paneSplit + 8 + 16, 238, right - paneSplit - 8 - 32, 36, Get, strongFont);
@@ -258,7 +258,7 @@ void View::paint(HWND handle) {
             InflateRect(&frame, px(2), px(2));
             rounded(dc, frame, px(6), inputFill, inputBorder);
         }
-        if (status.projectsMore) paragraph(dc, smallFont, pick(status, L"Showing the first 64 TrackMesh projects.", L"TrackMesh'teki ilk 64 proje gösteriliyor."), box(416, 184, right, 230), muted);
+        if (status.projectsMore) paragraph(dc, smallFont, pick(status, L"Showing the first 64 TrackMesh projects.", L"TrackMesh'teki ilk 64 proje gösteriliyor."), box(386, 184, right, 230), muted);
     }
 
     // A refusal in a red notice, an unreachable agent in amber, anything else as a quiet line; never the status line twice.
@@ -286,7 +286,7 @@ void View::place(HWND control, RECT area) {
 }
 RECT View::pickerArea() const {
     const auto rows = static_cast<int>(std::clamp<size_t>(choices.size(), 1, 5));
-    return box(left + 2, 138, 402, 138 + rows * 36);
+    return box(left + 2, 138, 372, 138 + rows * 36);
 }
 void View::chooseSelected() {
     const auto index = SendMessageW(picker, LB_GETCURSEL, 0, 0);
