@@ -19,6 +19,8 @@ private:
     void drawItem(const DRAWITEMSTRUCT& item);
     void notice(HDC dc, RECT area, const Tone& tone, const std::wstring& value, HFONT textFont, COLORREF ink) const;
     void place(HWND control, RECT area);
+    RECT pickerArea() const; // the visible project list: one 36 px row per project, at most five before it scrolls
+    void chooseSelected();
     std::shared_ptr<Bridge> bridge;
     Plugin* plugin;
     std::vector<ProjectChoice> choices;
@@ -34,7 +36,7 @@ private:
     HWND picker {nullptr}, chooseButton {nullptr}, changeButton {nullptr}, openButton {nullptr};
     HWND autoShareCheckbox {nullptr};
     HFONT font {nullptr}, titleFont {nullptr}, smallFont {nullptr}, strongFont {nullptr}, badgeFont {nullptr};
-    HBRUSH inputBrush {nullptr}; // the project picker's field and list
+    HBRUSH inputBrush {nullptr}; // the project list's background below its rows
     HMODULE viewModule {nullptr};
     bool registeredClass {false};
 };

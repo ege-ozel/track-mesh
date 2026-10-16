@@ -147,9 +147,12 @@ tresult PLUGIN_API View::attached(void* parent, FIDString type) {
         SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(controlFont), TRUE);
         return control;
     };
-    picker = make(L"COMBOBOX", WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL, left, 136, 372, 240, Picker, font);
-    SetWindowTheme(picker, L"DarkMode_CFD", nullptr); // dark closed field on Windows 10 1809 and later
-    SendMessageW(picker, CB_SETITEMHEIGHT, static_cast<WPARAM>(-1), px(28)); // the field matches the 36 px buttons
+    // The projects show as an owner-drawn list rather than a drop-down: nothing to open first, and every
+    // part of it uses the card's colours (a closed combo box keeps Windows' light border and arrow).
+    picker = make(L"LISTBOX", WS_TABSTOP | WS_VSCROLL | LBS_OWNERDRAWFIXED | LBS_HASSTRINGS | LBS_NOTIFY | LBS_NOINTEGRALHEIGHT,
+        left + 2, 138, 368, 32, Picker, font);
+    SetWindowTheme(picker, L"DarkMode_Explorer", nullptr); // dark scroll bar on Windows 10 1809 and later
+    SendMessageW(picker, LB_SETITEMHEIGHT, 0, px(36)); // rows match the 36 px buttons
     chooseButton = make(L"BUTTON", WS_TABSTOP | BS_OWNERDRAW, 416, 136, right - 416, 36, Choose, strongFont);
     // Share and Get sit at the bottom of their panes, as in the app's card.
     sendButton = make(L"BUTTON", WS_TABSTOP | BS_OWNERDRAW, left + 16, 238, paneSplit - 8 - left - 32, 36, Share, strongFont);
@@ -249,7 +252,13 @@ void View::paint(HWND handle) {
             : choices.empty() ? pick(status, L"Add this project's folder in TrackMesh first (Add project).", L"Önce bu projenin klasörünü TrackMesh'e ekle (Proje ekle).")
             : pick(status, L"Choose the TrackMesh project whose folder holds this DAW project.", L"Bu DAW projesinin klasörünü içeren TrackMesh projesini seç.");
         paragraph(dc, font, hint, box(left, 100, right, 128), text2);
-        if (status.projectsMore) label(dc, smallFont, pick(status, L"Showing the first 64 TrackMesh projects.", L"TrackMesh'teki ilk 64 proje gösteriliyor."), box(left, 180, right, 200), muted);
+        // The list's frame, drawn around the child list box like the app's input border.
+        if (status.pickerSupported && !choices.empty()) {
+            auto frame = pickerArea();
+            InflateRect(&frame, px(2), px(2));
+            rounded(dc, frame, px(6), inputFill, inputBorder);
+        }
+        if (status.projectsMore) paragraph(dc, smallFont, pick(status, L"Showing the first 64 TrackMesh projects.", L"TrackMesh'teki ilk 64 proje gösteriliyor."), box(416, 184, right, 230), muted);
     }
 
     // A refusal in a red notice, an unreachable agent in amber, anything else as a quiet line; never the status line twice.
@@ -275,23 +284,39 @@ void View::place(HWND control, RECT area) {
     if (!EqualRect(&current, &area))
         SetWindowPos(control, nullptr, area.left, area.top, area.right - area.left, area.bottom - area.top, SWP_NOZORDER | SWP_NOACTIVATE);
 }
+RECT View::pickerArea() const {
+    const auto rows = static_cast<int>(std::clamp<size_t>(choices.size(), 1, 5));
+    return box(left + 2, 138, 402, 138 + rows * 36);
+}
+void View::chooseSelected() {
+    const auto index = SendMessageW(picker, LB_GETCURSEL, 0, 0);
+    if (index < 0 || static_cast<size_t>(index) >= choices.size()) return;
+    if (plugin->selectProject(choices[static_cast<size_t>(index)].id)) {
+        changing = false; selectionError.clear();
+    } else selectionError = pick(bridge->status(), L"The DAW could not save this project choice. Nothing was changed.", L"DAW bu proje seçimini kaydedemedi. Hiçbir şey değişmedi.");
+    refresh();
+}
 void View::refresh() {
     const auto status = bridge->status();
     bool same = choices.size() == status.projects.size();
     for (size_t i = 0; same && i < choices.size(); ++i)
         same = choices[i].id == status.projects[i].id && choices[i].name == status.projects[i].name && choices[i].folder == status.projects[i].folder;
     if (!same) {
-        const auto index = SendMessageW(picker, CB_GETCURSEL, 0, 0);
+        const auto index = SendMessageW(picker, LB_GETCURSEL, 0, 0);
         const auto selected = index >= 0 && static_cast<size_t>(index) < choices.size() ? choices[static_cast<size_t>(index)].id : ProjectId{};
         choices = status.projects;
-        SendMessageW(picker, CB_RESETCONTENT, 0, 0);
+        SendMessageW(picker, LB_RESETCONTENT, 0, 0);
         for (size_t i = 0; i < choices.size(); ++i) {
             auto entry = choices[i].name;
             if (std::count_if(choices.begin(), choices.end(), [&](const auto& choice) { return choice.name == entry; }) > 1)
                 entry += L" (" + choices[i].folder + L")";
-            SendMessageW(picker, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(entry.c_str()));
-            if (choices[i].id == selected) SendMessageW(picker, CB_SETCURSEL, i, 0);
+            SendMessageW(picker, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(entry.c_str()));
+            if (choices[i].id == selected) SendMessageW(picker, LB_SETCURSEL, i, 0);
         }
+        // With a single project there is nothing to choose between: select it, so Use project is one press.
+        if (choices.size() == 1 && SendMessageW(picker, LB_GETCURSEL, 0, 0) == LB_ERR) SendMessageW(picker, LB_SETCURSEL, 0, 0);
+        place(picker, pickerArea());
+        InvalidateRect(window, nullptr, FALSE); // the list's frame follows its height
     }
     const bool selecting = !status.linked || changing;
     const bool alone = selecting && choices.empty();
@@ -325,7 +350,7 @@ void View::refresh() {
     EnableWindow(sendButton, status.connected && status.shareEnabled);
     EnableWindow(receiveButton, confirming || (status.connected && status.getEnabled));
     EnableWindow(openButton, status.connected && status.desktopAvailable);
-    EnableWindow(chooseButton, status.connected && SendMessageW(picker, CB_GETCURSEL, 0, 0) != CB_ERR);
+    EnableWindow(chooseButton, status.connected && SendMessageW(picker, LB_GETCURSEL, 0, 0) != LB_ERR);
     // Owner-drawn buttons repaint only when asked; ask when their words or colours change.
     const auto labels = status.language + L"|" + status.getLabel + L"|" + status.state + (status.autoShare ? L"|on" : L"|off")
         + (confirming ? L"|confirm" : L"") + (selecting ? L"|select" : L"") + (choices.empty() ? L"|none" : L"");
@@ -339,6 +364,21 @@ void View::refresh() {
 void View::drawItem(const DRAWITEMSTRUCT& item) {
     const auto dc = item.hDC;
     const auto area = item.rcItem;
+    if (item.CtlType == ODT_LISTBOX) {
+        // A project row: the selected one in the green "Connected" tone with an accent edge, like a chosen option.
+        fill(dc, area, inputFill);
+        if (item.itemID == static_cast<UINT>(-1)) return;
+        const bool chosen = (item.itemState & ODS_SELECTED) != 0;
+        const RECT row {area.left + px(4), area.top + px(3), area.right - px(4), area.bottom - px(3)};
+        if (chosen) rounded(dc, row, px(5), onlineTone.fill, onlineTone.edge);
+        const auto length = SendMessageW(item.hwndItem, LB_GETTEXTLEN, item.itemID, 0);
+        std::wstring name(length > 0 ? static_cast<size_t>(length) : 0, L'\0');
+        if (length > 0) SendMessageW(item.hwndItem, LB_GETTEXT, item.itemID, reinterpret_cast<LPARAM>(name.data()));
+        SetBkMode(dc, TRANSPARENT);
+        label(dc, chosen ? strongFont : font, name, {row.left + px(12), row.top, row.right - px(12), row.bottom}, chosen ? accent : text);
+        if ((item.itemState & ODS_FOCUS) && !(item.itemState & ODS_NOFOCUSRECT)) rounded(dc, row, px(5), CLR_INVALID, accent, px(2));
+        return;
+    }
     const bool disabled = (item.itemState & ODS_DISABLED) != 0, pressed = (item.itemState & ODS_SELECTED) != 0;
     const bool focused = (item.itemState & ODS_FOCUS) && !(item.itemState & ODS_NOFOCUSRECT); // keyboard focus only
     const auto status = bridge->status();
@@ -417,20 +457,15 @@ LRESULT CALLBACK View::procedure(HWND handle, UINT message, WPARAM wparam, LPARA
             if (HIWORD(wparam) == BN_CLICKED && LOWORD(wparam) == AutoShare)
                 self->bridge->setAutoShare(!self->bridge->status().autoShare);
             if (HIWORD(wparam) == BN_CLICKED && LOWORD(wparam) == Change) { self->changing = !self->changing; self->selectionError.clear(); self->refresh(); }
-            if (HIWORD(wparam) == CBN_SELCHANGE && LOWORD(wparam) == Picker) self->refresh();
-            if (HIWORD(wparam) == BN_CLICKED && LOWORD(wparam) == Choose) {
-                const auto index = SendMessageW(self->picker, CB_GETCURSEL, 0, 0);
-                if (index >= 0 && static_cast<size_t>(index) < self->choices.size()) {
-                    if (self->plugin->selectProject(self->choices[static_cast<size_t>(index)].id)) {
-                        self->changing = false; self->selectionError.clear();
-                    } else self->selectionError = pick(self->bridge->status(), L"The DAW could not save this project choice. Nothing was changed.", L"DAW bu proje seçimini kaydedemedi. Hiçbir şey değişmedi.");
-                    self->refresh();
-                }
+            if (HIWORD(wparam) == LBN_SELCHANGE && LOWORD(wparam) == Picker) self->refresh();
+            // A double-click on a project, or Use project, links it.
+            if ((HIWORD(wparam) == LBN_DBLCLK && LOWORD(wparam) == Picker) || (HIWORD(wparam) == BN_CLICKED && LOWORD(wparam) == Choose)) {
+                if (self->bridge->status().connected) self->chooseSelected();
             }
             return 0;
         case WM_DRAWITEM: {
             const auto item = reinterpret_cast<DRAWITEMSTRUCT*>(lparam);
-            if (item->CtlType != ODT_BUTTON) break;
+            if (item->CtlType != ODT_BUTTON && item->CtlType != ODT_LISTBOX) break;
             self->drawItem(*item);
             return TRUE;
         }

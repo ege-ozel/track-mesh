@@ -882,3 +882,9 @@ The invite-copied line now reads "Link copied. Valid for 15 minutes and works on
 The VST3 "Open TrackMesh →" link that looked unpainted in some captures was a `PrintWindow` capture artefact: ten on-screen captures of the same state all showed it.
 
 Checks run: `npm run typecheck`, `npm run build`, `cargo fmt --all -- --check`, `cargo check -p trackmesh-desktop --locked --offline`, `cargo clippy -p trackmesh-desktop --lib --bins --locked --offline -- -D warnings`. **Not checked: the running Desktop window with these changes.**
+
+## Plugin project list instead of a drop-down (2026-10-16)
+
+The VST3 project picker is an owner-drawn list box in the card's colours instead of a combo box, whose closed field kept Windows' light border and arrow. Projects show at once as 36 px rows (five, then a dark scroll bar); the chosen row uses the green connected tone. A single project is selected automatically, so Use project is one press; a double-click on a row links it as Use project does. "Showing the first 64 TrackMesh projects." moved beside the list. Saved state, IPC and the 64-project limit are unchanged.
+
+Checks run: `cmake --build .build/vst3 --target TrackMesh`; SDK editor host with a synthetic status pipe for two, one and seven projects. **Not checked: a DAW, scaled DPI, keyboard use of the list.**
