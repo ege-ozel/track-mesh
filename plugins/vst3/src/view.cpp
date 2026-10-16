@@ -224,12 +224,14 @@ void View::paint(HWND handle) {
         {px(left), px(28), titleRight, px(64)}, text);
 
     if (!selecting) {
-        // One status line: a warning, the collaborator's new version in blue, or the state with that version's time.
+        // One status line: a warning (also for split versions and an unfinished Get), the collaborator's new version in blue, or the state with that version's time.
         const auto when = localTime(status.createdAt);
         const auto stamp = collaborator.empty() || when.empty() ? std::wstring() : L" · " + when;
         if (confirming) notice(dc, box(left, 72, right, 118), warnTone, status.shareConfirmation, font, text);
         else if (!status.presenceWarning.empty())
             notice(dc, box(left, 72, right, 118), status.presenceDanger ? dangerTone : warnTone, status.presenceWarning, smallFont, text);
+        else if (status.state == L"DIVERGED" || status.state == L"RECOVERY_REQUIRED")
+            notice(dc, box(left, 72, right, 118), warnTone, status.line, smallFont, text);
         else if (status.state == L"REMOTE_AHEAD") notice(dc, box(left, 76, right, 112), infoTone, status.line + stamp, strongFont, link);
         else if (status.state == L"UP_TO_DATE") paragraph(dc, font, status.line + stamp, box(left, 72, right, 118), text2);
         else {
@@ -244,7 +246,8 @@ void View::paint(HWND handle) {
         paragraph(dc, smallFont, pick(status, L"Saves this folder as a new version ", L"Bu klasörü ") + name + pick(status, L" can get.", L" için yeni bir sürüm olarak kaydeder."),
             {sharePane.left + px(16), sharePane.top + px(10), sharePane.right - px(16), sharePane.top + px(46)}, muted);
         const bool nothingNew = status.state == L"UP_TO_DATE" || status.state == L"LOCAL_AHEAD";
-        const auto getHint = confirming ? std::wstring()
+        // A disabled Get explains nothing here; the status line above says why.
+        const auto getHint = confirming || (!status.getEnabled && !nothingNew) ? std::wstring()
             : nothingNew ? pick(status, L"Nothing new to get.", L"Alınacak yeni sürüm yok.")
             : pick(status, L"Opens TrackMesh on this project. Close the project in your DAW first.", L"TrackMesh'i bu projede açar. Önce projeyi DAW'da kapat.");
         paragraph(dc, smallFont, getHint, {getPane.left + px(16), getPane.top + px(10), getPane.right - px(16), getPane.top + px(46)}, muted);

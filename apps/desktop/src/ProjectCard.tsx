@@ -150,6 +150,10 @@ export function Card({ card, status, jobStartedAt, focusProjectId, act, openAdva
   const primary = rootMissing || project.recovery_required ? 'repair' : candidates.length ? 'approve' : problem ? 'fix'
     : getFirst ? 'get' : peer && !firstShareBlocked ? 'share' : 'invite';
 
+  // While the connection banner shows, the version waiting offline is one more line in it, not a second box.
+  const offlineLine = showOfflineHead && offlineHead ? `${t(`New version from ${peerName}`, `${named(collab, 'abl')} yeni sürüm`)} · ${time(offlineHead.created_at)} · ${t(`available when ${peerName} is online`, `${peerName} bağlanınca alınabilir`)}` : '';
+  const offlineInProblem = !!offlineLine && problem?.section === 'connection';
+
   // The problem banner names the collaborator; the badge then only says the state.
   const badge = pairingApproval === 'PENDING' ? { text: t('Waiting for approval', 'Onay bekleniyor'), tone: '' }
     : online ? { text: t(`Connected · ${peerName}`, `Bağlı · ${peerName}`), tone: 'online' }
@@ -201,7 +205,7 @@ export function Card({ card, status, jobStartedAt, focusProjectId, act, openAdva
     {rootMissing && <section className="notice danger"><strong>{t('Project folder not found', 'Proje klasörü bulunamadı')}</strong><p>{t('It may have been moved, renamed or on a drive that is not connected.', 'Taşınmış, adı değişmiş ya da bağlı olmayan bir sürücüde olabilir.')}</p><div className="actions"><button className="primary" disabled={busy} onClick={() => void chooseProjectRoot()}>{t('Locate folder', 'Klasörü bul')}</button></div></section>}
     {project.recovery_required && <section className="notice danger"><strong>{t('The last Get did not finish.', 'Son alma işlemi bitmedi.')}</strong><p>{t('Close this project in your DAW, then recover it before getting another version.', "Başka bir sürüm almadan önce projeyi DAW'da kapat ve kurtar.")}</p>
       <div className="actions"><button className={rootMissing ? '' : 'primary'} disabled={busy} onClick={() => void recover()}>{t('Recover', 'Kurtar')}</button></div></section>}
-    {problem && <section className={`problem ${problem.tone}`} role="alert"><div><strong>{problem.title}</strong><p>{problem.body}</p></div>
+    {problem && <section className={`problem ${problem.tone}`} role="alert"><div><strong>{problem.title}</strong><p>{problem.body}</p>{offlineInProblem && <p>{offlineLine}</p>}</div>
       <button className={primary === 'fix' ? 'primary' : ''} onClick={() => openAdvanced(projectId, problem.section)}>{problem.fix} →</button></section>}
     {!peer && inviteState === 'WAITING_FOR_GRANT' && <Waiting>{t("Waiting for your collaborator's TrackMesh to confirm this device with the invite service. Keep both apps open.", "İş arkadaşının TrackMesh'inin bu cihazı davet servisine onaylaması bekleniyor. İki uygulamayı da açık tut.")}</Waiting>}
     {!peer && backend === 'SUPABASE' && inviteState === 'UNKNOWN' && <Waiting>{t('Connecting to the invite service…', 'Davet servisine bağlanılıyor…')}</Waiting>}
@@ -227,7 +231,7 @@ export function Card({ card, status, jobStartedAt, focusProjectId, act, openAdva
     {card.grant_problem === 'REJECTED' && peer && <p className="muted">{t(`The invite service didn't accept ${peerName} (the project may already have 3 devices, or too many requests). Direct sharing still works.`, `Davet servisi ${named(collab, 'acc')} kabul etmedi (projede zaten 3 cihaz olabilir ya da çok fazla istek gelmiş olabilir). Doğrudan paylaşım çalışmaya devam eder.`)}</p>}
 
     {remoteAhead && peer?.announcement && <div className="new-version-notice" role="status">{t(`New version from ${peerName}`, `${named(collab, 'abl')} yeni sürüm`)} · {time(peer.announcement.created_at)}</div>}
-    {showOfflineHead && offlineHead && <div className="new-version-notice" role="status">{t(`New version from ${peerName}`, `${named(collab, 'abl')} yeni sürüm`)} · {time(offlineHead.created_at)} · {t(`available when ${peerName} is online`, `${peerName} bağlanınca alınabilir`)}</div>}
+    {showOfflineHead && !offlineInProblem && <div className="new-version-notice" role="status">{offlineLine}</div>}
 
     {peer && (resolveDivergence || resolveLocalChanges) && <section className="notice resolution-box" role="region" aria-label={t('Resolve project versions', 'Sürüm seçimi')}>
       <h3>{resolveLocalChanges && !resolveDivergence ? t("This folder has changes you haven't shared", 'Bu klasörde paylaşmadığın değişiklikler var') : t(`Your version and ${peerName}'s version both changed`, `Senin sürümün de ${named(collab, 'gen')} sürümü de değişti`)}</h3>
@@ -252,7 +256,7 @@ export function Card({ card, status, jobStartedAt, focusProjectId, act, openAdva
         </div>
         <div className="pane">
           {/* One line on what Get does now: the plugin's hand-off, a presence hint, up to date, or what it brings. */}
-          {handoff ? <p className="notice" role="status">{t(`Save and close this project in your DAW, then press Get ${peerName}'s version.`, `Projeyi DAW'da kaydedip kapat, sonra “${named(collab, 'gen')} sürümünü al” düğmesine bas.`)}</p>
+          {handoff ? <p className="handoff" role="status">{t(`Save and close this project in your DAW, then press Get ${peerName}'s version.`, `Projeyi DAW'da kaydedip kapat, sonra “${named(collab, 'gen')} sürümünü al” düğmesine bas.`)}</p>
             : getLine ? <p className="muted" role="status">{getLine}</p>
             : <p className="muted">{upToDate ? t(`You have ${peerName}'s latest version`, `${named(collab, 'gen')} son sürümü sende`)
               : t(`Brings ${peerName}'s latest version into this folder.`, `${named(collab, 'gen')} son sürümünü bu klasöre getirir.`)}</p>}
