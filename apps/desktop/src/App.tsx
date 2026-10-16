@@ -238,6 +238,10 @@ export default function App() {
   const projectlessJobs = (status?.jobs.filter(j => !j.project_id && !(QUIET_SETTINGS.has(j.label) && !j.error)) ?? []).filter((job, _index, all) => job.running
     || (job === all.filter(item => !item.running).slice(-1)[0] && nowSeconds - (job.completed_at ?? nowSeconds) < (job.error ? 120 : 20)));
   const firstRun = !!status?.ready && !projects.length && !setup && offset === 0;
+  // A name nobody chose (the old default or a Windows computer name) reads badly on the other PC, e.g.
+  // "a new version DESKTOP-REAGDL1 can get". Ask for one until it is changed.
+  const deviceName = status?.device?.name ?? '';
+  const unnamedDevice = !!status?.ready && (deviceName === 'My studio PC' || /^(DESKTOP|LAPTOP|PC|WIN)-[A-Z0-9]{4,}$/i.test(deviceName));
   const [title, subtitle] = screenTitles()[screen];
   const runtimeError = error || status?.error || status?.network?.error;
   const nav = (target: Screen, label: string) =>
@@ -273,6 +277,8 @@ export default function App() {
         <p>{t('The project will be saved in', 'Proje şuraya kaydedilecek:')} <button className="path-link" title={t('Open in Explorer', "Gezgin'de aç")} onClick={() => void openInviteParentFolder().catch(err => setError(String(err)))}>{displayPath(inviteParentFolder ?? status.projects_location)}\[{t('project name', 'proje adı')}]</button>{t('.', '')}</p>
         {status.invite_needs_service_fields && <><label className="field">Supabase Project URL<input autoComplete="off" value={inviteServiceUrl} onChange={event => setInviteServiceUrl(event.target.value)} placeholder="https://your-project.supabase.co" /></label>
         <label className="field">Publishable key<input type="password" autoComplete="new-password" value={inviteServiceKey} onChange={event => setInviteServiceKey(event.target.value)} /></label></>}
+        {/* The device request carries this name, so the sender approves a name they recognise. */}
+        <DeviceName name={deviceName} busy={busy} act={act} hint={t('The sender sees this name when approving you.', 'Gönderen seni onaylarken bu adı görür.')} />
         <p className="muted">{t('After you accept, the sender approves you and the project downloads by itself.', 'Kabul edince gönderen seni onaylar ve proje kendiliğinden iner.')}</p>
         <div className="actions">
           <button disabled={busy} onClick={async () => { try { const value = await chooseInviteParentFolder(); if (value) setInviteParentFolder(value); } catch (err) { setError(String(err)); } }}>{t('Choose another folder…', 'Başka klasör seç…')}</button>
@@ -302,8 +308,11 @@ export default function App() {
           {setup === 'link' && <p className="muted">{t('Next you invite your collaborator from the project card.', 'Sonra iş arkadaşını proje kartından davet edersin.')}</p>}
           <div className="actions"><button className="primary" disabled={busy || !folder || (setup === 'link' && !name.trim())} onClick={() => void saveSetup()}>{setup === 'join' ? t('Open invitation file…', 'Davet dosyasını aç…') : t('Add project', 'Projeyi ekle')}</button><button onClick={() => setSetup(null)}>{t('Cancel', 'Vazgeç')}</button></div>
         </section>}
+        {!firstRun && unnamedDevice && <section className="notice">
+          <DeviceName name={deviceName} busy={busy} act={act} hint={t('Give this PC a name your collaborators will recognise. New invites use it; collaborators who already approved this PC keep seeing the old name for now.',
+            'Bu bilgisayara iş arkadaşlarının tanıyacağı bir ad ver. Yeni davetler bu adı kullanır; bu bilgisayarı önceden onaylamış iş arkadaşların şimdilik eski adı görmeye devam eder.')} /></section>}
         {firstRun && <section className="first-run">
-          <DeviceName name={status?.device?.name ?? ''} busy={busy} act={act} hint={t('Your collaborator sees this name. You can change it later in Settings.', "İş arkadaşın bu adı görür. Sonra Ayarlar'dan değiştirebilirsin.")} />
+          <DeviceName name={deviceName} busy={busy} act={act} hint={t('Your collaborator sees this name. You can change it later in Settings.', "İş arkadaşın bu adı görür. Sonra Ayarlar'dan değiştirebilirsin.")} />
           <ol className="first-steps">
             <li><strong>{t('Pick the project folder', 'Proje klasörünü seç')}</strong><span>{t('The folder that holds your Ableton or FL project.', 'Ableton ya da FL projenin olduğu klasör.')}</span></li>
             <li><strong>{t('Invite and approve', 'Davet et ve onayla')}</strong><span>{t('Send a link, then approve your collaborator.', 'Bir bağlantı gönder, sonra iş arkadaşını onayla.')}</span></li>

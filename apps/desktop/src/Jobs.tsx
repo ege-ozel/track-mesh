@@ -197,5 +197,7 @@ export function InviteCopiedNotice({ job }: { job: Job }) {
   }, []);
   const remaining = Math.max(0, 60 - Math.floor((now - (job.completed_at ?? Math.floor(now / 1000)) * 1000) / 1000));
   if (!remaining) return <div className="job" role="status">{t('Clipboard cleared. Copy the invite link again if it was not pasted.', 'Pano temizlendi. Bağlantı yapıştırılmadıysa yeniden kopyala.')}</div>;
-  return <div className="job" role="status">{t('Invite link copied — paste it within 60 s', 'Davet bağlantısı kopyalandı — 60 sn içinde yapıştır')} <strong>({remaining}{t('s left', ' sn kaldı')})</strong></div>;
+  // The link lives 15 minutes and opens once; only the clipboard copy is cleared after 60 s.
+  return <div className="job" role="status">{t('Link copied. Valid for 15 minutes and works once. For safety it is removed from the clipboard after 60 s.',
+    'Bağlantı kopyalandı. 15 dakika ve bir kez geçerli. Güvenlik için 60 sn sonra panodan silinir.')}</div>;
 }

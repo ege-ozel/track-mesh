@@ -159,7 +159,11 @@ export function Card({ card, status, jobStartedAt, focusProjectId, act, openAdva
       : transfer.state === 'PAUSED' ? t('Paused · press Resume getting to continue', "Duraklatıldı · devam etmek için Almaya devam et'e bas")
       : transfer.state === 'RECOVERY_REQUIRED' ? t('Not finished · press Recover above', "Bitmedi · yukarıdaki Kurtar'a bas")
       : t('Waiting to start…', 'Başlaması bekleniyor…')}</span>
-      <span>{noFileData ? (transferDone ? t('Only empty files · nothing to download', 'Yalnızca boş dosyalar · indirilecek bir şey yok') : '') : `${bytes(transfer.completed_bytes)} / ${bytes(transfer.total_bytes)} · ${percent} %`}</span></div>
+      {/* Chunks this PC already holds count as done from the start, so a small change on a large project
+          starts near 100 %. Saying what is left shows that only the changed part travels. */}
+      <span>{noFileData ? (transferDone ? t('Only empty files · nothing to download', 'Yalnızca boş dosyalar · indirilecek bir şey yok') : '')
+        : transferDone ? t('Downloaded · 100 %', 'İndirildi · %100')
+        : t(`${bytes(Math.max(0, transfer.total_bytes - transfer.completed_bytes))} left · ${percent} %`, `${bytes(Math.max(0, transfer.total_bytes - transfer.completed_bytes))} kaldı · %${percent}`)}</span></div>
     {noFileData && !transferDone ? <progress /> : <progress max={noFileData ? 1 : transfer.total_bytes} value={noFileData ? 1 : transfer.completed_bytes} />}
     {transfer.state === 'RECEIVING' && job?.running && <div className="actions"><StopButton key={job.job_id} onStop={stop} /></div>}
     {transferError && <><p className="error">{friendlyError(transferError, collab) ?? transferError}</p><ErrorDetails raw={transferError} collaboratorName={collab} /></>}</div>;
