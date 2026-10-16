@@ -11,19 +11,19 @@ using namespace Steinberg;
 namespace TrackMesh {
 struct Tone { COLORREF fill, edge, ink; };
 namespace {
-constexpr int width = 580, height = 440;
+constexpr int width = 580, height = 372;
 const ViewRect rectangle(0, 0, width, height);
 // The TrackMesh window's tokens (apps/desktop/src/styles.css), so the plugin reads as the same project card.
-constexpr COLORREF background = RGB(11, 16, 24), surface = RGB(18, 29, 44), paneFill = RGB(20, 31, 47), inputFill = RGB(13, 22, 35);
-constexpr COLORREF border = RGB(41, 55, 75), paneBorder = RGB(37, 48, 68), divider = RGB(39, 52, 73);
+constexpr COLORREF surface = RGB(18, 29, 44), paneFill = RGB(20, 31, 47), inputFill = RGB(13, 22, 35);
+constexpr COLORREF paneBorder = RGB(37, 48, 68), divider = RGB(39, 52, 73);
 constexpr COLORREF buttonFill = RGB(26, 37, 53), buttonHover = RGB(40, 56, 79), buttonBorder = RGB(48, 60, 79), inputBorder = RGB(52, 66, 87);
 constexpr COLORREF text = RGB(233, 237, 245), text2 = RGB(178, 194, 214), muted = RGB(139, 156, 179), link = RGB(170, 200, 235);
-constexpr COLORREF accent = RGB(130, 223, 181), accentHover = RGB(155, 236, 206), accentInk = RGB(16, 37, 29);
+constexpr COLORREF accent = RGB(130, 223, 181), accentHover = RGB(155, 236, 206), accentInk = RGB(16, 37, 29), accentEdge = RGB(196, 245, 222);
 constexpr COLORREF warn = RGB(220, 186, 127), danger = RGB(243, 168, 157), badgeText = RGB(156, 170, 189), badgeBorder = RGB(60, 72, 90);
 constexpr Tone idleTone {surface, badgeBorder, badgeText}, onlineTone {RGB(21, 55, 43), RGB(55, 100, 84), accent},
     warnTone {RGB(45, 41, 27), RGB(170, 141, 69), warn}, dangerTone {RGB(53, 34, 41), RGB(113, 64, 74), danger},
     infoTone {RGB(22, 39, 60), RGB(52, 85, 125), link};
-// Content column inside the card, in 96-DPI pixels.
+// Content column, in 96-DPI pixels; the whole window is the card.
 constexpr int left = 32, right = 548, paneSplit = 290;
 enum Control { Share = 1, Get = 2, Picker = 10, Choose = 11, Change = 12, Open = 13, AutoShare = 14 };
 std::mutex classMutex;
@@ -150,17 +150,17 @@ tresult PLUGIN_API View::attached(void* parent, FIDString type) {
     // The projects show as an owner-drawn list rather than a drop-down: nothing to open first, and every
     // part of it uses the card's colours (a closed combo box keeps Windows' light border and arrow).
     picker = make(L"LISTBOX", WS_TABSTOP | WS_VSCROLL | LBS_OWNERDRAWFIXED | LBS_HASSTRINGS | LBS_NOTIFY | LBS_NOINTEGRALHEIGHT,
-        left + 2, 138, 338, 32, Picker, font);
+        left + 2, 106, 338, 32, Picker, font);
     SetWindowTheme(picker, L"DarkMode_Explorer", nullptr); // dark scroll bar on Windows 10 1809 and later
     SendMessageW(picker, LB_SETITEMHEIGHT, 0, px(36)); // rows match the 36 px buttons
-    chooseButton = make(L"BUTTON", WS_TABSTOP | BS_OWNERDRAW, 386, 136, right - 386, 36, Choose, strongFont); // wide enough for "Bu projeyi kullan"
+    chooseButton = make(L"BUTTON", WS_TABSTOP | BS_OWNERDRAW, 386, 104, right - 386, 36, Choose, strongFont); // wide enough for "Bu projeyi kullan"
     // Share and Get sit at the bottom of their panes, as in the app's card.
-    sendButton = make(L"BUTTON", WS_TABSTOP | BS_OWNERDRAW, left + 16, 238, paneSplit - 8 - left - 32, 36, Share, strongFont);
-    receiveButton = make(L"BUTTON", WS_TABSTOP | BS_OWNERDRAW, paneSplit + 8 + 16, 238, right - paneSplit - 8 - 32, 36, Get, strongFont);
-    autoShareCheckbox = make(L"BUTTON", WS_TABSTOP | BS_OWNERDRAW, left, 298, right - left, 24, AutoShare, font);
+    sendButton = make(L"BUTTON", WS_TABSTOP | BS_OWNERDRAW, left + 16, 178, paneSplit - 8 - left - 32, 36, Share, strongFont);
+    receiveButton = make(L"BUTTON", WS_TABSTOP | BS_OWNERDRAW, paneSplit + 8 + 16, 178, right - paneSplit - 8 - 32, 36, Get, strongFont);
+    autoShareCheckbox = make(L"BUTTON", WS_TABSTOP | BS_OWNERDRAW, left, 238, right - left, 24, AutoShare, font);
     // Footer text buttons; refresh() sizes them to their words.
-    changeButton = make(L"BUTTON", WS_TABSTOP | BS_OWNERDRAW, left, 392, 120, 26, Change, strongFont);
-    openButton = make(L"BUTTON", WS_TABSTOP | BS_OWNERDRAW, left, 392, 120, 26, Open, strongFont);
+    changeButton = make(L"BUTTON", WS_TABSTOP | BS_OWNERDRAW, left, 332, 120, 26, Change, strongFont);
+    openButton = make(L"BUTTON", WS_TABSTOP | BS_OWNERDRAW, left, 332, 120, 26, Open, strongFont);
     refresh();
     SetTimer(window, 1, 250, nullptr);
     CPluginView::attached(parent, type);
@@ -196,13 +196,11 @@ void View::paint(HWND handle) {
     const auto dc = CreateCompatibleDC(target);
     const auto bitmap = CreateCompatibleBitmap(target, client.right, client.bottom);
     const auto oldBitmap = SelectObject(dc, bitmap);
-    fill(dc, client, background);
+    fill(dc, client, surface);
     SetBkMode(dc, TRANSPARENT);
     const auto status = bridge->status();
     const bool selecting = !status.linked || changing;
 
-    label(dc, strongFont, L"TrackMesh", box(16, 12, 300, 40), text2);
-    rounded(dc, box(12, 44, 568, 428), px(12), surface, border);
 
     // Title row: project name and the same connection badge as the Desktop card.
     const bool away = status.state == L"AGENT UNAVAILABLE";
@@ -217,59 +215,62 @@ void View::paint(HWND handle) {
     int titleRight = px(right);
     if (!badge.empty()) {
         const auto badgeWidth = std::min(textWidth(dc, badgeFont, badge) + px(26), px(260));
-        RECT pill {px(right) - badgeWidth, px(66), px(right), px(90)};
+        RECT pill {px(right) - badgeWidth, px(34), px(right), px(58)};
         rounded(dc, pill, (pill.bottom - pill.top) / 2, tone->fill, tone->edge);
         label(dc, badgeFont, badge, {pill.left + px(12), pill.top, pill.right - px(12), pill.bottom}, tone->ink, DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
         titleRight = pill.left - px(12);
     }
     label(dc, titleFont, selecting ? pick(status, L"Which TrackMesh project is this?", L"Bu hangi TrackMesh projesi?") : status.name,
-        {px(left), px(60), titleRight, px(96)}, text);
+        {px(left), px(28), titleRight, px(64)}, text);
 
     if (!selecting) {
-        if (confirming) {
-            notice(dc, box(left, 104, right, 178), warnTone, status.shareConfirmation, font, text);
-        } else {
-            if (status.presenceWarning.empty()) paragraph(dc, font, status.line, box(left, 102, right, 140), text2);
-            else notice(dc, box(left, 102, right, 142), status.presenceDanger ? dangerTone : warnTone, status.presenceWarning, smallFont, text);
-            // The collaborator's latest version, in local time; a blue notice when it is newer than ours.
-            const auto when = localTime(status.createdAt);
-            if (!collaborator.empty() && !when.empty()) {
-                if (status.state == L"REMOTE_AHEAD") notice(dc, box(left, 148, right, 180), infoTone, pick(status, L"New version from ", L"Yeni sürüm: ") + collaborator + L" · " + when, strongFont, link);
-                else label(dc, smallFont, pick(status, L"Latest version from ", L"Son sürüm: ") + collaborator + L" · " + when, box(left, 148, right, 180), muted);
-            }
+        // One status line: a warning, the collaborator's new version in blue, or the state with that version's time.
+        const auto when = localTime(status.createdAt);
+        const auto stamp = collaborator.empty() || when.empty() ? std::wstring() : L" · " + when;
+        if (confirming) notice(dc, box(left, 72, right, 118), warnTone, status.shareConfirmation, font, text);
+        else if (!status.presenceWarning.empty())
+            notice(dc, box(left, 72, right, 118), status.presenceDanger ? dangerTone : warnTone, status.presenceWarning, smallFont, text);
+        else if (status.state == L"REMOTE_AHEAD") notice(dc, box(left, 76, right, 112), infoTone, status.line + stamp, strongFont, link);
+        else if (status.state == L"UP_TO_DATE") paragraph(dc, font, status.line + stamp, box(left, 72, right, 118), text2);
+        else {
+            paragraph(dc, font, status.line, box(left, 70, right, 96), text2);
+            if (!stamp.empty()) label(dc, smallFont, pick(status, L"Latest version from ", L"Son sürüm: ") + collaborator + stamp, box(left, 96, right, 118), muted);
         }
-        // Two panes, each with one line on what its button does.
+        // Two panes, each with one line on what its button does; none while Share waits for a second press.
         const auto name = collaborator.empty() ? pick(status, L"your collaborator", L"iş arkadaşın") : collaborator;
-        const RECT sharePane = box(left, 188, paneSplit - 8, 288), getPane = box(paneSplit + 8, 188, right, 288);
+        const RECT sharePane = box(left, 128, paneSplit - 8, 228), getPane = box(paneSplit + 8, 128, right, 228);
         rounded(dc, sharePane, px(8), paneFill, paneBorder);
         rounded(dc, getPane, px(8), paneFill, paneBorder);
         paragraph(dc, smallFont, pick(status, L"Saves this folder as a new version ", L"Bu klasörü ") + name + pick(status, L" can get.", L" için yeni bir sürüm olarak kaydeder."),
             {sharePane.left + px(16), sharePane.top + px(10), sharePane.right - px(16), sharePane.top + px(46)}, muted);
-        paragraph(dc, smallFont, pick(status, L"Opens TrackMesh on this project. Close the project in your DAW first.", L"TrackMesh'i bu projede açar. Önce projeyi DAW'da kapat."),
-            {getPane.left + px(16), getPane.top + px(10), getPane.right - px(16), getPane.top + px(46)}, muted);
+        const bool nothingNew = status.state == L"UP_TO_DATE" || status.state == L"LOCAL_AHEAD";
+        const auto getHint = confirming ? std::wstring()
+            : nothingNew ? pick(status, L"Nothing new to get.", L"Alınacak yeni sürüm yok.")
+            : pick(status, L"Opens TrackMesh on this project. Close the project in your DAW first.", L"TrackMesh'i bu projede açar. Önce projeyi DAW'da kapat.");
+        paragraph(dc, smallFont, getHint, {getPane.left + px(16), getPane.top + px(10), getPane.right - px(16), getPane.top + px(46)}, muted);
     } else {
         const auto hint = !status.pickerSupported ? (status.connected ? status.line : status.message)
             : choices.empty() ? pick(status, L"Add this project's folder in TrackMesh first (Add project).", L"Önce bu projenin klasörünü TrackMesh'e ekle (Proje ekle).")
             : pick(status, L"Choose the TrackMesh project whose folder holds this DAW project.", L"Bu DAW projesinin klasörünü içeren TrackMesh projesini seç.");
-        paragraph(dc, font, hint, box(left, 100, right, 128), text2);
+        paragraph(dc, font, hint, box(left, 68, right, 96), text2);
         // The list's frame, drawn around the child list box like the app's input border.
         if (status.pickerSupported && !choices.empty()) {
             auto frame = pickerArea();
             InflateRect(&frame, px(2), px(2));
             rounded(dc, frame, px(6), inputFill, inputBorder);
         }
-        if (status.projectsMore) paragraph(dc, smallFont, pick(status, L"Showing the first 64 TrackMesh projects.", L"TrackMesh'teki ilk 64 proje gösteriliyor."), box(386, 184, right, 230), muted);
+        if (status.projectsMore) paragraph(dc, smallFont, pick(status, L"Showing the first 64 TrackMesh projects.", L"TrackMesh'teki ilk 64 proje gösteriliyor."), box(386, 152, right, 198), muted);
     }
 
     // A refusal in a red notice, an unreachable agent in amber, anything else as a quiet line; never the status line twice.
     const auto message = selectionError.empty() ? status.message : selectionError;
     const bool repeated = !selecting && (message == status.line || message == status.presenceWarning);
     if (!message.empty() && !repeated) {
-        if (!selectionError.empty() || status.state == L"ACTION REFUSED") notice(dc, box(left, 330, right, 378), dangerTone, message, smallFont, text);
-        else if (away) notice(dc, box(left, 330, right, 378), warnTone, message, smallFont, text);
-        else paragraph(dc, smallFont, message, box(left, 330, right, 378), muted);
+        if (!selectionError.empty() || status.state == L"ACTION REFUSED") notice(dc, box(left, 270, right, 318), dangerTone, message, smallFont, text);
+        else if (away) notice(dc, box(left, 270, right, 318), warnTone, message, smallFont, text);
+        else paragraph(dc, smallFont, message, box(left, 270, right, 318), muted);
     }
-    fill(dc, box(left, 386, right, 387), divider);
+    fill(dc, box(left, 326, right, 327), divider);
 
     BitBlt(target, 0, 0, client.right, client.bottom, dc, 0, 0, SRCCOPY);
     SelectObject(dc, oldBitmap);
@@ -285,8 +286,8 @@ void View::place(HWND control, RECT area) {
         SetWindowPos(control, nullptr, area.left, area.top, area.right - area.left, area.bottom - area.top, SWP_NOZORDER | SWP_NOACTIVATE);
 }
 RECT View::pickerArea() const {
-    const auto rows = static_cast<int>(std::clamp<size_t>(choices.size(), 1, 5));
-    return box(left + 2, 138, 372, 138 + rows * 36);
+    const auto rows = static_cast<int>(std::clamp<size_t>(choices.size(), 1, 4));
+    return box(left + 2, 106, 372, 106 + rows * 36);
 }
 void View::chooseSelected() {
     const auto index = SendMessageW(picker, LB_GETCURSEL, 0, 0);
@@ -338,10 +339,10 @@ void View::refresh() {
         };
         const auto openWidth = measure(openButton), changeWidth = measure(changeButton);
         ReleaseDC(window, dc);
-        if (alone) place(openButton, box(left, 136, left + 200, 172));
-        else place(openButton, {px(right) - openWidth, px(392), px(right), px(418)});
+        if (alone) place(openButton, box(left, 104, left + 200, 140));
+        else place(openButton, {px(right) - openWidth, px(332), px(right), px(358)});
         const auto changeRight = alone ? px(right) : px(right) - openWidth - px(16);
-        place(changeButton, {changeRight - changeWidth, px(392), changeRight, px(418)});
+        place(changeButton, {changeRight - changeWidth, px(332), changeRight, px(358)});
     }
     ShowWindow(sendButton, selecting ? SW_HIDE : SW_SHOW);
     ShowWindow(receiveButton, selecting ? SW_HIDE : SW_SHOW);
@@ -418,11 +419,20 @@ void View::drawItem(const DRAWITEMSTRUCT& item) {
     std::wstring caption = current;
     if (item.CtlID == Share) caption = confirming ? pick(status, L"Share anyway", L"Yine de paylaş") : pick(status, L"Share current version", L"Güncel sürümü paylaş");
     else if (item.CtlID == Get && confirming) caption = pick(status, L"Cancel", L"Vazgeç");
-    // Get opens TrackMesh on this project, hence the ellipsis.
-    else if (item.CtlID == Get) caption = (status.getLabel.empty() ? pick(status, L"Get collaborator's version", L"İş arkadaşının sürümünü al") : status.getLabel) + L"…";
+    // Get opens TrackMesh on this project, hence the ellipsis; the badge already names the collaborator.
+    else if (item.CtlID == Get) caption = pick(status, L"Get version…", L"Sürümü al…");
     const auto shade = disabled ? 40 : 100;
     const auto face = primary ? (pressed ? accentHover : accent) : (pressed ? buttonHover : buttonFill);
     rounded(dc, area, px(6), mix(face, backdrop, shade), mix(primary ? accent : buttonBorder, backdrop, shade));
+    // A 1 px lighter top edge gives the one green button a little depth, as `.primary` does in the app.
+    if (primary && !disabled) {
+        const auto pen = CreatePen(PS_SOLID, 1, accentEdge);
+        const auto oldPen = SelectObject(dc, pen);
+        MoveToEx(dc, area.left + px(6), area.top + 1, nullptr);
+        LineTo(dc, area.right - px(6), area.top + 1);
+        SelectObject(dc, oldPen);
+        DeleteObject(pen);
+    }
     label(dc, strongFont, caption, {area.left + px(8), area.top, area.right - px(8), area.bottom}, mix(primary ? accentInk : text, backdrop, shade),
         DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
     if (focused) rounded(dc, {area.left + px(2), area.top + px(2), area.right - px(2), area.bottom - px(2)}, px(4), CLR_INVALID, primary ? accentInk : accent, px(2));

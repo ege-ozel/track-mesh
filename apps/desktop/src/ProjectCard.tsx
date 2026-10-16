@@ -124,8 +124,10 @@ export function Card({ card, status, jobStartedAt, focusProjectId, act, openAdva
     && act({ kind: 'recover', project_id: projectId, daw_closed: true });
 
   // One problem at a time, most blocking first; each routes to the Advanced section that can fix it.
+  // A missing folder or an unfinished Get comes first; their own notice is the only one shown then.
   let problem: Problem | null = null;
-  if (peer && pairingApproval !== 'PENDING' && pairingApproval !== 'NOT_REACHABLE' && !online && !(job?.running && job.label === 'Check connection'))
+  if (rootMissing || project.recovery_required) problem = null;
+  else if (peer && pairingApproval !== 'PENDING' && pairingApproval !== 'NOT_REACHABLE' && !online && !(job?.running && job.label === 'Check connection'))
     problem = { tone: 'warn', title: t(`TrackMesh can't reach ${peerName}.`, `TrackMesh ${named(collab, 'dat')} ulaşamıyor.`),
       body: t(`Ask ${peerName} to open TrackMesh. If it still fails, check the connection.`, `${named(collab, 'dat')} TrackMesh'i açmasını söyle. Yine olmazsa bağlantıyı kontrol et.`),
       fix: t('Fix connection', 'Bağlantıyı düzelt'), section: 'connection' };
