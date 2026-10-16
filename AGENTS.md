@@ -47,4 +47,4 @@ Use [docs/CODEMAP.md](docs/CODEMAP.md) to select files. Read the local `AGENTS.m
 
 Build/static-check commands and Windows runtime requirements are in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). Do not add or run test/benchmark suites. Report which checks actually ran; historical manual checks are not evidence for a later change.
 
-For a handoff, state the task, affected modules, invariants preserved, checks run, remaining work, and next concrete action. Keep `docs/IMPLEMENTATION.md` as the authoritative progress record; do not create competing status documents.
+For a handoff, state the task, affected modules, invariants preserved, checks run, remaining work, and next concrete action. Keep `docs/IMPLEMENTATION.md` as the authoritative progress record; do not create competing status documents. It is a one-page status plus short new entries; the old log lives in `docs/history/` and is only searched (grep a task, milestone or date), never read whole.
