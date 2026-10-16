@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AdvancedScreen } from './AdvancedScreen';
 import { cancelInviteLink, chooseFolder, chooseInviteParentFolder, closeApp, getStatus, openInviteParentFolder, pasteInviteLink, setLanguage, setUpnpMapping, submitAction } from './api';
 import type { Action, DesktopStatus } from './api';
-import { JobNotice } from './Jobs';
+import { CloseButton, JobNotice, cancelled, friendlyError } from './Jobs';
 import { Card, ProjectTabs } from './ProjectCard';
 import type { AdvancedSection } from './ProjectCard';
 import { DeviceName, SettingsScreen, ZOOM_LEVELS } from './SettingsScreen';
@@ -99,11 +99,6 @@ export default function App() {
       return next;
     });
   }, [status?.jobs]);
-  useEffect(() => {
-    if (!error) return;
-    const timeout = window.setTimeout(() => setError(''), 8000);
-    return () => window.clearTimeout(timeout);
-  }, [error]);
   // Text size: the root zoom keeps every spacing and font in proportion.
   useEffect(() => {
     document.documentElement.style.zoom = String(zoom);
@@ -243,7 +238,10 @@ export default function App() {
   const deviceName = status?.device?.name ?? '';
   const unnamedDevice = !!status?.ready && (deviceName === 'My studio PC' || /^(DESKTOP|LAPTOP|PC|WIN)-[A-Z0-9]{4,}$/i.test(deviceName));
   const [title, subtitle] = screenTitles()[screen];
-  const runtimeError = error || status?.error || status?.network?.error;
+  // Errors stay until closed; a closed backend error comes back only if its text changes.
+  const [closedError, setClosedError] = useState('');
+  const shownError = error || status?.error || status?.network?.error || '';
+  const runtimeError = cancelled(shownError) || shownError === closedError ? '' : shownError;
   const nav = (target: Screen, label: string) =>
     <button className={screen === target ? 'rail-nav active' : 'rail-nav'} aria-current={screen === target ? 'page' : undefined} onClick={() => go(target)}>{label}</button>;
 
@@ -267,7 +265,7 @@ export default function App() {
           <button disabled={busy} onClick={() => void pasteInvite()}>{t('Paste invite link', 'Davet bağlantısını yapıştır')}</button></div>}
         {screen === 'advanced' && <button className="text-button" onClick={() => go('projects')}>{t('← Back to Projects', '← Projelere dön')}</button>}
       </header>
-      {runtimeError && <div className="notice danger" role="alert">{runtimeError}</div>}
+      {runtimeError && <div className="notice danger closable" role="alert"><CloseButton onClose={() => { setError(''); setClosedError(runtimeError); }} />{friendlyError(runtimeError) ?? runtimeError}</div>}
       {status?.closing && <div className="notice">{t('Work finished. TrackMesh is shutting down safely.', 'İşler bitti. TrackMesh güvenle kapanıyor.')}</div>}
       {/* Projectless results (invite link, name, settings) sit at the top so they are seen on any page. */}
       {projectlessJobs.filter(job => job.label !== 'Accept invite link' || !status?.invite_pending).map(job => <JobNotice key={job.job_id} job={job} startedAt={jobStartedAt[job.job_id]} />)}
@@ -308,8 +306,8 @@ export default function App() {
           {setup === 'link' && <p className="muted">{t('Next you invite your collaborator from the project card.', 'Sonra iş arkadaşını proje kartından davet edersin.')}</p>}
           <div className="actions"><button className="primary" disabled={busy || !folder || (setup === 'link' && !name.trim())} onClick={() => void saveSetup()}>{setup === 'join' ? t('Open invitation file…', 'Davet dosyasını aç…') : t('Add project', 'Projeyi ekle')}</button><button onClick={() => setSetup(null)}>{t('Cancel', 'Vazgeç')}</button></div>
         </section>}
-        {!firstRun && unnamedDevice && <section className="notice">
-          <DeviceName name={deviceName} busy={busy} act={act} hint={t('Give this PC a name your collaborators will recognise. New invites use it; collaborators who already approved this PC keep seeing the old name for now.',
+        {!firstRun && status?.ready && <section className={unnamedDevice ? 'notice' : 'device-strip'}>
+          <DeviceName name={deviceName} busy={busy} act={act} collapsible={!unnamedDevice} hint={t('Give this PC a name your collaborators will recognise. New invites use it; collaborators who already approved this PC keep seeing the old name for now.',
             'Bu bilgisayara iş arkadaşlarının tanıyacağı bir ad ver. Yeni davetler bu adı kullanır; bu bilgisayarı önceden onaylamış iş arkadaşların şimdilik eski adı görmeye devam eder.')} /></section>}
         {firstRun && <section className="first-run">
           <DeviceName name={deviceName} busy={busy} act={act} hint={t('Your collaborator sees this name. You can change it later in Settings.', "İş arkadaşın bu adı görür. Sonra Ayarlar'dan değiştirebilirsin.")} />

@@ -157,6 +157,11 @@ impl Engine {
             self.queue_supabase_grant(project, &card)?;
         }
         window.pending.remove(&request);
+        if window.pending.is_empty() {
+            // The invite link opens once: with its device approved, nobody else is coming.
+            // An approved device still gets `Approved` from `Status` without a window.
+            state.window = None;
+        }
         Ok(())
     }
     pub fn reject_pairing(&self, project: Uuid, request: Uuid) -> Result<()> {

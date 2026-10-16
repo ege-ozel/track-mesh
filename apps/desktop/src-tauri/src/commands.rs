@@ -5,7 +5,7 @@ use crate::{
 };
 use std::sync::Arc;
 use tauri::{AppHandle, State};
-use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use uuid::Uuid;
 
 #[tauri::command]
@@ -186,6 +186,8 @@ pub async fn ask(
         app.dialog()
             .message(message)
             .title(title)
+            // Every question confirms something that changes files or access: one warning icon.
+            .kind(MessageDialogKind::Warning)
             .buttons(MessageDialogButtons::OkCancelCustom(ok, cancel))
             .blocking_show()
     })
