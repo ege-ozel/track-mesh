@@ -467,8 +467,8 @@ main {
 .path-link {
   border:0;
   background:transparent;
-  color:var(--link);
-  text-decoration:underline;
+  color:var(--muted);
+  text-decoration:none;
   text-underline-offset:2px;
   cursor:pointer;
   padding:0;
@@ -527,6 +527,11 @@ main {
   display:grid;
   grid-template-columns:1fr 1fr;
   gap:var(--s4)
+}
+/* The plugin's hand-off step: plain text, a little brighter than the pane's muted line, no extra box. */
+.pane .handoff {
+  color:var(--text);
+  margin:0
 }
 .pane {
   border:1px solid var(--border-subtle);
