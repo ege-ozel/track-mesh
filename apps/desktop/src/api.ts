@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 
 export interface SnapshotInfo {
+  project_id: string;
   snapshot_id: string; author_device_id: string; created_at: string;
   author_name: string; metadata_status: 'PENDING' | 'PUBLISHED' | 'REMOTE';
   total_size: number; changed_bytes: number; file_count: number;
@@ -118,6 +119,8 @@ export type Action =
 export const getStatus = (offset: number) => invoke<DesktopStatus>('get_status', { offset });
 export type StorageSummary = { cache_bytes: number | null; backups: { project_id: string; project_name: string; transfer_id: string; path: string; bytes: number; modified_at: number | null; protected: boolean }[]; problems: string[] };
 export const getStorage = () => invoke<StorageSummary>('get_storage');
+export type SnapshotChanges = { added: string[]; removed: string[]; changed: string[]; more: boolean };
+export const snapshotChanges = (projectId: string, snapshotId: string) => invoke<SnapshotChanges>('snapshot_changes', { projectId, snapshotId });
 export const chooseFolder = () => invoke<string | null>('choose_folder');
 export const openProjectFolder = (projectId: string) => invoke<void>('open_project_folder', { projectId });
 export const openPreviousVersion = (projectId: string, transferId: string) => invoke<void>('open_previous_version', { projectId, transferId });

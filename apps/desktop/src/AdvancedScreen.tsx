@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { ask, chooseFolder, stopOperation } from './api';
+import { ask, chooseFolder, snapshotChanges, stopOperation } from './api';
+import type { SnapshotChanges } from './api';
 import type { Action, CheckView, DesktopStatus, ProjectBackend, ProjectBackendConfig, ProjectCard, SnapshotInfo, SupabaseDefaultConfig } from './api';
 import { JobNotice } from './Jobs';
 import { ProjectTabs } from './ProjectCard';
@@ -65,8 +66,23 @@ function comparison(value: string, collab: string | undefined) {
 function Snapshot({ value, empty }: { value: SnapshotInfo | null; empty: string }) {
   return value ? <><div className="snapshot-id">{short(value.snapshot_id)}</div>
     <p>{value.author_name} · {time(value.created_at)}</p>
-    <p>{value.file_count} {t('files', 'dosya')} · {bytes(value.total_size)} · {bytes(value.changed_bytes)} {t('changed', 'değişti')}</p></>
+    <p>{value.file_count} {t('files', 'dosya')} · {bytes(value.total_size)} · {bytes(value.changed_bytes)} {t('changed', 'değişti')}</p>
+    <ChangedFiles projectId={value.project_id} snapshotId={value.snapshot_id} /></>
     : <p className="muted">{empty}</p>;
+}
+
+/** Which files a version added, changed or removed against the one it was made from; loaded when opened. */
+function ChangedFiles({ projectId, snapshotId }: { projectId: string; snapshotId: string }) {
+  const [changes, setChanges] = useState<SnapshotChanges | string | null>(null);
+  const load = () => { if (changes === null) snapshotChanges(projectId, snapshotId).then(setChanges, error => setChanges(String(error))); };
+  const list = (title: string, paths: string[]) => paths.length > 0 && <><p className="muted">{title} ({paths.length})</p><ul className="file-list">{paths.map(path => <li key={path}><code>{path}</code></li>)}</ul></>;
+  return <details className="changed-files" onToggle={event => { if (event.currentTarget.open) load(); }}><summary>{t('Changed files', 'Değişen dosyalar')}</summary>
+    {changes === null ? <p className="muted">{t('Loading…', 'Yükleniyor…')}</p>
+      : typeof changes === 'string' ? <p className="muted">{t("This version's file list is not on this PC.", 'Bu sürümün dosya listesi bu bilgisayarda yok.')}</p>
+      : !changes.added.length && !changes.changed.length && !changes.removed.length ? <p className="muted">{t('No file changed.', 'Hiçbir dosya değişmedi.')}</p>
+      : <>{list(t('Changed', 'Değişen'), changes.changed)}{list(t('Added', 'Eklenen'), changes.added)}{list(t('Removed', 'Silinen'), changes.removed)}
+        {changes.more && <p className="muted">{t('Only the first 200 are shown.', 'Yalnızca ilk 200 tanesi gösteriliyor.')}</p>}</>}
+  </details>;
 }
 
 const known = (value: string | null | undefined) => !value || value === 'UNKNOWN' ? t('unknown', 'bilinmiyor') : value;

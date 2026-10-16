@@ -56,8 +56,14 @@ impl Shared {
         let (summary, projects, more, auto_share, warnings) =
             tokio::task::spawn_blocking(move || -> Result<_> {
                 let (projects, more) = status::projects(&engine)?;
+                // A project removed in TrackMesh reads as unlinked, so the plugin offers the list again.
+                let summary = if engine.store.listed(project)? {
+                    engine.project_summary(project)
+                } else {
+                    Err(anyhow::anyhow!("project was removed from TrackMesh"))
+                };
                 Ok((
-                    engine.project_summary(project),
+                    summary,
                     projects,
                     more,
                     engine.auto_share_enabled(project)?,

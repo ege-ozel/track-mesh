@@ -45,6 +45,7 @@ pub use sending::SendStatus;
 mod ipc;
 mod retention;
 pub use retention::{BackupSelection, BackupSummary, StorageSummary};
+pub use snapshots::SnapshotChanges;
 mod snapshots;
 #[cfg(windows)]
 pub use ipc::{plugin_pipe_name, PluginDesktopRequest, PluginRuntime};

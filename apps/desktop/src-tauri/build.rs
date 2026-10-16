@@ -3,6 +3,7 @@ fn main() {
         tauri_build::AppManifest::new().commands(&[
             "get_status",
             "get_storage",
+            "snapshot_changes",
             "choose_folder",
             "open_project_folder",
             "open_projects_location",

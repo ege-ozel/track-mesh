@@ -1,6 +1,6 @@
 //! Snapshot creation shares the existing lock and transactional commit boundary.
 use crate::Engine;
-use anyhow::{ensure, Result};
+use anyhow::{ensure, Context, Result};
 use protocol::SignedSnapshot;
 use snapshot::{ScanOptions, Stop};
 use std::path::Path;
@@ -70,5 +70,75 @@ impl Engine {
         drop(lease);
         self.maintain_storage_if_idle();
         Ok(signed)
+    }
+}
+
+/// Which files a version added, removed or changed against the version it was made from.
+#[derive(serde::Serialize, Default)]
+pub struct SnapshotChanges {
+    pub added: Vec<String>,
+    pub removed: Vec<String>,
+    pub changed: Vec<String>,
+    /// More than `CHANGE_LIST_LIMIT` paths in total; the lists are cut.
+    pub more: bool,
+}
+const CHANGE_LIST_LIMIT: usize = 200;
+
+impl Engine {
+    /// Compares a stored version's file list with its parent's. A first version lists every file as
+    /// added; a version whose file list is not on this PC returns an error.
+    pub fn snapshot_changes(&self, project: Uuid, snapshot: Uuid) -> Result<SnapshotChanges> {
+        let current = self
+            .store
+            .snapshot(snapshot)?
+            .context("this version's file list is not on this PC")?;
+        anyhow::ensure!(
+            current.manifest.project_id == project,
+            "version belongs to another project"
+        );
+        let parent: std::collections::HashMap<String, String> =
+            match current.manifest.parent_snapshot_id {
+                Some(id) => self
+                    .store
+                    .snapshot(id)?
+                    .map(|parent| {
+                        parent
+                            .manifest
+                            .files
+                            .into_iter()
+                            .map(|file| (file.relative_path, file.blake3))
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+                None => Default::default(),
+            };
+        let mut changes = SnapshotChanges::default();
+        let mut seen = std::collections::HashSet::new();
+        for file in &current.manifest.files {
+            seen.insert(file.relative_path.as_str());
+            match parent.get(&file.relative_path) {
+                None => changes.added.push(file.relative_path.clone()),
+                Some(hash) if *hash != file.blake3 => {
+                    changes.changed.push(file.relative_path.clone())
+                }
+                Some(_) => {}
+            }
+        }
+        changes.removed = parent
+            .keys()
+            .filter(|path| !seen.contains(path.as_str()))
+            .cloned()
+            .collect();
+        changes.removed.sort();
+        let total = changes.added.len() + changes.removed.len() + changes.changed.len();
+        changes.more = total > CHANGE_LIST_LIMIT;
+        for list in [
+            &mut changes.changed,
+            &mut changes.added,
+            &mut changes.removed,
+        ] {
+            list.truncate(CHANGE_LIST_LIMIT);
+        }
+        Ok(changes)
     }
 }

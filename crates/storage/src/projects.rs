@@ -77,6 +77,18 @@ impl Store {
         tx.commit()?;
         Ok(())
     }
+    /// Whether the project is on the list (linked and not removed).
+    pub fn listed(&self, id: Uuid) -> Result<bool> {
+        Ok(self
+            .lock()?
+            .query_row(
+                "SELECT removed=0 FROM projects WHERE project_id=?1",
+                [id.to_string()],
+                |r| r.get(0),
+            )
+            .optional()?
+            .unwrap_or(false))
+    }
     pub fn restore_project(&self, id: Uuid) -> Result<()> {
         let changed = self.lock()?.execute(
             "UPDATE projects SET removed=0 WHERE project_id=?1 AND removed=1",

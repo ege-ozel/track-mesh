@@ -441,6 +441,15 @@ pub struct Desktop {
 }
 
 impl Desktop {
+    pub async fn snapshot_changes(
+        &self,
+        project: Uuid,
+        snapshot: Uuid,
+    ) -> Result<trackmesh_core::SnapshotChanges> {
+        let engine = self.lock()?.engine.clone().context("Desktop is starting")?;
+        tauri::async_runtime::spawn_blocking(move || engine.snapshot_changes(project, snapshot))
+            .await?
+    }
     pub async fn storage_summary(&self) -> Result<trackmesh_core::StorageSummary> {
         let engine = self.lock()?.engine.clone().context("Desktop is starting")?;
         tauri::async_runtime::spawn_blocking(move || engine.storage_summary()).await?

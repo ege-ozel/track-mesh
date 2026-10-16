@@ -19,6 +19,18 @@ pub async fn get_storage(
 }
 
 #[tauri::command]
+pub async fn snapshot_changes(
+    desktop: State<'_, Arc<Desktop>>,
+    project_id: uuid::Uuid,
+    snapshot_id: uuid::Uuid,
+) -> Result<trackmesh_core::SnapshotChanges, String> {
+    desktop
+        .snapshot_changes(project_id, snapshot_id)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub async fn get_status(
     app: AppHandle,
     desktop: State<'_, Arc<Desktop>>,

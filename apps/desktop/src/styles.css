@@ -1069,3 +1069,7 @@ progress {
 /* Remove from TrackMesh: a short panel on the card with one checkbox. */
 .remove-box { display:grid; gap:var(--s2) }
 .remove-box .check { display:flex; gap:var(--s2); align-items:center }
+
+/* Changed files under a version: a short, scrollable list of paths. */
+.changed-files summary { cursor:pointer; color:var(--link); font-size:var(--fs-sm) }
+.file-list { margin:0 0 var(--s2); padding-left:var(--s4); max-height:220px; overflow:auto; font-size:var(--fs-sm) }

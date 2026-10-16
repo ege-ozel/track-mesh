@@ -42,6 +42,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::get_status,
             commands::get_storage,
+            commands::snapshot_changes,
             commands::choose_folder,
             commands::open_project_folder,
             commands::open_projects_location,
