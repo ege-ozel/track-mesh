@@ -33,10 +33,24 @@ const UNNAMED: Record<Case, string> = {
  * A collaborator's name with a Turkish case suffix chosen by vowel harmony, e.g. Ege'nin, Mert'e,
  * Burak'tan. An unknown name reads "iş arkadaşın…". English callers use the name as it is.
  */
+// How a name ends when read aloud. A last word of one or two capitals or a digit is spelled out
+// ("Studio B" → "be", "PC" → "ce", "Studio 2" → "iki"), so the suffix reads Studio B'nin, not Studio B'un.
+const SPELLED: Record<string, string> = {
+  A: 'a', B: 'be', C: 'ce', Ç: 'çe', D: 'de', E: 'e', F: 'fe', G: 'ge', Ğ: 'ge', H: 'he', I: 'ı', İ: 'i', J: 'je', K: 'ke', L: 'le',
+  M: 'me', N: 'ne', O: 'o', Ö: 'ö', P: 'pe', Q: 'ku', R: 're', S: 'se', Ş: 'şe', T: 'te', U: 'u', Ü: 'ü', V: 've', W: 've', X: 'iks',
+  Y: 'ye', Z: 'ze', 0: 'sıfır', 1: 'bir', 2: 'iki', 3: 'üç', 4: 'dört', 5: 'beş', 6: 'altı', 7: 'yedi', 8: 'sekiz', 9: 'dokuz',
+};
+function spoken(name: string): string {
+  const word = name.trim().split(/\s+/).pop() ?? '';
+  const end = name.trim().slice(-1);
+  if ((/^[A-ZÇĞİÖŞÜ]{1,2}$/.test(word) || /[0-9]/.test(end)) && SPELLED[end]) return SPELLED[end];
+  return name.toLocaleLowerCase('tr').replace(/â/g, 'a').replace(/î/g, 'i').replace(/û/g, 'u');
+}
+
 export function named(name: string | undefined, kind: Case = 'nom'): string {
   if (!name) return UNNAMED[kind];
   if (kind === 'nom') return name;
-  const lower = name.toLocaleLowerCase('tr').replace(/â/g, 'a').replace(/î/g, 'i').replace(/û/g, 'u');
+  const lower = spoken(name);
   const vowels = lower.match(/[aeıioöuü]/g);
   const last = vowels ? vowels[vowels.length - 1] : 'e';
   const end = lower.slice(-1);

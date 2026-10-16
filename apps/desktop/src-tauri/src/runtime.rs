@@ -1653,7 +1653,10 @@ impl Desktop {
                 if let Ok(mut state) = self.lock() {
                     state.tasks.push(cleanup);
                 }
-                json!({"message": "Invite link copied — paste it within 60 s", "invite_copied": true, "cleared_pending": cleared_pending})
+                json!({"message": tr(
+                    "Link copied. Valid for 15 minutes and works once. For safety it is removed from the clipboard after 60 s.",
+                    "Bağlantı kopyalandı. 15 dakika ve bir kez geçerli. Güvenlik için 60 sn sonra panodan silinir.",
+                ), "invite_copied": true, "cleared_pending": cleared_pending})
             }
             Action::Check {
                 project_id,

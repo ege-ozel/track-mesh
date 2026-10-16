@@ -25,21 +25,7 @@
   --warn:#dcba7f;
   --text-2:#b2c2d6;
   --muted:#8b9cb3;
-  --muted-strong:var(--muted);
   --muted-dim:#657992;
-  --muted-soft:var(--muted);
-  --muted-topbar:var(--muted);
-  --muted-code:var(--muted);
-  --muted-empty:var(--muted);
-  --muted-meta:var(--muted);
-  --muted-detail:var(--muted);
-  --muted-snapshot:var(--muted);
-  --muted-label:var(--muted);
-  --muted-tools:var(--text-2);
-  --muted-setup:var(--text-2);
-  --muted-confirm:var(--text-2);
-  --muted-field:var(--text-2);
-  --muted-summary:var(--text-2);
   --verified:#a8c6e6;
   --link:#aac8eb;
   --chip-text:#acc1da;
@@ -135,7 +121,9 @@ button:disabled {
 button.primary {
   background:var(--accent);
   color:var(--accent-ink);
-  border-color:var(--accent)
+  border-color:var(--accent);
+  /* A 1 px lighter top edge: the one green button gets a little depth, nothing else does. */
+  box-shadow:inset 0 1px 0 #ffffff59
 }
 button.primary:hover:enabled {
   background:var(--accent-hover)
@@ -262,7 +250,7 @@ h3 {
   background:transparent;
   border:0;
   border-radius:var(--r-md);
-  color:var(--muted-label);
+  color:var(--muted);
   font-size:var(--fs-md);
   padding:var(--s3);
   min-height:44px
@@ -530,7 +518,7 @@ main {
   align-items:center;
   gap:var(--s3);
   font-size:var(--fs-md);
-  color:var(--muted-label)
+  color:var(--muted)
 }
 .peer-picker select {
   max-width:260px
@@ -555,7 +543,7 @@ main {
   gap:var(--s2);
   align-items:center;
   font-size:var(--fs-md);
-  color:var(--muted-confirm)
+  color:var(--text-2)
 }
 .transfer {
   display:grid;
@@ -656,7 +644,7 @@ progress {
   display:grid;
   gap:var(--field-gap);
   font-size:var(--fs-md);
-  color:var(--muted-field)
+  color:var(--text-2)
 }
 .field-stack {
   display:grid;
@@ -792,7 +780,7 @@ progress {
   border-bottom:1px dashed var(--border-divider)
 }
 .status-rows > div > :first-child {
-  color:var(--muted-label)
+  color:var(--muted)
 }
 .next-step {
   display:grid;
@@ -812,7 +800,7 @@ progress {
 }
 .raw-grid p {
   font-size:var(--fs-sm);
-  color:var(--muted-setup);
+  color:var(--text-2);
   overflow-wrap:anywhere
 }
 .steps-list {
@@ -826,7 +814,7 @@ progress {
   margin:0;
   padding-left:var(--s5);
   font-size:var(--fs-sm);
-  color:var(--muted-detail)
+  color:var(--muted)
 }
 .access-row {
   display:flex;
@@ -864,7 +852,7 @@ progress {
   margin-left:var(--s2)
 }
 .snapshots p {
-  color:var(--muted-snapshot);
+  color:var(--muted);
   font-size:var(--fs-sm);
   margin-top:var(--s1)
 }
@@ -884,7 +872,7 @@ progress {
   cursor:pointer;
   font-size:var(--fs-md);
   font-weight:var(--fw-semi);
-  color:var(--muted-summary);
+  color:var(--text-2);
   padding:var(--s1) 0
 }
 .adv-body details[open] > summary,.setup-panel details[open] > summary {

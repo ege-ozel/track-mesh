@@ -264,7 +264,9 @@ pub fn summarize(
         && summary.root_available
         && !summary.root_empty
         && !summary.project.recovery_required
-        && !summary.active_transfer;
+        && !summary.active_transfer
+        // A share already waiting for the DAW's save would refuse a second press.
+        && !matches!(notice, Some(Notice::Queued | Notice::Saving));
     let get_enabled = route.is_some()
         && (remote.is_some() || hint.is_some())
         && !summary.project.recovery_required
