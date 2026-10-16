@@ -75,7 +75,8 @@ impl SupabaseRuntime {
                 let engine_for_config = engine.clone();
                 let configs = match tokio::task::spawn_blocking(move || -> Result<_> {
                     let mut result = Vec::new();
-                    for project in engine_for_config.store.projects()? {
+                    // Removed projects stay here until their queued access removals reach the service.
+                    for project in engine_for_config.store.projects_with_removed()? {
                         let (config, imported) =
                             engine_for_config.project_backend_with_imported(project.project_id)?;
                         if matches!(config.backend, ProjectBackend::Supabase) {
@@ -455,7 +456,7 @@ impl SupabaseRuntime {
             };
             let engine = monitor_engine.clone();
             if let Ok(Ok(projects)) =
-                tokio::task::spawn_blocking(move || engine.store.projects()).await
+                tokio::task::spawn_blocking(move || engine.store.projects_with_removed()).await
             {
                 for project in projects {
                     if matches!(monitor_engine.project_backend_config(project.project_id), Ok(config) if config.backend == ProjectBackend::Supabase)

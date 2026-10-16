@@ -70,6 +70,7 @@ export interface DesktopStatus {
   device: { device_id: string; name: string; peer_id: string } | null;
   data_directory: string | null;
   projects_location: string;
+  removed_projects: { project_id: string; name: string; root: string }[];
   network: { addresses: string[]; error: string | null; peers: Record<string, Connection>; received_snapshots: { peer_id: string; project_id: string; snapshot_id: string }[]; port_mapping: { consent_enabled: boolean; state: string; tcp: string; udp: string; detail: string | null; external_ip_state: string }; reachability: { state: string; peer: string | null; transport: string | null; at_unix_seconds: number | null } } | null;
   peer_states: Record<string, 'CONNECTED' | 'OFFLINE'>;
   port_status: 'UNVERIFIED' | null;
@@ -106,6 +107,8 @@ export type Action =
   | { kind: 'export_invite'; project_id: string; public_ip?: string | null; external_port?: number | null }
   | { kind: 'copy_invite_link'; project_id: string }
   | { kind: 'revoke' | 'check'; project_id: string; device_id: string }
+  | { kind: 'remove_project'; project_id: string; delete_data: boolean }
+  | { kind: 'restore_project'; project_id: string }
   | { kind: 'receive'; project_id: string; device_id: string; snapshot_id: string | null; daw_closed: boolean }
   | { kind: 'use_peer_version'; project_id: string; device_id: string; daw_closed: boolean }
   | { kind: 'recover'; project_id: string; daw_closed: boolean };

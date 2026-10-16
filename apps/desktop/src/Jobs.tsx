@@ -7,7 +7,50 @@ import { lang, named, t } from './i18n';
 type Job = DesktopStatus['jobs'][number];
 
 /** Closing a file picker is not a failure; such results show nothing. */
-export const cancelled = (raw?: string | null) => !!raw && /File selection cancelled/i.test(raw);
+export const cancelled = (raw?: string | null) => !!raw && /File selection cancelled|Folder change cancelled/i.test(raw);
+
+/** Turkish for backend errors a person can reach, keyed by the start of the English text; the raw text stays under Details. */
+const TURKISH_ERRORS: [string, string][] = [
+  ['Choose a .json filename', '.json uzantılı bir dosya adı seç.'],
+  ['Choose a folder for the project', 'Proje için bir klasör seç.'],
+  ['Choose a new filename', 'Yeni bir dosya adı seç; var olan dosyalar korunur.'],
+  ['Could not open folder in Explorer', "Klasör Gezgin'de açılamadı."],
+  ['Desktop is starting', 'TrackMesh açılıyor ya da kapanıyor. Biraz bekle, sonra tekrar dene.'],
+  ['Desktop session is closing', 'TrackMesh kapanıyor.'],
+  ['Engine is unavailable', 'TrackMesh henüz hazır değil. Biraz bekle, sonra tekrar dene.'],
+  ['Enter both the Supabase Project URL and publishable key', 'Supabase proje adresini ve yayımlanabilir anahtarı gir.'],
+  ['Enter the Supabase Project URL', 'Supabase proje adresini gir.'],
+  ['Enter the Supabase publishable key', 'Supabase yayımlanabilir anahtarını gir.'],
+  ['Folder is not available', 'Klasöre ulaşılamıyor.'],
+  ['Invalid TrackMesh JSON document', 'Bu dosya bir TrackMesh dosyası değil ya da bozuk.'],
+  ['Invitation accepted, but network reload failed', "Davet kabul edildi ama ağ yeniden başlatılamadı. TrackMesh'i kapatıp aç."],
+  ['Invite accepted, but network reload failed', "Davet kabul edildi ama ağ yeniden başlatılamadı. TrackMesh'i kapatıp aç."],
+  ['Project setup saved, but network reload failed', "Proje kaydedildi ama ağ yeniden başlatılamadı. TrackMesh'i kapatıp aç."],
+  ['Invite link could not be created', 'Davet bağlantısı oluşturulamadı. İnternet bağlantını kontrol et, sonra tekrar dene.'],
+  ['Invite link is invalid, expired, or unavailable', 'Davet bağlantısı geçersiz, süresi dolmuş ya da kullanılmış. Yeni bir bağlantı iste.'],
+  ['invalid invitation link', 'Davet bağlantısı geçersiz. Bağlantıyı yeniden kopyala.'],
+  ['Invite links require', 'Davet bağlantıları için Supabase adresi https://<ref>.supabase.co biçiminde olmalı.'],
+  ['No available project folder name', 'Bu adla boş bir proje klasörü oluşturulamadı. Başka bir yer seç.'],
+  ['No invitation link is waiting', 'Bekleyen bir davet bağlantısı yok.'],
+  ['No invite link is open', 'Açık bir davet bağlantısı yok.'],
+  ['No pairing window for this project', 'Bu proje için açık bir onay penceresi yok.'],
+  ['Nothing is running for this project', 'Bu projede süren bir iş yok.'],
+  ['Pairing document exceeds 64 KiB', 'Eşleşme dosyası çok büyük.'],
+  ['Previous version backup is not available', 'Önceki dosyaların yedeği bulunamadı.'],
+  ['Project folder name is empty', 'Proje klasörünün adı boş olamaz.'],
+  ['Public IPv4 and external port must be supplied together', 'Genel IPv4 adresini ve dış portu birlikte gir.'],
+  ['Select and save Supabase for this project', 'Davet bağlantısı oluşturmadan önce bu proje için davet servisini seçip kaydet.'],
+  ['Selected folder could not be resolved', 'Seçilen klasöre ulaşılamadı.'],
+  ['Supabase is not configured', 'Davet servisi ayarlanmamış.'],
+  ['The selected Projects location could not be', 'Seçilen proje konumu oluşturulamadı ya da ulaşılamadı.'],
+  ["This operation can't be stopped", 'Bu iş durdurulamaz.'],
+  ['Too many active operations', 'Çok fazla iş sürüyor. Biri bitince tekrar dene.'],
+  ['Windows Documents folder is unavailable', 'Windows Belgeler klasörüne ulaşılamıyor.'],
+  ['Windows clipboard', 'Windows panosu kullanılamadı. Tekrar dene.'],
+  ['This folder was removed from TrackMesh', "Bu klasör TrackMesh'ten kaldırılmıştı. Ayarlar'daki Kaldırılan projeler bölümünden geri getir."],
+  ['project is not on the list', 'Bu proje listede değil.'],
+  ['project cannot be restored', 'Bu proje geri getirilemiyor.'],
+];
 
 /** A red or amber box stays until its × is pressed; a new run of the same action is a new job and replaces it. */
 const dismissed = new Set<string>();
@@ -32,6 +75,8 @@ export function jobLabel(label: string, collaboratorName?: string) {
     case 'Accept invite link': return t('Accept invite link', 'Davet bağlantısını kabul et');
     case 'Complete pairing': return t('Open pairing reply', 'Eşleşme yanıtını aç');
     case 'Revoke device': return t('Remove access', 'Erişimi kaldır');
+    case 'Remove project': return t('Remove from TrackMesh', "TrackMesh'ten kaldır");
+    case 'Restore project': return t('Bring back', 'Geri getir');
     case 'Export invitation': return t('Save invitation file', 'Davet dosyasını kaydet');
     case 'Copy invite link': return t('Copy invite link', 'Davet bağlantısını kopyala');
     case 'Save pairing reply': return t('Save pairing reply', 'Eşleşme yanıtını kaydet');
@@ -52,6 +97,8 @@ export function jobLabel(label: string, collaboratorName?: string) {
 
 /** Turkish for the result messages the backend writes in English; unknown text stays as it is. */
 const TURKISH_MESSAGES: Record<string, string> = {
+  'Removed from TrackMesh. The folder and its files are unchanged.': "TrackMesh'ten kaldırıldı. Klasör ve dosyaları değişmedi.",
+  'Back in TrackMesh. Invite your collaborator again to share it.': "Proje TrackMesh'e geri geldi. Paylaşmak için iş arkadaşını yeniden davet et.",
   "This folder has changes you haven't shared. Choose which version to keep.": 'Bu klasörde paylaşmadığın değişiklikler var. Hangi sürümün kalacağını seç.',
   'Both versions changed. Choose which version to keep.': 'İki sürüm de değişti. Hangi sürümün kalacağını seç.',
   'Connection check stopped': 'Bağlantı kontrolü durduruldu',
@@ -126,6 +173,10 @@ export function friendlyError(raw: string, collaboratorName?: string): string | 
     return t('This invite link could not be opened. Check the link and try again.', 'Bu davet bağlantısı açılamadı. Bağlantıyı kontrol edip tekrar dene.');
   if (/No TrackMesh invite link on the clipboard/i.test(raw))
     return t('No invite link on the clipboard. Copy the link again, then press Paste invite link.', "Panoda davet bağlantısı yok. Bağlantıyı yeniden kopyala, sonra Davet bağlantısını yapıştır'a bas.");
+  if (lang() === 'tr') {
+    const known = TURKISH_ERRORS.find(([english]) => raw.startsWith(english));
+    if (known) return known[1];
+  }
   if (/Backup deletion cancelled/i.test(raw))
     return t('Nothing was deleted.', 'Hiçbir şey silinmedi.');
   if (/Download cancelled/i.test(raw))
