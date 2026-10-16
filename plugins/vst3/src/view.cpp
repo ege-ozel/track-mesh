@@ -11,7 +11,7 @@ using namespace Steinberg;
 namespace TrackMesh {
 struct Tone { COLORREF fill, edge, ink; };
 namespace {
-constexpr int width = 580, height = 372;
+constexpr int width = 580, height = 384;
 const ViewRect rectangle(0, 0, width, height);
 // The TrackMesh window's tokens (apps/desktop/src/styles.css), so the plugin reads as the same project card.
 constexpr COLORREF surface = RGB(18, 29, 44), paneFill = RGB(20, 31, 47), inputFill = RGB(13, 22, 35);
@@ -155,12 +155,12 @@ tresult PLUGIN_API View::attached(void* parent, FIDString type) {
     SendMessageW(picker, LB_SETITEMHEIGHT, 0, px(36)); // rows match the 36 px buttons
     chooseButton = make(L"BUTTON", WS_TABSTOP | BS_OWNERDRAW, 386, 104, right - 386, 36, Choose, strongFont); // wide enough for "Bu projeyi kullan"
     // Share and Get sit at the bottom of their panes, as in the app's card.
-    sendButton = make(L"BUTTON", WS_TABSTOP | BS_OWNERDRAW, left + 16, 178, paneSplit - 8 - left - 32, 36, Share, strongFont);
-    receiveButton = make(L"BUTTON", WS_TABSTOP | BS_OWNERDRAW, paneSplit + 8 + 16, 178, right - paneSplit - 8 - 32, 36, Get, strongFont);
-    autoShareCheckbox = make(L"BUTTON", WS_TABSTOP | BS_OWNERDRAW, left, 238, right - left, 24, AutoShare, font);
+    sendButton = make(L"BUTTON", WS_TABSTOP | BS_OWNERDRAW, left + 16, 190, paneSplit - 8 - left - 32, 36, Share, strongFont);
+    receiveButton = make(L"BUTTON", WS_TABSTOP | BS_OWNERDRAW, paneSplit + 8 + 16, 190, right - paneSplit - 8 - 32, 36, Get, strongFont);
+    autoShareCheckbox = make(L"BUTTON", WS_TABSTOP | BS_OWNERDRAW, left, 250, right - left, 24, AutoShare, font);
     // Footer text buttons; refresh() sizes them to their words.
-    changeButton = make(L"BUTTON", WS_TABSTOP | BS_OWNERDRAW, left, 332, 120, 26, Change, strongFont);
-    openButton = make(L"BUTTON", WS_TABSTOP | BS_OWNERDRAW, left, 332, 120, 26, Open, strongFont);
+    changeButton = make(L"BUTTON", WS_TABSTOP | BS_OWNERDRAW, left, 344, 120, 26, Change, strongFont);
+    openButton = make(L"BUTTON", WS_TABSTOP | BS_OWNERDRAW, left, 344, 120, 26, Open, strongFont);
     refresh();
     SetTimer(window, 1, 250, nullptr);
     CPluginView::attached(parent, type);
@@ -238,7 +238,7 @@ void View::paint(HWND handle) {
         }
         // Two panes, each with one line on what its button does; none while Share waits for a second press.
         const auto name = collaborator.empty() ? pick(status, L"your collaborator", L"iş arkadaşın") : collaborator;
-        const RECT sharePane = box(left, 128, paneSplit - 8, 228), getPane = box(paneSplit + 8, 128, right, 228);
+        const RECT sharePane = box(left, 128, paneSplit - 8, 240), getPane = box(paneSplit + 8, 128, right, 240);
         rounded(dc, sharePane, px(8), paneFill, paneBorder);
         rounded(dc, getPane, px(8), paneFill, paneBorder);
         paragraph(dc, smallFont, pick(status, L"Saves this folder as a new version ", L"Bu klasörü ") + name + pick(status, L" can get.", L" için yeni bir sürüm olarak kaydeder."),
@@ -266,11 +266,11 @@ void View::paint(HWND handle) {
     const auto message = selectionError.empty() ? status.message : selectionError;
     const bool repeated = !selecting && (message == status.line || message == status.presenceWarning);
     if (!message.empty() && !repeated) {
-        if (!selectionError.empty() || status.state == L"ACTION REFUSED") notice(dc, box(left, 270, right, 318), dangerTone, message, smallFont, text);
-        else if (away) notice(dc, box(left, 270, right, 318), warnTone, message, smallFont, text);
-        else paragraph(dc, smallFont, message, box(left, 270, right, 318), muted);
+        if (!selectionError.empty() || status.state == L"ACTION REFUSED") notice(dc, box(left, 282, right, 330), dangerTone, message, smallFont, text);
+        else if (away) notice(dc, box(left, 282, right, 330), warnTone, message, smallFont, text);
+        else paragraph(dc, smallFont, message, box(left, 282, right, 330), muted);
     }
-    fill(dc, box(left, 326, right, 327), divider);
+    fill(dc, box(left, 338, right, 339), divider);
 
     BitBlt(target, 0, 0, client.right, client.bottom, dc, 0, 0, SRCCOPY);
     SelectObject(dc, oldBitmap);
@@ -340,9 +340,9 @@ void View::refresh() {
         const auto openWidth = measure(openButton), changeWidth = measure(changeButton);
         ReleaseDC(window, dc);
         if (alone) place(openButton, box(left, 104, left + 200, 140));
-        else place(openButton, {px(right) - openWidth, px(332), px(right), px(358)});
+        else place(openButton, {px(right) - openWidth, px(344), px(right), px(370)});
         const auto changeRight = alone ? px(right) : px(right) - openWidth - px(16);
-        place(changeButton, {changeRight - changeWidth, px(332), changeRight, px(358)});
+        place(changeButton, {changeRight - changeWidth, px(344), changeRight, px(370)});
     }
     ShowWindow(sendButton, selecting ? SW_HIDE : SW_SHOW);
     ShowWindow(receiveButton, selecting ? SW_HIDE : SW_SHOW);
