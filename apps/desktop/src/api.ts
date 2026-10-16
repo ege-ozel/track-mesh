@@ -10,6 +10,8 @@ export interface Peer {
   announcement: SnapshotInfo | null;
   history: SnapshotInfo[];
   known_lineage: Lineage | null;
+  /** The last version of this PC's the collaborator confirmed having. */
+  delivered_snapshot?: string | null;
   offline_head: { snapshot_id: string; created_at: string; total_size: number; file_count: number } | null;
 }
 export interface Transfer {

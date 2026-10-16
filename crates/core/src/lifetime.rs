@@ -57,9 +57,7 @@ impl Engine {
                 let has_latest = matches!(
                     peer.known_lineage,
                     Some(storage::Lineage::Equal | storage::Lineage::RemoteAhead)
-                ) || (project.verified_peer_id.as_deref()
-                    == Some(peer.device.peer_id.as_str())
-                    && project.verified_snapshot_id == Some(latest))
+                ) || peer.delivered_snapshot == Some(latest)
                     || received.iter().any(|item| {
                         item.project_id == project.project_id
                             && item.peer_id == peer.device.peer_id

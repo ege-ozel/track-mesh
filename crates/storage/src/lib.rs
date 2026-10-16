@@ -30,7 +30,7 @@ impl Store {
         let mut connection = Connection::open(path)?;
         connection.busy_timeout(std::time::Duration::from_secs(10))?;
         let version: u32 = connection.pragma_query_value(None, "user_version", |r| r.get(0))?;
-        ensure!(version <= 4, "database is from a newer TrackMesh version");
+        ensure!(version <= 5, "database is from a newer TrackMesh version");
         connection.execute_batch(include_str!("schema.sql"))?;
         if version < 2 {
             let tx = connection.transaction()?;
@@ -65,6 +65,24 @@ impl Store {
                 "ALTER TABLE projects ADD COLUMN removed INTEGER NOT NULL DEFAULT 0;",
             )?;
             tx.pragma_update(None, "user_version", 4)?;
+            tx.commit()?;
+        }
+        if version < 5 {
+            // The last version each collaborator confirmed having; projects.verified_* kept only one.
+            let tx =
+                connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+            tx.execute_batch(
+                "CREATE TABLE deliveries (
+                    project_id TEXT NOT NULL REFERENCES projects(project_id),
+                    peer_id TEXT NOT NULL,
+                    snapshot_id TEXT NOT NULL,
+                    at TEXT NOT NULL,
+                    PRIMARY KEY(project_id, peer_id)
+                );
+                INSERT INTO deliveries SELECT project_id,verified_peer_id,verified_snapshot_id,last_verified_at
+                    FROM projects WHERE verified_peer_id IS NOT NULL AND verified_snapshot_id IS NOT NULL AND last_verified_at IS NOT NULL;",
+            )?;
+            tx.pragma_update(None, "user_version", 5)?;
             tx.commit()?;
         }
         Ok(Self {

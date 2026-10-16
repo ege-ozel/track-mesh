@@ -207,8 +207,31 @@ impl Store {
         Ok(())
     }
     pub fn mark_verified(&self, project: Uuid, snapshot: Uuid, peer: &str) -> Result<()> {
-        self.lock()?.execute("UPDATE projects SET last_verified_at=?3,verified_peer_id=?4,verified_snapshot_id=?2 WHERE project_id=?1 AND latest_local_snapshot=?2",params![project.to_string(),snapshot.to_string(),Utc::now().to_rfc3339(),peer])?;
+        let db = self.lock()?;
+        let args = params![
+            project.to_string(),
+            snapshot.to_string(),
+            Utc::now().to_rfc3339(),
+            peer
+        ];
+        db.execute("UPDATE projects SET last_verified_at=?3,verified_peer_id=?4,verified_snapshot_id=?2 WHERE project_id=?1 AND latest_local_snapshot=?2", args)?;
+        // One row per collaborator, so a second or third one is not overwritten.
+        db.execute("INSERT INTO deliveries(project_id,peer_id,snapshot_id,at) SELECT ?1,?4,?2,?3 WHERE EXISTS (SELECT 1 FROM projects WHERE project_id=?1 AND latest_local_snapshot=?2) ON CONFLICT(project_id,peer_id) DO UPDATE SET snapshot_id=excluded.snapshot_id,at=excluded.at", args)?;
         Ok(())
+    }
+    /// The last version of this project the collaborator confirmed having, if any.
+    pub fn delivered(&self, project: Uuid, peer: &str) -> Result<Option<Uuid>> {
+        let value: Option<String> = self
+            .lock()?
+            .query_row(
+                "SELECT snapshot_id FROM deliveries WHERE project_id=?1 AND peer_id=?2",
+                params![project.to_string(), peer],
+                |row| row.get(0),
+            )
+            .optional()?;
+        value
+            .map(|id| Uuid::parse_str(&id).map_err(Into::into))
+            .transpose()
     }
     pub fn lineage(&self, project: Uuid, local: Option<Uuid>, remote: Uuid) -> Result<Lineage> {
         let Some(local) = local else {

@@ -17,6 +17,8 @@ pub struct PeerSummary {
     pub offline_head: Option<OfflineHead>,
     /// Whether this Engine has fetched a head from this peer during its lifetime.
     pub head_fetched: bool,
+    /// The last version of this PC's the collaborator confirmed having.
+    pub delivered_snapshot: Option<uuid::Uuid>,
 }
 
 #[derive(Serialize)]
@@ -94,6 +96,9 @@ impl Engine {
                         file_count: head.file_count,
                     });
                 Ok(PeerSummary {
+                    delivered_snapshot: self
+                        .store
+                        .delivered(project.project_id, &device.peer_id)?,
                     head_fetched: fetched_heads
                         .contains_key(&(project.project_id, device.device_id)),
                     known_lineage: fetched_heads

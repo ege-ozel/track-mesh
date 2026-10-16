@@ -67,6 +67,7 @@ impl Store {
             tx.execute("DELETE FROM snapshots WHERE project_id=?1", [&id])?;
             tx.execute("DELETE FROM project_peers WHERE project_id=?1", [&id])?;
             tx.execute("DELETE FROM mailbox_state WHERE project_id=?1", [&id])?;
+            tx.execute("DELETE FROM deliveries WHERE project_id=?1", [&id])?;
         }
         let changed = tx.execute(
             "UPDATE projects SET removed=?2, latest_local_snapshot=CASE WHEN ?2=2 THEN NULL ELSE latest_local_snapshot END WHERE project_id=?1 AND removed=0",
