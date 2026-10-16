@@ -266,7 +266,7 @@ void View::paint(HWND handle) {
     const auto message = selectionError.empty() ? status.message : selectionError;
     const bool repeated = !selecting && (message == status.line || message == status.presenceWarning);
     if (!message.empty() && !repeated) {
-        if (!selectionError.empty() || status.state == L"ACTION REFUSED") notice(dc, box(left, 282, right, 330), dangerTone, message, smallFont, text);
+        if (!selectionError.empty() || status.refused || status.state == L"ACTION REFUSED") notice(dc, box(left, 282, right, 330), dangerTone, message, smallFont, text);
         else if (away) notice(dc, box(left, 282, right, 330), warnTone, message, smallFont, text);
         else paragraph(dc, smallFont, message, box(left, 282, right, 330), muted);
     }

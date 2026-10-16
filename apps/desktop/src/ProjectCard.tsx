@@ -92,7 +92,9 @@ export function Card({ card, status, jobStartedAt, focusProjectId, act, openAdva
     && !job?.running
     && pairingApproval !== 'PENDING' && pairingApproval !== 'NOT_REACHABLE';
   const rootMissing = !card.root_available;
-  const disabledReceive = busy || !peer || !online || project.recovery_required || divergence || rootMissing;
+  const handoff = status.plugin_handoff?.project_id === projectId;
+  const getLine = peer && status.presence[projectId]?.find(warning => warning.device_id === peer.device.device_id)?.get_line;
+  const disabledReceive = busy || !peer || !online || upToDate || project.recovery_required || divergence || rootMissing;
   const candidates = status.pairing.project_id === projectId ? status.pairing.requests : [];
   const pairingOpen = status.pairing.project_id === projectId;
   const backend = status.project_backends[projectId]?.backend;
@@ -206,7 +208,6 @@ export function Card({ card, status, jobStartedAt, focusProjectId, act, openAdva
     {status.presence[projectId]?.map(warning => <p key={warning.device_id} className={`notice ${warning.both_working ? 'danger' : 'warn'}`} role="status">
       {warning.line}
       {!warning.both_working && ` (${t('since', 'başlangıç')} ${new Date(warning.since * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })})`}</p>)}
-    {status.plugin_handoff?.project_id === projectId && <p className="notice" role="status">{t(`Save and close this project in your DAW, then press Get ${peerName}'s version.`, `Projeyi DAW'da kaydedip kapat, sonra “${named(collab, 'gen')} sürümünü al” düğmesine bas.`)}</p>}
     {folderError && <p className="error">{folderError}</p>}
 
     {candidates.length > 0 && <section className="approval-box"><h3>{t('Someone opened your invite link', 'Biri davet bağlantını açtı')}</h3>{candidates.map(candidate => <div key={candidate.request_id}>
@@ -216,7 +217,7 @@ export function Card({ card, status, jobStartedAt, focusProjectId, act, openAdva
           t('Approve', 'Onayla'), t('Cancel', 'Vazgeç')).catch(() => false) && act({ kind: 'approve_pairing', project_id: projectId, request_id: candidate.request_id })}>{t('Approve', 'Onayla')}</button>
         <button disabled={busy} onClick={() => act({ kind: 'reject_pairing', project_id: projectId, request_id: candidate.request_id })}>{t('Reject', 'Reddet')}</button></div></div>)}</section>}
 
-    {!peer && <section className="invite-flow"><h3>{t('Invite your collaborator', 'İş arkadaşını davet et')}</h3>
+    {!peer && !candidates.length && <section className="invite-flow"><h3>{t('Invite your collaborator', 'İş arkadaşını davet et')}</h3>
       <p className="muted">{t('Copies a private link. Send it to one person; it works once, for 15 minutes.', 'Özel bir bağlantı kopyalar. Tek bir kişiye gönder; bir kez ve 15 dakika boyunca çalışır.')}</p>
       <button className={primary === 'invite' ? 'primary' : ''} disabled={busy || !inviteReady} onClick={() => act({ kind: 'copy_invite_link', project_id: projectId })}>{t('Invite collaborator', 'Davet et')}</button></section>}
     {pairingOpen && !candidates.length && <Waiting action={<button disabled={busy} onClick={() => act({ kind: 'close_pairing', project_id: projectId })}>{t('Stop waiting', 'Beklemeyi bırak')}</button>}>
@@ -250,8 +251,11 @@ export function Card({ card, status, jobStartedAt, focusProjectId, act, openAdva
             : <button className={primary === 'share' && !resolveDivergence && !resolveLocalChanges ? 'primary' : ''} disabled={busy || rootMissing || project.recovery_required} onClick={() => void share()}>{t('Share current version', 'Güncel sürümü paylaş')}</button>}
         </div>
         <div className="pane">
-          {status.presence[projectId]?.filter(warning => warning.device_id === peer.device.device_id).map(warning => <p key={warning.device_id} className="muted" role="status">{warning.get_line}</p>)}
-          {upToDate && <p className="muted">{t(`You have ${peerName}'s latest version`, `${named(collab, 'gen')} son sürümü sende`)}</p>}
+          {/* One line on what Get does now: the plugin's hand-off, a presence hint, up to date, or what it brings. */}
+          {handoff ? <p className="notice" role="status">{t(`Save and close this project in your DAW, then press Get ${peerName}'s version.`, `Projeyi DAW'da kaydedip kapat, sonra “${named(collab, 'gen')} sürümünü al” düğmesine bas.`)}</p>
+            : getLine ? <p className="muted" role="status">{getLine}</p>
+            : <p className="muted">{upToDate ? t(`You have ${peerName}'s latest version`, `${named(collab, 'gen')} son sürümü sende`)
+              : t(`Brings ${peerName}'s latest version into this folder.`, `${named(collab, 'gen')} son sürümünü bu klasöre getirir.`)}</p>}
           <button className={primary === 'get' ? 'primary' : ''} disabled={disabledReceive} onClick={() => void receive()}>{resumable ? t('Resume getting', 'Almaya devam et') : t(`Get ${peerName}'s version`, `${named(collab, 'gen')} sürümünü al`)}</button>
         </div>
       </section></>}

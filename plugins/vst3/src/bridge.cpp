@@ -225,6 +225,7 @@ bool request(HANDLE pipe, const char* event, const std::string& session, const P
     view.linked = !view.name.empty();
     const bool ok = jsonBool(object, "ok");
     view.peerOnline = jsonBool(object, "peer_online");
+    view.refused = !ok;
     if (!ok && view.state.empty()) view.state = L"ACTION REFUSED";
     std::lock_guard<std::mutex> lock(state->mutex);
     if (!view.language.empty()) state->language = view.language;

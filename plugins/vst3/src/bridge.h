@@ -24,6 +24,7 @@ struct ViewStatus {
     bool shareEnabled {false}, getEnabled {false};
     bool autoShareSupported {false}, autoShare {false};
     bool presenceDanger {false};
+    bool refused {false}; // the agent answered ok:false, e.g. a share that did not finish
     std::wstring presenceWarning, shareConfirmation;
     // The Desktop language ("tr" or "en") and the Get button text; older agents send neither.
     std::wstring language, getLabel;
