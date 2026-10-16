@@ -118,6 +118,13 @@ pub enum Action {
         project_id: Uuid,
         device_id: Uuid,
     },
+    RemoveProject {
+        project_id: Uuid,
+        delete_data: bool,
+    },
+    RestoreProject {
+        project_id: Uuid,
+    },
     ExportInvite {
         project_id: Uuid,
         public_ip: Option<String>,
@@ -186,6 +193,8 @@ impl Action {
             | Self::SetProjectBackend { project_id, .. }
             | Self::Pair { project_id }
             | Self::Revoke { project_id, .. }
+            | Self::RemoveProject { project_id, .. }
+            | Self::RestoreProject { project_id }
             | Self::ExportInvite { project_id, .. }
             | Self::CopyInviteLink { project_id }
             | Self::OpenPairing { project_id }
@@ -215,6 +224,8 @@ impl Action {
             Self::CompleteInviteLink { .. } => "Accept invite link",
             Self::Pair { .. } => "Complete pairing",
             Self::Revoke { .. } => "Revoke device",
+            Self::RemoveProject { .. } => "Remove project",
+            Self::RestoreProject { .. } => "Restore project",
             Self::ExportInvite { .. } => "Export invitation",
             Self::CopyInviteLink { .. } => "Copy invite link",
             Self::ExportCard => "Save pairing reply",
@@ -237,6 +248,8 @@ impl Action {
                 | Self::Join { .. }
                 | Self::Pair { .. }
                 | Self::Revoke { .. }
+                | Self::RemoveProject { .. }
+                | Self::RestoreProject { .. }
                 | Self::ApprovePairing { .. }
         )
     }
@@ -305,6 +318,13 @@ pub struct PairingApproval {
 }
 
 #[derive(Clone, Serialize)]
+pub struct RemovedProject {
+    pub project_id: Uuid,
+    pub name: String,
+    pub root: String,
+}
+
+#[derive(Clone, Serialize)]
 pub struct Device {
     device_id: Uuid,
     name: String,
@@ -340,6 +360,8 @@ pub struct DesktopStatus {
     pub device: Option<Device>,
     pub data_directory: Option<String>,
     pub projects_location: String,
+    /// Projects removed with their data kept; Settings can bring them back.
+    pub removed_projects: Vec<RemovedProject>,
     pub error: Option<String>,
     pub network: Option<NetworkStatus>,
     pub peer_states: HashMap<String, PeerConnectionState>,
@@ -852,6 +874,18 @@ impl Desktop {
             device,
             data_directory,
             projects_location: documents::display_path(&projects_location),
+            removed_projects: state
+                .engine
+                .as_ref()
+                .and_then(|engine| engine.store.removed_projects().ok())
+                .unwrap_or_default()
+                .into_iter()
+                .map(|project| RemovedProject {
+                    project_id: project.project_id,
+                    name: project.name,
+                    root: documents::display_path(std::path::Path::new(&project.root)),
+                })
+                .collect(),
             error: state.error.clone().or(runtime_error),
             network,
             peer_states,
@@ -1909,6 +1943,14 @@ impl Desktop {
                                 RevokeOutcome::LocalOnly => format!("Removed {name}'s access on this PC."),
                             };
                             Ok(json!({"message": message}))
+                        }
+                        Action::RemoveProject { project_id, delete_data } => {
+                            disk.remove_project(project_id, delete_data)?;
+                            Ok(json!({"message": "Removed from TrackMesh. The folder and its files are unchanged."}))
+                        }
+                        Action::RestoreProject { project_id } => {
+                            disk.restore_project(project_id)?;
+                            Ok(json!({"message": "Back in TrackMesh. Invite your collaborator again to share it."}))
                         }
                         Action::ExportInvite { project_id, .. } => {
                             let invite = disk.export_invite(project_id, addresses)?;

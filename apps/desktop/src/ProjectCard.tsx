@@ -54,6 +54,8 @@ export function Card({ card, status, jobStartedAt, focusProjectId, act, openAdva
   const [selected, setSelected] = useState('');
   const [folderError, setFolderError] = useState('');
   const [keepMinePending, setKeepMinePending] = useState(false);
+  // The remove panel: null closed, otherwise whether to delete this PC's versions and key too.
+  const [removing, setRemoving] = useState<boolean | null>(null);
   const project = card.project;
   const projectId = project.project_id;
   const peer = card.peers.find(p => p.device.device_id === selected) ?? card.peers[0];
@@ -99,6 +101,9 @@ export function Card({ card, status, jobStartedAt, focusProjectId, act, openAdva
     && pairingApproval !== 'PENDING' && pairingApproval !== 'NOT_REACHABLE';
   const rootMissing = !card.root_available;
   const handoff = status.plugin_handoff?.project_id === projectId;
+  // Only the PC that created a project can take a collaborator off the invite service; others leave.
+  const creator = status.supabase_states[projectId] !== 'MEMBER';
+  const leaving = !!peer && !creator;
   const getLine = peer && status.presence[projectId]?.find(warning => warning.device_id === peer.device.device_id)?.get_line;
   const disabledReceive = busy || !peer || !online || upToDate || project.recovery_required || divergence || rootMissing;
   const candidates = status.pairing.project_id === projectId ? status.pairing.requests : [];
@@ -275,7 +280,25 @@ export function Card({ card, status, jobStartedAt, focusProjectId, act, openAdva
       <div className="actions"><button disabled={busy} onClick={() => act({ kind: 'request_pairing', project_id: projectId, device_id: peer.device.device_id })}>{t('Ask for approval', 'Onay iste')}</button></div></section>}
     {statusLine}
 
+    {removing !== null && <section className="notice warn remove-box" role="region" aria-label={t('Remove from TrackMesh', "TrackMesh'ten kaldır")}>
+      <strong>{leaving ? t(`Leave ${project.name}`, `${project.name} projesinden ayrıl`) : t(`Remove ${project.name} from TrackMesh?`, `${project.name} TrackMesh'ten kaldırılsın mı?`)}</strong>
+      <p>{t('The folder and its files stay as they are.', 'Klasör ve içindeki dosyalar olduğu gibi kalır.')}{' '}
+        {!peer ? '' : creator ? mark(t(`${peerName} can no longer get its versions.`, `${peerName} artık bu projenin sürümlerini alamaz.`), collab)
+          : mark(t(`This PC stops sharing with ${peerName}.`, `Bu bilgisayar ${named(collab, 'abl')} sürüm almayı ve göndermeyi bırakır.`), collab)}</p>
+      <label className="check"><input type="checkbox" checked={removing} onChange={event => setRemoving(event.target.checked)} />
+        {t("Also delete this PC's version history and the project key", 'Bu bilgisayardaki sürüm geçmişini ve proje anahtarını da sil')}</label>
+      <p className="muted">{removing ? t('This cannot be undone; coming back needs a new invite.', 'Bu geri alınamaz; projeye dönmek için yeni bir davet gerekir.')
+        : t('You can bring it back later in Settings, Removed projects.', "Sonra Ayarlar'daki Kaldırılan projeler bölümünden geri getirebilirsin.")}</p>
+      <div className="actions"><button className="danger" disabled={busy} onClick={async () => { if (await act({ kind: 'remove_project', project_id: projectId, delete_data: removing })) setRemoving(null); }}>{leaving ? t('Leave project', 'Projeden ayrıl') : t('Remove', 'Kaldır')}</button>
+        <button onClick={() => setRemoving(null)}>{t('Cancel', 'Vazgeç')}</button></div>
+    </section>}
+
     <footer className="card-footer">
+      {/* The creator removes a collaborator here; a member leaves instead. */}
+      {peer && creator && <button className="text-button" disabled={busy} onClick={async () => await ask(t('Remove access?', 'Erişim kaldırılsın mı?'),
+        t(`${peerName} will no longer get versions of ${project.name}.\n\nThey keep the files they already received.`, `${peerName} artık ${project.name} sürümlerini alamayacak.\n\nDaha önce aldığı dosyalar onda kalır.`),
+        t('Remove access', 'Erişimi kaldır'), t('Cancel', 'Vazgeç')).catch(() => false) && act({ kind: 'revoke', project_id: projectId, device_id: peer.device.device_id })}>{t(`Remove ${peerName}`, `${named(collab, 'acc')} çıkar`)}</button>}
+      <button className="text-button" disabled={busy || removing !== null} onClick={() => setRemoving(false)}>{leaving ? t('Leave project', 'Projeden ayrıl') : t('Remove from TrackMesh', "TrackMesh'ten kaldır")}</button>
       {peer && <button className="text-button" disabled={busy || !inviteReady} title={inviteReady ? t('Up to 3 devices per project', 'Proje başına en fazla 3 cihaz') : t('Needs the invite service', 'Davet servisi gerekir')} onClick={() => act({ kind: 'copy_invite_link', project_id: projectId })}>{t('Invite another collaborator', 'Başka birini davet et')}</button>}
       <button className="text-button" onClick={() => openAdvanced(projectId, 'connection')}>{t('Advanced →', 'Gelişmiş →')}</button>
     </footer>

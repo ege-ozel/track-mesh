@@ -1065,3 +1065,7 @@ progress {
 .expand > div { overflow:hidden; min-height:0 }
 .expand .input-row { margin-top:var(--s3) }
 @media (prefers-reduced-motion:reduce) { .expand { transition:none } }
+
+/* Remove from TrackMesh: a short panel on the card with one checkbox. */
+.remove-box { display:grid; gap:var(--s2) }
+.remove-box .check { display:flex; gap:var(--s2); align-items:center }

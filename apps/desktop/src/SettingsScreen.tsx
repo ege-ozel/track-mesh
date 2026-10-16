@@ -52,6 +52,14 @@ export function SettingsScreen({ status, busy, act, poll, onError, zoom, setZoom
       {status?.ready && !status.daw_plugin_settings.length && <p className="muted">{t('Add a project first.', 'Önce bir proje ekle.')}</p>}
     </section>
 
+    {!!status?.removed_projects.length && <section className="settings-block"><h3>{t('Removed projects', 'Kaldırılan projeler')}</h3>
+      <p className="muted">{t('Removed with their versions kept. Bringing one back does not bring back its collaborators; invite them again.', 'Sürümleri saklanarak kaldırıldı. Geri getirmek iş arkadaşlarını geri getirmez; onları yeniden davet et.')}</p>
+      {status.removed_projects.map(project => <div className="toggle-row" key={project.project_id}>
+        <div><strong>{project.name}</strong><p className="muted">{project.root}</p></div>
+        <button disabled={busy} onClick={() => void act({ kind: 'restore_project', project_id: project.project_id })}>{t('Bring back', 'Geri getir')}</button>
+      </div>)}
+    </section>}
+
     <section className="settings-block"><h3>{t('Connection', 'Bağlantı')}</h3>
       <div className="switch-row"><label className="switch"><input type="checkbox" checked={upnp?.consent_enabled ?? false} disabled={busy} onChange={event => { void setUpnpMapping(event.currentTarget.checked).then(poll).catch(err => onError(String(err))); }} /> {t('Set up my router automatically (UPnP)', 'Modemimi kendisi ayarlasın (UPnP)')}</label>
         {upnp?.consent_enabled && <span className={`badge ${upnp.state === 'MAPPED' ? 'online' : upnp.state === 'FAILED' ? 'warn' : ''}`}>{upnp.state === 'MAPPED' ? t('Router set up ✓', 'Modem ayarlandı ✓') : upnp.state === 'FAILED' ? t("Router didn't allow it", 'Modem izin vermedi') : t('Trying…', 'Deneniyor…')}</span>}</div>

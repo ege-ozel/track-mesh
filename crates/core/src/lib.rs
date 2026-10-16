@@ -84,6 +84,22 @@ impl Engine {
             .map(|project| project.project_id)
             .collect();
         settings.retain_auto_share_projects(&directory, &linked)?;
+        // A project removed with its data waits for its queued access removals; once none are left,
+        // its key file and last row go.
+        for project in store.deleted_projects()? {
+            if settings
+                .pending_revokes(Some(project.project_id))
+                .is_empty()
+            {
+                let key = directory
+                    .join("secrets/projects")
+                    .join(format!("{}.protected", project.project_id));
+                if key.exists() {
+                    std::fs::remove_file(&key)?;
+                }
+                store.forget_project(project.project_id)?;
+            }
+        }
         if let Some(device_name) = &settings.value.device_name {
             identity.set_name(device_name)?;
         }
@@ -635,6 +651,20 @@ impl Engine {
             settings.cancel_grant(&self.directory, project, device)?;
             Ok(RevokeOutcome::LocalOnly)
         }
+    }
+    /// Takes a project off the list; the folder and its files stay. Every collaborator loses access
+    /// (on the invite service too when this PC created the project). With `delete_data` this PC's
+    /// versions go now and the project key once the queued removals are sent; without it the
+    /// project can be restored.
+    pub fn remove_project(&self, project: Uuid, delete_data: bool) -> Result<()> {
+        self.store.project(project)?;
+        for peer in self.store.peers(Some(project))? {
+            self.revoke(project, peer.device_id)?;
+        }
+        self.store.remove_project(project, delete_data)
+    }
+    pub fn restore_project(&self, project: Uuid) -> Result<()> {
+        self.store.restore_project(project)
     }
     pub fn export_invite(
         &self,
