@@ -6,6 +6,15 @@ import { lang, named, t } from './i18n';
 
 type Job = DesktopStatus['jobs'][number];
 
+/** Closing a file picker is not a failure; such results show nothing. */
+export const cancelled = (raw?: string | null) => !!raw && /File selection cancelled/i.test(raw);
+
+/** A red or amber box stays until its × is pressed; a new run of the same action is a new job and replaces it. */
+const dismissed = new Set<string>();
+export function CloseButton({ onClose }: { onClose: () => void }) {
+  return <button className="close-x" aria-label={t('Close', 'Kapat')} title={t('Close', 'Kapat')} onClick={onClose}>×</button>;
+}
+
 /** Backend job labels are stable identifiers; these are the words the buttons use. */
 export function jobLabel(label: string, collaboratorName?: string) {
   const who = collaboratorName ?? 'your collaborator';
@@ -115,6 +124,8 @@ export function friendlyError(raw: string, collaboratorName?: string): string | 
     return t('An invite is being accepted. Wait for it to finish before opening another link.', 'Bir davet kabul ediliyor. Başka bir bağlantı açmadan önce bitmesini bekle.');
   if (/This invite link could not be opened/i.test(raw))
     return t('This invite link could not be opened. Check the link and try again.', 'Bu davet bağlantısı açılamadı. Bağlantıyı kontrol edip tekrar dene.');
+  if (/No TrackMesh invite link on the clipboard/i.test(raw))
+    return t('No invite link on the clipboard. Copy the link again, then press Paste invite link.', "Panoda davet bağlantısı yok. Bağlantıyı yeniden kopyala, sonra Davet bağlantısını yapıştır'a bas.");
   if (/Backup deletion cancelled/i.test(raw))
     return t('Nothing was deleted.', 'Hiçbir şey silinmedi.');
   if (/Download cancelled/i.test(raw))
@@ -171,12 +182,15 @@ const STOPPABLE = new Set(['Check connection', 'Share current version', "Get col
 export function JobNotice({ job, startedAt, collaboratorName, online, onStop, children }: {
   job: Job; startedAt: number | undefined; collaboratorName?: string; online?: boolean; onStop?: () => void; children?: ReactNode;
 }) {
+  const [, setClosed] = useState(0);
   const text = jobStatus(job, startedAt, collaboratorName, online);
+  if (!job.running && (cancelled(job.error) || dismissed.has(job.job_id))) return null;
   if (job.running) return <InProgress action={onStop && STOPPABLE.has(job.label) ? <StopButton onStop={onStop} /> : undefined}>{text}</InProgress>;
   const sharedOffline = job.label === 'Share current version' && typeof job.outcome?.snapshot_id === 'string' && !!collaboratorName && !online;
   const tone = job.error || job.outcome?.pairing_state === 'retry' ? 'danger' : sharedOffline ? 'warn' : '';
   // A finished job is a green result line; boxes are only for warnings and errors.
-  return <div className={tone ? `job ${tone}` : 'delivery-receipt'} role="status">
+  return <div className={tone ? `job ${tone} closable` : 'delivery-receipt'} role="status">
+    {tone && <CloseButton onClose={() => { dismissed.add(job.job_id); setClosed(n => n + 1); }} />}
     {text}{children}
     {job.error && <ErrorDetails raw={job.error} collaboratorName={collaboratorName} />}
     {typeof job.outcome?.path === 'string' && <p>{t('Saved file:', 'Kaydedilen dosya:')} <code>{displayPath(job.outcome.path)}</code></p>}

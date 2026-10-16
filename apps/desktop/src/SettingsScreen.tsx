@@ -11,10 +11,20 @@ type Act = (action: Action) => Promise<boolean>;
 export const ZOOM_LEVELS = [{ value: 1, label: 'Normal' }, { value: 1.15, label: 'Large' }, { value: 1.3, label: 'Larger' }] as const;
 const zoomLabel = (label: string) => label === 'Large' ? t('Large', 'Büyük') : label === 'Larger' ? t('Larger', 'Daha büyük') : t('Normal', 'Normal');
 
-export function DeviceName({ name, busy, act, hint }: { name: string; busy: boolean; act: Act; hint?: string }) {
+/** `collapsible`: a chosen name shows as one line with Edit; the form opens with an ease and closes on Save or Cancel. */
+export function DeviceName({ name, busy, act, hint, collapsible }: { name: string; busy: boolean; act: Act; hint?: string; collapsible?: boolean }) {
   const [value, setValue] = useState(name);
   const [saved, setSaved] = useState(false);
+  const [editing, setEditing] = useState(false);
   useEffect(() => setValue(name), [name]);
+  if (collapsible) return <div className={editing ? 'device-name open' : 'device-name'}>
+    <div className="device-line"><span className="muted">{t('Your name', 'Adın')}</span><strong>{name}</strong>
+      {!editing && <button className="text-button" onClick={() => setEditing(true)}>{t('Edit', 'Düzenle')}</button>}</div>
+    <div className="expand" inert={!editing}><div><div className="input-row"><input maxLength={80} value={value} disabled={busy} aria-label={t('Your name', 'Adın')} onChange={event => setValue(event.target.value)} />
+      <button disabled={busy || !value.trim() || value.trim() === name} onClick={async () => { if (await act({ kind: 'set_device_name', name: value.trim() })) setEditing(false); }}>{t('Save', 'Kaydet')}</button>
+      <button onClick={() => { setValue(name); setEditing(false); }}>{t('Cancel', 'Vazgeç')}</button></div>
+      {hint && <p className="muted">{hint}</p>}</div></div>
+  </div>;
   return <section className="settings-block"><h3>{t('Your name', 'Adın')}</h3>
     <label className="field">{t('Shown to your collaborators', 'İş arkadaşlarına görünür')}<div className="input-row"><input maxLength={80} value={value} disabled={busy} onChange={event => { setValue(event.target.value); setSaved(false); }} />
       <button disabled={busy || !value.trim() || value.trim() === name} onClick={async () => setSaved(await act({ kind: 'set_device_name', name: value.trim() }))}>{t('Save', 'Kaydet')}</button></div></label>

@@ -302,10 +302,12 @@ export function AdvancedScreen({ status, projectId, section, jobStartedAt, act, 
     <Section id="access" title={t('Folder, ID and access', 'Klasör, kimlik ve erişim')} summary={card.peers.length ? t(`${card.peers.length} collaborator${card.peers.length > 1 ? 's' : ''}`, `${card.peers.length} iş arkadaşı`) : t('Folder', 'Klasör')}
       open={!!open.access} highlight={section === 'access'} onToggle={toggle('access')}>
       <div className="status-rows">
-        <div><span>{t('Folder', 'Klasör')}</span><code>{displayPath(project.root)}</code></div>
+        <div><span>{t('Folder on this PC', 'Bu bilgisayardaki klasör')}</span><code>{displayPath(project.root)}</code></div>
         <div><span>{t('Project ID', 'Proje kimliği')}</span><code>{project.project_id}</code></div>
       </div>
       <div className="actions"><button disabled={busy} onClick={() => void chooseProjectRoot()}>{card.root_available ? t('Change folder…', 'Klasörü değiştir…') : t('Locate folder…', 'Klasörü bul…')}</button></div>
+      {card.peers.length > 0 && <><p className="muted">{t('Each collaborator keeps their copy in a folder on their own PC; changing this folder does not change theirs.', 'Her iş arkadaşı kendi kopyasını kendi bilgisayarındaki bir klasörde tutar; bu klasörü değiştirmek onlarınkini değiştirmez.')}</p>
+      <h3>{t('Collaborators', 'İş arkadaşları')}</h3></>}
       {card.peers.map(item => <div className="access-row" key={item.device.device_id}>
         <div><strong>{item.device.name}</strong><p className="muted">{t('Device', 'Cihaz')} <code>{item.device.device_id}</code> · {t('Identity', 'Kimlik')} <code>{item.device.peer_id}</code></p></div>
         <button className="danger" disabled={busy} onClick={async () => await ask(t('Remove access?', 'Erişim kaldırılsın mı?'),
